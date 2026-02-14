@@ -224,13 +224,39 @@ impl BluetoothScanner {
         info!("🔍 BLE scanning with btleplug initialized");
         
         // Get the platform manager
-        let manager = PlatformManager::new().await?;
+        info!("📡 Creating platform manager...");
+        let manager = match PlatformManager::new().await {
+            Ok(m) => {
+                info!("✅ Platform manager created successfully");
+                m
+            }
+            Err(e) => {
+                error!("❌ Failed to create platform manager: {}", e);
+                return Err(Box::new(e));
+            }
+        };
         
         // Get available adapters
-        let adapters = manager.adapters().await?;
+        info!("🔎 Searching for Bluetooth adapters...");
+        let adapters = match manager.adapters().await {
+            Ok(a) => {
+                info!("✅ Found {} adapter(s)", a.len());
+                a
+            }
+            Err(e) => {
+                error!("❌ Failed to get adapters: {}", e);
+                return Err(Box::new(e));
+            }
+        };
         
         if adapters.is_empty() {
             warn!("❌ Brak dostępnych adaptersów Bluetooth");
+            error!("⚠️  No Bluetooth adapters found!");
+            error!("   Possible causes:");
+            error!("   - Bluetooth hardware not present");
+            error!("   - Bluetooth driver not installed");
+            error!("   - Bluetooth disabled in BIOS/system settings");
+            error!("   - No permissions to access Bluetooth");
             return Ok(Vec::new());
         }
         
@@ -238,62 +264,70 @@ impl BluetoothScanner {
         
         // Scan with each available adapter
         for (idx, adapter) in adapters.iter().enumerate() {
-            if let Err(e) = adapter.start_scan(btleplug::api::ScanFilter::default()).await {
-                warn!("Failed to start scan on adapter {}: {}", idx, e);
-                continue;
+            info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            info!("📡 Adapter #{}: Starting scan...", idx);
+            
+            match adapter.start_scan(btleplug::api::ScanFilter::default()).await {
+                Ok(_) => {
+                    info!("✅ Scan started on adapter {}", idx);
+                }
+                Err(e) => {
+                    error!("❌ Failed to start scan on adapter {}: {}", idx, e);
+                    continue;
+                }
             }
             
-            info!("📡 Adapter {} - skanowanie urządzeń BLE...", idx);
+            info!("⏳ Scanning for {} seconds...", self.config.scan_duration.as_secs());
             
             // Scan for configured duration
             tokio::time::sleep(self.config.scan_duration).await;
             
             // Stop the scan
-            if let Err(e) = adapter.stop_scan().await {
-                warn!("Failed to stop scan on adapter {}: {}", idx, e);
+            match adapter.stop_scan().await {
+                Ok(_) => info!("✅ Scan stopped on adapter {}", idx),
+                Err(e) => warn!("⚠️  Failed to stop scan on adapter {}: {}", idx, e),
             }
             
             // Collect peripherals
-            let peripherals = adapter.peripherals().await?;
-            
-            info!("📊 Adapter {} znalazł {} urządzeń", idx, peripherals.len());
-            
-            for peripheral in peripherals {
-                match convert_peripheral_to_device(&peripheral).await {
-                    Ok(device) => {
-                        info!(
-                            "📱 Odkryto: {} | {} | RSSI: {} dB | Type: {:?}",
-                            device.mac_address,
-                            device.name.as_deref().unwrap_or("unknown"),
-                            device.rssi,
-                            device.device_type
-                        );
-                        
-                        if !device.services.is_empty() {
-                            info!(
-                                "   └─ Serwisy: {} ({})",
-                                device.services.len(),
-                                device.services.iter()
-                                    .map(|s| s.name.as_deref().unwrap_or("?"))
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            );
-                        }
-                        
-                        if let Some(mfg) = &device.manufacturer_name {
-                            info!("   └─ Producent: {}", mfg);
-                        }
-                        
-                        all_devices.push(device);
+            match adapter.peripherals().await {
+                Ok(peripherals) => {
+                    info!("📊 Adapter {} found {} device(s)", idx, peripherals.len());
+                    
+                    if peripherals.is_empty() {
+                        warn!("⚠️  No devices found on this adapter");
                     }
-                    Err(e) => {
-                        debug!("Failed to convert peripheral: {}", e);
+                    
+                    for peripheral in peripherals {
+                        match convert_peripheral_to_device(&peripheral).await {
+                            Ok(device) => {
+                                info!(
+                                    "📱 Device found: {} | {} | RSSI: {} dB | Type: {:?}",
+                                    device.mac_address,
+                                    device.name.as_deref().unwrap_or("unknown"),
+                                    device.rssi,
+                                    device.device_type
+                                );
+                                
+                                if let Some(mfg) = &device.manufacturer_name {
+                                    info!("   └─ Manufacturer: {}", mfg);
+                                }
+                                
+                                all_devices.push(device);
+                            }
+                            Err(e) => {
+                                debug!("Failed to convert peripheral: {}", e);
+                            }
+                        }
                     }
                 }
+                Err(e) => {
+                    error!("❌ Failed to get peripherals from adapter {}: {}", idx, e);
+                }
             }
+            info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         }
         
-        info!("✅ BLE scan completed - znaleziono {} urządzeń", all_devices.len());
+        info!("✅ BLE scan completed - found {} total devices", all_devices.len());
         Ok(all_devices)
     }
 

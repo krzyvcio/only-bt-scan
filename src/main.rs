@@ -12,7 +12,7 @@ mod bluetooth_features;
 mod tray_manager;
 
 use std::error::Error;
-use log::info;
+use log::{info, warn, error};
 use std::time::Duration;
 use std::env;
 
@@ -87,6 +87,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     adapter_info::display_adapter_info(&adapter);
     adapter_info::log_adapter_info(&adapter);
     
+    info!("");
+    info!("🧪 DIAGNOSTICS:");
+    info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    info!("Attempting to initialize Bluetooth scanning...");
+    
     // Configure scanner
     let config = ScanConfig {
         scan_duration: Duration::from_secs(scan_duration_secs),
@@ -95,7 +100,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         use_bredr: cfg!(target_os = "linux"),
     };
     
+    info!("Scanner configuration:");
+    info!("  - Scan duration: {} seconds", scan_duration_secs);
+    info!("  - Scan cycles: {}", scan_cycles);
+    info!("  - BLE enabled: true");
+    info!("  - BR/EDR enabled: {}", cfg!(target_os = "linux"));
+    info!("  - Platform: {}", std::env::consts::OS);
+    
     let scanner = BluetoothScanner::new(config);
+    
+    info!("✅ Scanner initialized successfully");
+    info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    info!("");
     
     // Shared devices state for interactive UI
     let mut all_devices = Vec::new();
@@ -129,12 +145,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
     
     // Main event loop
     while !shutdown_in_progress.load(std::sync::atomic::Ordering::Relaxed) {
-        info!("▶️  Starting scan cycle...");
+        info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        info!("▶️  Starting new scan cycle...");
+        info!("⏱️  Time: {:?}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
         
         match scanner.run_scan().await {
             Ok(mut devices) => {
                 all_devices = devices.clone();
-                info!("✅ Scan completed. Found {} devices", devices.len());
+                info!("✅ Scan completed successfully");
+                info!("📊 Found {} device(s) in this cycle", devices.len());
+                
+                if devices.is_empty() {
+                    warn!("⚠️  No devices found - check:");
+                    warn!("    1. Bluetooth adapter is enabled");
+                    warn!("    2. Other devices are advertising");
+                    warn!("    3. Check system logs for adapter errors");
+                }
                 
                 // Save to database
                 if let Err(e) = scanner.save_devices_to_db(&devices).await {
@@ -166,16 +192,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             Err(e) => {
                 eprintln!("❌ Scan failed: {}", e);
+                error!("❌ Error during scan: {}", e);
+                error!("Possible causes:");
+                error!("  - Bluetooth adapter disconnected");
+                error!("  - Permission denied (administrator/root required)");
+                error!("  - Bluetooth service not running");
+                error!("  - Hardware driver issue");
                 info!("⏳ Retrying in 10 seconds...");
                 interactive_ui::display_countdown_interruptible(0, 10, shutdown_in_progress.clone());
             }
         }
-        
-        if continuous_mode {
-            info!("🔄 Continuous scanning mode active. Press Ctrl+C to stop.");
-        } else {
-            info!("⏰ Interval scanning mode active (5 min intervals). Press Ctrl+C to stop.");
-        }
+        info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         info!("");
     }
     
