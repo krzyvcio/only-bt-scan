@@ -1,16 +1,15 @@
+use chrono::Utc;
+use log::{debug, error, info, warn};
 /// Bluetooth Scanner - Supports both BLE and Bluetooth Classic (BR/EDR)
 /// BLE: Cross-platform (Windows, macOS, Linux)
 /// BR/EDR: Linux only (via BlueZ)
-
 use std::collections::HashMap;
 use std::time::Duration;
-use log::{info, warn, error, debug};
-use chrono::Utc;
 
-use crate::ble_uuids::get_manufacturer_name;
-use crate::db::{self, ScannedDevice};
-use crate::bluetooth_features::{BluetoothVersion, BluetoothFeature};
 use crate::ble_security;
+use crate::ble_uuids::get_manufacturer_name;
+use crate::bluetooth_features::{BluetoothFeature, BluetoothVersion};
+use crate::db::{self, ScannedDevice};
 
 // BLE scanning imports
 use btleplug::api::{Central, Manager, Peripheral};
@@ -121,7 +120,10 @@ impl BluetoothScanner {
 
     /// Run complete scan (BLE + optional BR/EDR)
     pub async fn run_scan(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
-        info!("Starting Bluetooth scan with {} cycles", self.config.num_cycles);
+        info!(
+            "Starting Bluetooth scan with {} cycles",
+            self.config.num_cycles
+        );
         let mut all_devices = std::collections::HashMap::new();
         let scan_start = std::time::SystemTime::now()
             .duration_since(std::time::SystemTime::UNIX_EPOCH)?
@@ -158,7 +160,10 @@ impl BluetoothScanner {
                                     // Update to latest detection
                                     d.last_detected_ns = cycle_time_ns;
                                     // Recalculate response time
-                                    d.response_time_ms = ((d.last_detected_ns - d.first_detected_ns).max(0) / 1_000_000) as u64;
+                                    d.response_time_ms =
+                                        ((d.last_detected_ns - d.first_detected_ns).max(0)
+                                            / 1_000_000)
+                                            as u64;
 
                                     // Merge detected services
                                     for service in &device.services {
@@ -208,7 +213,10 @@ impl BluetoothScanner {
                                         d.first_detected_ns = device.first_detected_ns;
                                     }
                                     d.last_detected_ns = cycle_time_ns;
-                                    d.response_time_ms = ((d.last_detected_ns - d.first_detected_ns).max(0) / 1_000_000) as u64;
+                                    d.response_time_ms =
+                                        ((d.last_detected_ns - d.first_detected_ns).max(0)
+                                            / 1_000_000)
+                                            as u64;
 
                                     if device.name.is_some() && d.name.is_none() {
                                         d.name = device.name.clone();
@@ -281,7 +289,10 @@ impl BluetoothScanner {
             info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             info!("📡 Adapter #{}: Starting scan...", idx);
 
-            match adapter.start_scan(btleplug::api::ScanFilter::default()).await {
+            match adapter
+                .start_scan(btleplug::api::ScanFilter::default())
+                .await
+            {
                 Ok(_) => {
                     info!("✅ Scan started on adapter {}", idx);
                 }
@@ -291,7 +302,10 @@ impl BluetoothScanner {
                 }
             }
 
-            info!("⏳ Scanning for {} seconds...", self.config.scan_duration.as_secs());
+            info!(
+                "⏳ Scanning for {} seconds...",
+                self.config.scan_duration.as_secs()
+            );
 
             // Scan for configured duration
             tokio::time::sleep(self.config.scan_duration).await;
@@ -341,13 +355,18 @@ impl BluetoothScanner {
             info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         }
 
-        info!("✅ BLE scan completed - found {} total devices", all_devices.len());
+        info!(
+            "✅ BLE scan completed - found {} total devices",
+            all_devices.len()
+        );
         Ok(all_devices)
     }
 
     /// Run all 4 scanning methods concurrently
     /// Methods: 1) btleplug BLE, 2) BR-EDR (Linux), 3) Advanced HCI, 4) Raw sniffing
-    pub async fn concurrent_scan_all_methods(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
+    pub async fn concurrent_scan_all_methods(
+        &self,
+    ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         info!("🔄 Starting 4-method concurrent BLE/BR-EDR scan");
         info!("   Method 1: btleplug (Cross-platform BLE)");
@@ -388,7 +407,8 @@ impl BluetoothScanner {
         if let Ok(devices) = method2 {
             info!("✅ Method 2: {} BR-EDR devices found", devices.len());
             for device in devices {
-                devices_map.entry(device.mac_address.clone())
+                devices_map
+                    .entry(device.mac_address.clone())
                     .or_insert_with(|| device);
             }
         } else {
@@ -399,7 +419,8 @@ impl BluetoothScanner {
         if let Ok(devices) = method3 {
             info!("✅ Method 3: {} HCI devices found", devices.len());
             for device in devices {
-                devices_map.entry(device.mac_address.clone())
+                devices_map
+                    .entry(device.mac_address.clone())
                     .or_insert_with(|| device);
             }
         } else {
@@ -420,7 +441,9 @@ impl BluetoothScanner {
     }
 
     /// Advanced BLE scanning with btleplug - discovers services and characteristics
-    pub async fn scan_ble_advanced(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
+    pub async fn scan_ble_advanced(
+        &self,
+    ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         info!("🔬 ADVANCED BLE scanning with service/characteristic discovery");
 
         let manager = PlatformManager::new().await?;
@@ -434,7 +457,10 @@ impl BluetoothScanner {
         let mut all_devices = Vec::new();
 
         for (idx, adapter) in adapters.iter().enumerate() {
-            if let Err(e) = adapter.start_scan(btleplug::api::ScanFilter::default()).await {
+            if let Err(e) = adapter
+                .start_scan(btleplug::api::ScanFilter::default())
+                .await
+            {
                 warn!("Failed to start scan on adapter {}: {}", idx, e);
                 continue;
             }
@@ -447,7 +473,11 @@ impl BluetoothScanner {
             }
 
             let peripherals = adapter.peripherals().await?;
-            info!("📊 Adapter {} znalazł {} urządzeń - czytanie szczegółów...", idx, peripherals.len());
+            info!(
+                "📊 Adapter {} znalazł {} urządzeń - czytanie szczegółów...",
+                idx,
+                peripherals.len()
+            );
 
             for peripheral in peripherals {
                 match convert_peripheral_to_device_advanced(&peripheral).await {
@@ -471,7 +501,11 @@ impl BluetoothScanner {
                         }
 
                         if let Some(mfg) = &device.manufacturer_name {
-                            info!("   └─ Producent: {} (ID: {})", mfg, device.manufacturer_id.unwrap_or(0));
+                            info!(
+                                "   └─ Producent: {} (ID: {})",
+                                mfg,
+                                device.manufacturer_id.unwrap_or(0)
+                            );
                         }
 
                         all_devices.push(device);
@@ -483,7 +517,10 @@ impl BluetoothScanner {
             }
         }
 
-        info!("✅ ADVANCED BLE scan completed - {} urządzeń z szczegółami", all_devices.len());
+        info!(
+            "✅ ADVANCED BLE scan completed - {} urządzeń z szczegółami",
+            all_devices.len()
+        );
         Ok(all_devices)
     }
 
@@ -531,9 +568,12 @@ impl BluetoothScanner {
                 Ok(device_id) => {
                     // Save services
                     for service in &device.services {
-                        if let Err(e) =
-                            db::insert_ble_service(device_id, service.uuid16, service.uuid128.as_deref(), service.name.as_deref())
-                        {
+                        if let Err(e) = db::insert_ble_service(
+                            device_id,
+                            service.uuid16,
+                            service.uuid128.as_deref(),
+                            service.name.as_deref(),
+                        ) {
                             warn!("Failed to save service for {}: {}", device.mac_address, e);
                         }
                     }
@@ -549,8 +589,16 @@ impl BluetoothScanner {
 
     /// Format device info for display
     pub fn format_device_info(device: &BluetoothDevice) -> String {
-        let name = device.name.as_ref().map(|n| n.as_str()).unwrap_or("<Unknown>");
-        let mfg = device.manufacturer_name.as_ref().map(|m| m.as_str()).unwrap_or("?");
+        let name = device
+            .name
+            .as_ref()
+            .map(|n| n.as_str())
+            .unwrap_or("<Unknown>");
+        let mfg = device
+            .manufacturer_name
+            .as_ref()
+            .map(|m| m.as_str())
+            .unwrap_or("?");
         let device_type = match device.device_type {
             DeviceType::BleOnly => "BLE",
             DeviceType::BrEdr => "BR/EDR",
@@ -559,29 +607,20 @@ impl BluetoothScanner {
 
         format!(
             "{} | {} | {} dBm | {} ms | {} {}",
-            device.mac_address,
-            name,
-            device.rssi,
-            device.response_time_ms,
-            device_type,
-            mfg
+            device.mac_address, name, device.rssi, device.response_time_ms, device_type, mfg
         )
     }
 
     /// Detect Bluetooth version and features from device services and characteristics
     pub fn detect_device_version(device: &mut BluetoothDevice) {
-        use crate::bluetooth_features::detect_version_from_services;
         use crate::ble_uuids::{
-            is_le_audio_service, is_fitness_wearable_service, is_iot_smart_service,
-            is_bt50_or_later_service, is_bt52_or_later_service, get_known_128bit_service
+            get_known_128bit_service, is_bt50_or_later_service, is_bt52_or_later_service,
+            is_fitness_wearable_service, is_iot_smart_service, is_le_audio_service,
         };
+        use crate::bluetooth_features::detect_version_from_services;
 
         // Extract 16-bit service UUIDs from discovered services
-        let service_uuids: Vec<u16> = device
-            .services
-            .iter()
-            .filter_map(|s| s.uuid16)
-            .collect();
+        let service_uuids: Vec<u16> = device.services.iter().filter_map(|s| s.uuid16).collect();
 
         if !service_uuids.is_empty() {
             // Try to detect version from known services
@@ -596,10 +635,16 @@ impl BluetoothScanner {
         }
 
         // Detect Bluetooth version based on service capabilities
-        if service_uuids.iter().any(|uuid| is_bt52_or_later_service(*uuid)) {
+        if service_uuids
+            .iter()
+            .any(|uuid| is_bt52_or_later_service(*uuid))
+        {
             // LE Audio services indicate BT 5.2+
             device.detected_bt_version = Some(BluetoothVersion::V5_2);
-        } else if service_uuids.iter().any(|uuid| is_bt50_or_later_service(*uuid)) {
+        } else if service_uuids
+            .iter()
+            .any(|uuid| is_bt50_or_later_service(*uuid))
+        {
             // Extended advertising/periodic advertising services indicate BT 5.0+
             device.detected_bt_version = Some(BluetoothVersion::V5_0);
         }
@@ -608,7 +653,10 @@ impl BluetoothScanner {
         for service_uuid in &service_uuids {
             // Audio services (5.2+)
             if is_le_audio_service(*service_uuid) {
-                if !device.supported_features.contains(&BluetoothFeature::LEAudio) {
+                if !device
+                    .supported_features
+                    .contains(&BluetoothFeature::LEAudio)
+                {
                     device.supported_features.push(BluetoothFeature::LEAudio);
                 }
             }
@@ -627,7 +675,10 @@ impl BluetoothScanner {
 
             // IoT & Smart Home services
             if is_iot_smart_service(*service_uuid) {
-                if !device.supported_features.contains(&BluetoothFeature::DualMode) {
+                if !device
+                    .supported_features
+                    .contains(&BluetoothFeature::DualMode)
+                {
                     device.supported_features.push(BluetoothFeature::DualMode);
                 }
             }
@@ -647,7 +698,10 @@ impl BluetoothScanner {
                     }
                     // LE Audio indicators
                     if vendor_name.contains("Audio") || vendor_name.contains("Media Control") {
-                        if !device.supported_features.contains(&BluetoothFeature::LEAudio) {
+                        if !device
+                            .supported_features
+                            .contains(&BluetoothFeature::LEAudio)
+                        {
                             device.supported_features.push(BluetoothFeature::LEAudio);
                         }
                         device.detected_bt_version = Some(BluetoothVersion::V5_2);
@@ -667,7 +721,9 @@ impl BluetoothScanner {
 
     /// Ultra-advanced HCI raw scanning using Direct Bluetooth HCI Access
     /// Provides maximum control and detailed device information
-    pub async fn scan_ble_hci_direct(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
+    pub async fn scan_ble_hci_direct(
+        &self,
+    ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         info!("🔬 HCI DIRECT scanning - raw Bluetooth HCI access");
 
         let mut devices = Vec::new();
@@ -747,22 +803,22 @@ async fn convert_peripheral_to_device(
 
     // Analyze security
     let service_uuids: Vec<String> = vec![];
-    let security_info = ble_security::analyze_security_from_advertising(
-        &mac,
-        &service_uuids,
-        &vec![],
-        true,
-    );
+    let security_info =
+        ble_security::analyze_security_from_advertising(&mac, &service_uuids, &vec![], true);
 
     Ok(BluetoothDevice {
         mac_address: mac,
         name,
         rssi,
         device_type: DeviceType::BleOnly,
-        manufacturer_id: if manufacturer_id > 0 { Some(manufacturer_id) } else { None },
+        manufacturer_id: if manufacturer_id > 0 {
+            Some(manufacturer_id)
+        } else {
+            None
+        },
         manufacturer_name,
         manufacturer_data,
-        is_connectable: properties.is_connectable.unwrap_or(true),
+        is_connectable: true,
         services,
         first_detected_ns: now,
         last_detected_ns: now,
@@ -771,8 +827,12 @@ async fn convert_peripheral_to_device(
         supported_features: vec![BluetoothFeature::BLE],
         mac_type: Some(ble_security::get_mac_type_name(&security_info.mac_type).to_string()),
         is_rpa: security_info.is_rpa,
-        security_level: Some(ble_security::get_security_name(&security_info.security_level).to_string()),
-        pairing_method: Some(ble_security::get_pairing_name(&security_info.pairing_method).to_string()),
+        security_level: Some(
+            ble_security::get_security_name(&security_info.security_level).to_string(),
+        ),
+        pairing_method: Some(
+            ble_security::get_pairing_name(&security_info.pairing_method).to_string(),
+        ),
     })
 }
 
@@ -809,17 +869,18 @@ async fn convert_peripheral_to_device_advanced(
     let services = Vec::new();
 
     // Try to connect and discover services (with timeout)
-    if let Ok(_) = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        peripheral.connect()
-    ).await {
+    if let Ok(_) =
+        tokio::time::timeout(std::time::Duration::from_secs(5), peripheral.connect()).await
+    {
         debug!("Connected to {} for service discovery", mac);
 
         // Try to discover services
         if let Ok(discovered) = tokio::time::timeout(
             std::time::Duration::from_secs(3),
-            peripheral.discover_services()
-        ).await {
+            peripheral.discover_services(),
+        )
+        .await
+        {
             if discovered.is_ok() {
                 debug!("Service discovery completed for {}", mac);
                 // Services are now cached in the peripheral
@@ -834,21 +895,24 @@ async fn convert_peripheral_to_device_advanced(
     }
 
     // Analyze security
-    let service_uuids: Vec<String> = services.iter().map(|s: &ServiceInfo| s.uuid128.clone().unwrap_or_default()).collect::<Vec<String>>();
+    let service_uuids: Vec<String> = services
+        .iter()
+        .map(|s: &ServiceInfo| s.uuid128.clone().unwrap_or_default())
+        .collect::<Vec<String>>();
     let service_data: Vec<(String, Vec<u8>)> = vec![];
-    let security_info = ble_security::analyze_security_from_advertising(
-        &mac,
-        &service_uuids,
-        &service_data,
-        true,
-    );
+    let security_info =
+        ble_security::analyze_security_from_advertising(&mac, &service_uuids, &service_data, true);
 
     Ok(BluetoothDevice {
         mac_address: mac,
         name,
         rssi,
         device_type: DeviceType::BleOnly,
-        manufacturer_id: if manufacturer_id > 0 { Some(manufacturer_id) } else { None },
+        manufacturer_id: if manufacturer_id > 0 {
+            Some(manufacturer_id)
+        } else {
+            None
+        },
         manufacturer_name,
         manufacturer_data,
         is_connectable: true,
@@ -860,8 +924,12 @@ async fn convert_peripheral_to_device_advanced(
         supported_features: vec![BluetoothFeature::BLE],
         mac_type: Some(ble_security::get_mac_type_name(&security_info.mac_type).to_string()),
         is_rpa: security_info.is_rpa,
-        security_level: Some(ble_security::get_security_name(&security_info.security_level).to_string()),
-        pairing_method: Some(ble_security::get_pairing_name(&security_info.pairing_method).to_string()),
+        security_level: Some(
+            ble_security::get_security_name(&security_info.security_level).to_string(),
+        ),
+        pairing_method: Some(
+            ble_security::get_pairing_name(&security_info.pairing_method).to_string(),
+        ),
     })
 }
 

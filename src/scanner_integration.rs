@@ -1,7 +1,6 @@
 /// Scanner Integration - Bridges BluetoothDevice to PacketTracker
 ///
 /// Adapts BluetoothScanner results for packet ordering and temporal analysis
-
 use crate::bluetooth_scanner::BluetoothDevice;
 use crate::data_models::RawPacketModel;
 use crate::packet_tracker::{GlobalPacketTracker, PacketAddResult};
@@ -26,7 +25,10 @@ impl ScannerWithTracking {
 
     /// Process Bluetooth devices from scan and add to tracker
     pub fn process_scan_results(&mut self, devices: Vec<BluetoothDevice>) {
-        log::info!("🔄 Processing {} devices through packet tracker", devices.len());
+        log::info!(
+            "🔄 Processing {} devices through packet tracker",
+            devices.len()
+        );
         let mut packet_counter = self.packet_tracker.packet_count;
         self.last_scan_packets.clear();
 
@@ -37,7 +39,10 @@ impl ScannerWithTracking {
 
             // Store for database persistence
             self.last_scan_packets.push(packet.clone());
-            log::debug!("📦 Added packet to last_scan_packets - total: {}", self.last_scan_packets.len());
+            log::debug!(
+                "📦 Added packet to last_scan_packets - total: {}",
+                self.last_scan_packets.len()
+            );
 
             // Add to global tracker
             let result = self.packet_tracker.add_packet(packet.clone());
@@ -55,15 +60,15 @@ impl ScannerWithTracking {
                     );
                 }
                 PacketAddResult::Rejected { reason, .. } => {
-                    log::debug!(
-                        "✗ Packet from {} rejected: {}",
-                        device.mac_address, reason
-                    );
+                    log::debug!("✗ Packet from {} rejected: {}", device.mac_address, reason);
                 }
             }
         }
-        
-        log::info!("✅ Processing complete - {} packets in buffer", self.last_scan_packets.len());
+
+        log::info!(
+            "✅ Processing complete - {} packets in buffer",
+            self.last_scan_packets.len()
+        );
     }
 
     /// Get raw packets from last scan (for database persistence)
@@ -149,6 +154,8 @@ fn create_raw_packet_from_device(device: &BluetoothDevice, packet_id: u64) -> Ra
         }
     }
     let advertising_data_hex = hex::encode(&advertising_data);
+    let advertising_data_len = advertising_data.len();
+    let is_empty = advertising_data.is_empty();
 
     let mut packet = RawPacketModel {
         packet_id,
@@ -178,8 +185,8 @@ fn create_raw_packet_from_device(device: &BluetoothDevice, packet_id: u64) -> Ra
             .collect(),
         manufacturer_data: device.manufacturer_data.clone(),
         service_data: std::collections::HashMap::new(),
-        total_length: advertising_data.len(),
-        parsed_successfully: !advertising_data.is_empty(),
+        total_length: advertising_data_len,
+        parsed_successfully: !is_empty,
     };
 
     packet

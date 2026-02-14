@@ -89,6 +89,7 @@ nix = { version = "0.27", features = ["socket"] }
 windows = { version = "0.54", features = ["Win32_Foundation", "Win32_System_Console", "Win32_UI_WindowsAndMessaging", "Win32_System_Com", "Win32_System_Ole"] }
 tray-icon = "0.1"
 winbluetooth = "0.1"
+serialport = "4.2.0"
 
 # Optional features
 [features]

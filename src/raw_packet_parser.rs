@@ -6,11 +6,11 @@
 //! Example:
 //! 14:0e:90:a4:b3:90 "" -82dB tx=n/a Non-Connectable Non-Paired company-id=0x0006 manuf-data=0109202231AF58B9F00F7253DF20A1848DA6DEACC747C910C10EE7 (Microsoft)
 
+use crate::data_models::{AdStructureData, RawPacketModel};
 use chrono::Utc;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::data_models::{RawPacketModel, AdStructureData};
 
 /// Parsed raw packet from text format
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,14 +69,16 @@ impl RawPacketParser {
     /// Parse single raw packet line
     pub fn parse_packet(&self, line: &str) -> Option<RawPacketData> {
         // Extract MAC address
-        let mac_address = self.mac_regex
+        let mac_address = self
+            .mac_regex
             .captures(line)?
             .get(1)?
             .as_str()
             .to_uppercase();
 
         // Extract RSSI
-        let rssi = self.rssi_regex
+        let rssi = self
+            .rssi_regex
             .captures(line)?
             .get(1)?
             .as_str()
@@ -85,7 +87,8 @@ impl RawPacketParser {
             .map(|v| -v)?;
 
         // Extract TX Power (optional)
-        let tx_power = self.tx_regex
+        let tx_power = self
+            .tx_regex
             .captures(line)
             .and_then(|cap| {
                 let tx_str = cap.get(1)?.as_str();
@@ -120,15 +123,14 @@ impl RawPacketParser {
         let paired = !line.contains("Non-Paired") && line.contains("Paired");
 
         // Extract company ID
-        let company_id = self.company_id_regex
-            .captures(line)
-            .and_then(|cap| {
-                let id_str = cap.get(1)?.as_str();
-                u16::from_str_radix(&id_str[2..], 16).ok()
-            });
+        let company_id = self.company_id_regex.captures(line).and_then(|cap| {
+            let id_str = cap.get(1)?.as_str();
+            u16::from_str_radix(&id_str[2..], 16).ok()
+        });
 
         // Extract manufacturer data
-        let (manufacturer_data, manufacturer_data_hex) = self.manuf_data_regex
+        let (manufacturer_data, manufacturer_data_hex) = self
+            .manuf_data_regex
             .captures(line)
             .and_then(|cap| {
                 let hex_str = cap.get(1)?.as_str();
@@ -138,7 +140,8 @@ impl RawPacketParser {
             .unwrap_or_default();
 
         // Extract company name
-        let company_name = self.company_name_regex
+        let company_name = self
+            .company_name_regex
             .captures(line)
             .and_then(|cap| cap.get(1))
             .map(|m| m.as_str().to_string());
@@ -289,6 +292,11 @@ impl RawPacketBatchProcessor {
         self.packets.extend(parsed);
     }
 
+    /// Add a single pre-parsed packet
+    pub fn add_packet(&mut self, packet: RawPacketData) {
+        self.packets.push(packet);
+    }
+
     /// Process all packets and convert to models
     pub fn process_all(&mut self) -> Vec<RawPacketModel> {
         self.packet_models.clear();
@@ -315,7 +323,8 @@ impl RawPacketBatchProcessor {
     /// Get statistics about parsed packets
     pub fn get_statistics(&self) -> RawPacketStatistics {
         let total_packets = self.packets.len();
-        let unique_macs = self.packets
+        let unique_macs = self
+            .packets
             .iter()
             .map(|p| &p.mac_address)
             .collect::<std::collections::HashSet<_>>()
@@ -326,7 +335,11 @@ impl RawPacketBatchProcessor {
 
         let connectable_count = self.packets.iter().filter(|p| p.connectable).count();
         let with_tx_power = self.packets.iter().filter(|p| p.tx_power.is_some()).count();
-        let with_company_data = self.packets.iter().filter(|p| p.company_id.is_some()).count();
+        let with_company_data = self
+            .packets
+            .iter()
+            .filter(|p| p.company_id.is_some())
+            .count();
 
         let min_rssi = rssi_values.first().copied().unwrap_or(0);
         let max_rssi = rssi_values.last().copied().unwrap_or(0);
@@ -353,6 +366,16 @@ impl RawPacketBatchProcessor {
     pub fn clear(&mut self) {
         self.packets.clear();
         self.packet_models.clear();
+    }
+
+    /// Get a slice of the raw packet data
+    pub fn packets(&self) -> &[RawPacketData] {
+        &self.packets
+    }
+
+    /// Get a slice of the processed packet models
+    pub fn packet_models(&self) -> &[RawPacketModel] {
+        &self.packet_models
     }
 }
 
@@ -388,7 +411,10 @@ mod tests {
         assert_eq!(packet.paired, false);
         assert_eq!(packet.company_id, Some(0x0006));
         assert_eq!(packet.company_name, Some("Microsoft".to_string()));
-        assert_eq!(packet.manufacturer_data_hex, "0109202231AF58B9F00F7253DF20A1848DA6DEACC747C910C10EE7");
+        assert_eq!(
+            packet.manufacturer_data_hex,
+            "0109202231AF58B9F00F7253DF20A1848DA6DEACC747C910C10EE7"
+        );
         assert_eq!(packet.device_name, Some("".to_string()));
     }
 

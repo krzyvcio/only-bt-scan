@@ -6,15 +6,14 @@
 /// - Device event listening
 /// - Raw HCI scanning
 /// - Telemetry collection
-
-use crate::bluetooth_scanner::{BluetoothScanner, BluetoothDevice, ScanConfig};
+use crate::bluetooth_scanner::{BluetoothDevice, BluetoothScanner, ScanConfig};
+use crate::data_models::RawPacketModel;
+use crate::device_events::{BluetoothDeviceEvent, DeviceEventListener};
 use crate::native_scanner::NativeBluetoothScanner;
 use crate::packet_tracker::GlobalPacketTracker;
-use crate::device_events::{DeviceEventListener, BluetoothDeviceEvent};
 use crate::scanner_integration::ScannerWithTracking;
 use crate::telemetry::TelemetryCollector;
-use crate::data_models::RawPacketModel;
-use log::{info, debug, warn};
+use log::{debug, info, warn};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -25,7 +24,7 @@ pub struct UnifiedScanEngine {
     tracker_system: ScannerWithTracking,
     event_listener: Arc<DeviceEventListener>,
     #[cfg(target_os = "windows")]
-    hci_scanner: Option<crate::windows_hci::windows_hci::WindowsHciScanner>,
+    hci_scanner: Option<crate::windows_hci::WindowsHciScanner>,
 }
 
 impl UnifiedScanEngine {
@@ -66,29 +65,40 @@ impl UnifiedScanEngine {
         info!("📡 Phase 1: Native platform scanning");
         eprintln!("[DEBUG] About to call run_native_scan()");
         let native_devices = self.native_scanner.run_native_scan().await?;
-        eprintln!("[DEBUG] run_native_scan() returned {} devices", native_devices.len());
-        info!("✅ Phase 1 complete: {} devices found", native_devices.len());
+        eprintln!(
+            "[DEBUG] run_native_scan() returned {} devices",
+            native_devices.len()
+        );
+        info!(
+            "✅ Phase 1 complete: {} devices found",
+            native_devices.len()
+        );
 
         // Phase 2: Process devices through packet tracker
         info!("📊 Phase 2: Packet ordering and deduplication");
-        eprintln!("[DEBUG] About to call process_scan_results() with {} devices", native_devices.len());
-        self.tracker_system.process_scan_results(native_devices.clone());
+        eprintln!(
+            "[DEBUG] About to call process_scan_results() with {} devices",
+            native_devices.len()
+        );
+        self.tracker_system
+            .process_scan_results(native_devices.clone());
         eprintln!("[DEBUG] process_scan_results() completed");
 
         // Phase 3: Emit events for newly discovered devices
         info!("🎧 Phase 3: Device event emission");
         for device in &native_devices {
-            self.event_listener.emit(BluetoothDeviceEvent::DeviceDiscovered {
-                mac_address: device.mac_address.clone(),
-                name: device.name.clone(),
-                rssi: device.rssi,
-                is_ble: true,
-                is_bredr: matches!(
-                    device.device_type,
-                    crate::bluetooth_scanner::DeviceType::BrEdr
-                        | crate::bluetooth_scanner::DeviceType::DualMode
-                ),
-            });
+            self.event_listener
+                .emit(BluetoothDeviceEvent::DeviceDiscovered {
+                    mac_address: device.mac_address.clone(),
+                    name: device.name.clone(),
+                    rssi: device.rssi,
+                    is_ble: true,
+                    is_bredr: matches!(
+                        device.device_type,
+                        crate::bluetooth_scanner::DeviceType::BrEdr
+                            | crate::bluetooth_scanner::DeviceType::DualMode
+                    ),
+                });
         }
 
         // Phase 4: Raw HCI scan on Windows (optional, runs in parallel)
@@ -96,7 +106,10 @@ impl UnifiedScanEngine {
         {
             info!("📡 Phase 4: Windows Raw HCI scan (optional)");
             if let Ok(hci_devices) = self.scan_windows_hci().await {
-                info!("✅ Phase 4 complete: {} devices from HCI", hci_devices.len());
+                info!(
+                    "✅ Phase 4 complete: {} devices from HCI",
+                    hci_devices.len()
+                );
             }
         }
 
@@ -120,8 +133,10 @@ impl UnifiedScanEngine {
 
     /// Run HCI-only scan on Windows
     #[cfg(target_os = "windows")]
-    async fn scan_windows_hci(&mut self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
-        use crate::windows_hci::windows_hci::WindowsHciScanner;
+    async fn scan_windows_hci(
+        &mut self,
+    ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
+        use crate::windows_hci::WindowsHciScanner;
 
         info!("🪟 Initializing Windows HCI scanner");
 
@@ -147,7 +162,9 @@ impl UnifiedScanEngine {
     }
 
     #[cfg(not(target_os = "windows"))]
-    async fn scan_windows_hci(&mut self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
+    async fn scan_windows_hci(
+        &mut self,
+    ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         Ok(Vec::new())
     }
 
@@ -183,7 +200,7 @@ pub struct ScanEngineResults {
     pub devices: Vec<BluetoothDevice>,
     pub scanner_stats: crate::scanner_integration::ScannerTrackingStats,
     pub packet_sequence: Vec<(String, u64, u64)>, // (mac, packet_id, timestamp_ms)
-    pub raw_packets: Vec<RawPacketModel>, // Raw packets for database persistence
+    pub raw_packets: Vec<RawPacketModel>,         // Raw packets for database persistence
     pub telemetry_json: String,
     pub duration_ms: u64,
     pub event_count: u64,
