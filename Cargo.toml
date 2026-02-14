@@ -39,10 +39,15 @@ actix-rt = "2.9"
 # Logging
 log = "0.4"
 env_logger = "0.11"
+colored = "2.1"
+lazy_static = "1.5"
 
 # Error handling
 anyhow = "1.0"
 thiserror = "1.0"
+
+# Lazy initialization
+once_cell = "1.19"
 
 # Configuration
 dotenv = "0.15"

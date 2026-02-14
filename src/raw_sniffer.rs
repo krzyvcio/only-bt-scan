@@ -3,7 +3,7 @@
 /// Supports: Linux (HCI raw sockets), Windows (WinAPI), macOS (limited)
 
 use chrono::{DateTime, Utc};
-use log::{info, debug};
+use log::debug;
 use serde::{Serialize, Deserialize};
 
 /// Complete Bluetooth frame with metadata
@@ -49,6 +49,7 @@ impl std::fmt::Display for BluetoothPhy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[allow(non_camel_case_types)]
 pub enum AdvertisingType {
     Adv_Ind,              // Connectable undirected
     Adv_Direct_Ind,       // Connectable directed
@@ -330,7 +331,7 @@ pub mod linux_sniffer {
 #[cfg(target_os = "windows")]
 pub mod windows_sniffer {
     use super::*;
-    use log::{info, debug};
+    use log::info;
 
     /// Start Bluetooth packet sniffing on Windows
     pub async fn start_winsock_sniffing() -> Result<(), Box<dyn std::error::Error>> {
@@ -346,6 +347,7 @@ pub mod windows_sniffer {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -358,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_sniffer_stats() {
-        let mut sniffer = RawPacketSniffer::new(100);
+        let mut sniffer = RawPacketSniffer::new(13);
         let frame = BluetoothFrame {
             mac_address: "AA:BB:CC:DD:EE:FF".to_string(),
             rssi: -50,

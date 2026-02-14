@@ -1,7 +1,10 @@
+#![allow(dead_code)]
+
 /// Database operations for raw Bluetooth frames and packets
 /// Stores complete advertising packets with metadata for analysis
 
 use chrono::{DateTime, Utc};
+
 use rusqlite::{params, Connection, Result as SqliteResult};
 use crate::raw_sniffer::{BluetoothFrame, BluetoothPhy, AdvertisingType};
 

@@ -366,20 +366,59 @@ pub fn extract_16bit_from_uuid_string(uuid_str: &str) -> Option<u16> {
 /// Get manufacturer name from manufacturer ID code
 pub fn get_manufacturer_name(code: u16) -> Option<&'static str> {
     match code {
-        // ===== Major Enterprises =====
+        // ===== Major Tech Companies =====
+        0x0001 => Some("Ericsson Technology Licensing"),
+        0x0004 => Some("Nokia Mobile Phones"),
+        0x0005 => Some("Toshiba Corp."),
+        0x0006 => Some("Microsoft Corporation"),
+        0x0007 => Some("Lucent"),
+        0x0008 => Some("Motorola"),
+        0x0009 => Some("Infineon Technologies AG"),
+        0x000A => Some("Cambridge Silicon Radio"),
+        0x000B => Some("Silicon Wave"),
+        0x000C => Some("Digianswer A/S"),
+        0x000D => Some("Texas Instruments Inc."),
+        0x000E => Some("Parthus Technologies Inc."),
+        0x000F => Some("Broadcom Corporation"),
+        0x0010 => Some("Intel Corp."),
+        0x0011 => Some("Waveplus Technology Co., Ltd."),
+        0x0015 => Some("ASUSTek Computer Inc."),
+        
+        // ===== Apple & Google =====
         0x004C => Some("Apple Inc."),
         0x0059 => Some("Google LLC"),
         0x00E0 => Some("Google"),
-        0x004F => Some("Hewlett-Packard Company"),
         
-        // ===== Consumer Electronics =====
+        // ===== Consumer Electronics Giants =====
         0x0075 => Some("Samsung Electronics Co. Ltd."),
+        0x0076 => Some("LG Electronics"),
         0x0156 => Some("Huawei Technologies Co. Ltd."),
+        0x019F => Some("Sony Corporation"),
+        0x01E4 => Some("Panasonic Corporation"),
+        0x0124 => Some("Sony Ericsson Mobile Communications AB"),
+        
+        // ===== Xiaomi Family =====
+        0x038F => Some("Xiaomi Inc."),
         0x028E => Some("Xiaomi Inc."),
         0x01C3 => Some("Xiaomi Communications Co., Ltd."),
-        0x00AD => Some("TP-Link Corporation Limited"),
-        0x019F => Some("Sony Corporation"),
-        0x0124 => Some("Sony Ericsson Mobile Communications AB"),
+        0x02E3 => Some("Anhui Huami Information Technology Co., Ltd."),
+        0x023D => Some("Dreame Innovation Technology Co., Ltd."),
+        
+        // ===== Chinese Tech =====
+        0x0152 => Some("OPPO Mobile Telecommunications Corp., Ltd."),
+        0x0190 => Some("OnePlus Electronics (Shenzhen) Co. Ltd."),
+        0x0157 => Some("Shenzhen Goodix Technology Co., Ltd."),
+        0x02A6 => Some("Realme Chongqing Mobile Telecommunications Corp., Ltd."),
+        0x03C7 => Some("Vivo Mobile Communication Co., Ltd."),
+        
+        // ===== Audio & Entertainment =====
+        0x003C => Some("Bose Corporation"),
+        0x0117 => Some("Harman International Industries Inc."),
+        0x0158 => Some("Sonos, Inc."),
+        0x02D9 => Some("Marshall London"),
+        0x0087 => Some("Sennheiser Communications A/S"),
+        0x0138 => Some("Plantronics"),
+        0x0277 => Some("Bowers & Wilkins"),
         
         // ===== Wearables & Fitness =====
         0x0220 => Some("Fitbit, Inc."),
@@ -387,56 +426,73 @@ pub fn get_manufacturer_name(code: u16) -> Option<&'static str> {
         0x0219 => Some("Garmin Ltd."),
         0x020E => Some("Polar Electro Oy"),
         0x015D => Some("Jawbone"),
+        0x029D => Some("HUAWEI Technologies Co., Ltd. (wearables)"),
+        0x0394 => Some("Samsung Electronics Co., Ltd. (wearables)"),
         
-        // ===== IoT & Smart Home =====
+        // ===== Smart Home & IoT =====
         0x004D => Some("Broadcom Corporation"),
         0x00D0 => Some("Nordic Semiconductor ASA"),
-        0x025D => Some("Philips Lighting B.V. (TP-Link)"),
+        0x025D => Some("Philips Lighting B.V."),
         0x0100 => Some("LEGO System A/S"),
+        0x02CA => Some("Espressif Incorporated"),
+        0x0131 => Some("Amazon.com Services, Inc."),
+        0x00AD => Some("TP-Link Corporation Limited"),
         
-        // ===== Audio & Music =====
-        0x003C => Some("Bose Corporation"),
-        0x0117 => Some("Harman International Industries Inc."),
-        0x02D9 => Some("Marshall London"),
-        0x0158 => Some("Sonos, Inc."),
+        // ===== Chip Manufacturers =====
+        0x02DB => Some("Infineon Technologies AG"),
+        0x025B => Some("Realtek Semiconductor Corporation"),
+        0x0060 => Some("NXP Semiconductors"),
+        0x0088 => Some("STMicroelectronics International NV"),
+        0x00CB => Some("Marvell Technology Group Ltd."),
+        0x02E5 => Some("Nordic Semiconductor ASA (DFU)"),
+        0x0171 => Some("MediaTek Inc."),
+        0x00E5 => Some("Qualcomm Technologies, Inc."),
+        0x0229 => Some("Qualcomm Inc."),
         
         // ===== Automotive =====
         0x0099 => Some("BMW Group"),
         0x00CF => Some("Daimler AG"),
         0x0110 => Some("Tesla Inc."),
         0x0167 => Some("BMW AG"),
+        0x006D => Some("Ford Motor Company"),
+        0x0085 => Some("Volkswagen AG"),
+        0x009E => Some("Audi AG"),
+        0x00E3 => Some("Porsche AG"),
+        0x012D => Some("Tesla Motors"),
         
         // ===== Medical & Health =====
         0x00DA => Some("A&D Company, Limited"),
         0x014D => Some("GN ReSound A/S"),
         0x0223 => Some("ResMed Inc."),
         0x02C8 => Some("NeuroPace Inc."),
+        0x00A7 => Some("Abbott Diabetes Care"),
+        0x0168 => Some("Medtronic Inc."),
+        0x01A8 => Some("Dexcom, Inc."),
         
-        // ===== Development Tools & Modules =====
-        0x02E5 => Some("Nordic Semiconductor ASA (DFU)"),
-        0x02CA => Some("Espressif Incorporated"),
-        0x02DB => Some("Infineon Technologies AG"),
-        0x025B => Some("Realtek Semiconductor Corporation"),
+        // ===== Computer & Peripherals =====
+        0x0046 => Some("Logitech International SA"),
+        0x004F => Some("Hewlett-Packard Company"),
+        0x0057 => Some("Microsoft Corporation (Xbox)"),
+        0x005B => Some("Dell Inc."),
+        0x0068 => Some("Lenovo (Singapore) Pte. Ltd."),
+        0x0078 => Some("Mitel Semiconductor Ltd."),
         
-        // ===== Consumer Electronics (continued) =====
-        0x0152 => Some("OPPO Electronics Corp."),
-        0x0190 => Some("OnePlus Electronics (Shenzhen) Co. Ltd."),
+        // ===== Gaming & VR =====
+        0x01E5 => Some("Valve Corporation"),
+        0x0269 => Some("Razer Inc."),
+        0x0339 => Some("Nintendo Co., Ltd."),
         
-        // ===== Other Companies =====
-        0x0001 => Some("Ericsson Technology Licensing"),
-        0x0005 => Some("Realtek Semiconductor Corporation"),
-        0x0006 => Some("Seiko Epson Corporation"),
-        0x000D => Some("Texas Instruments Inc."),
-        0x0010 => Some("Intel Corp."),
-        0x0015 => Some("ASUSTek Computer Inc."),
+        // ===== Other Notable Companies =====
         0x01F6 => Some("OpenWrt Project"),
         0x020F => Some("Arch Evo Ltd."),
         0x0224 => Some("Tile, Inc."),
-        0x0229 => Some("Qualcomm Inc."),
         0x022D => Some("GoPro, Inc."),
         0x0239 => Some("Roku Inc."),
         0x0245 => Some("Lemonade Inc."),
-        0x0269 => Some("Razer Inc."),
+        0x02BC => Some("Dyson Ltd."),
+        0x0031 => Some("Seiko Epson Corporation"),
+        0x0113 => Some("Tencent Holdings Ltd."),
+        0x0275 => Some("DJI Innovations"),
         
         _ => None
     }

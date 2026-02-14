@@ -5,9 +5,12 @@ use crossterm::{
     event::{self, Event, KeyCode, KeyEvent},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    cursor::{MoveTo}, // Added MoveTo
 };
 use std::io::{self, Write};
+use colored::Colorize;
 use crate::bluetooth_scanner::BluetoothDevice;
+#[allow(unused_imports)]
 use crate::bluetooth_features::{BluetoothVersion, BluetoothFeature};
 
 pub struct InteractiveUI {
@@ -45,7 +48,7 @@ impl InteractiveUI {
         loop {
             self.draw()?;
 
-            if event::poll(std::time::Duration::from_millis(100))? {
+            if event::poll(std::time::Duration::from_millis(20))? {
                 if let Event::Key(key) = event::read()? {
                     if !self.handle_key(key)? {
                         break;
@@ -244,18 +247,28 @@ fn rssi_to_strength(rssi: i8) -> (&'static str, &'static str) {
     }
 }
 
-/// Simple non-interactive display of devices
-pub fn display_devices_simple(devices: &[BluetoothDevice]) {
+/// Simple non-interactive display of devices.
+/// If max_rows is Some(n), only first n devices are shown; extra count shown as "... i jeszcze X urządzeń".
+pub fn display_devices_simple(
+    devices: &[BluetoothDevice],
+    start_y: u16,
+    max_rows: Option<usize>,
+) -> io::Result<()> {
+    let mut stdout = io::stdout();
+    let mut current_y = start_y;
+
     if devices.is_empty() {
-        println!("Brak znalezionych urządzeń");
-        return;
+        execute!(stdout, MoveTo(0, current_y))?;
+        writeln!(stdout, "{}", "Brak znalezionych urządzeń".yellow())?;
+        return Ok(());
     }
 
-    println!("╔══════════════════════════════════════════════════════════════════════════════════════════════════════╗");
-    println!("║ MAC Address        │ Nazwa               │ RSSI (dB) │ Sygnał     │ Odpowiedź │ Typ  │ Producent     ║");
-    println!("╠══════════════════════════════════════════════════════════════════════════════════════════════════════╣");
+    let (to_show, overflow) = match max_rows {
+        Some(n) if n < devices.len() => (devices.iter().take(n).collect::<Vec<_>>(), Some(devices.len() - n)),
+        _ => (devices.iter().collect::<Vec<_>>(), None),
+    };
 
-    for device in devices {
+    for device in to_show.iter() {
         let name = device
             .name
             .as_deref()
@@ -273,15 +286,33 @@ pub fn display_devices_simple(devices: &[BluetoothDevice]) {
         let (emoji, strength) = rssi_to_strength(device.rssi);
         let services_count = device.services.len();
 
-        println!(
-            "║ {} │ {:<19} │ {:>7} dB │ {} {:<6} │ {:>7} ms │ {:>4} │ {:<13} ║",
-            device.mac_address,
-            if name.len() > 19 {
-                format!("{}...", &name[..16])
-            } else {
-                format!("{:<19}", name)
-            },
-            device.rssi,
+        // Color code RSSI
+        let rssi_display = if device.rssi >= -50 {
+            format!("{:>7} dB", device.rssi).bright_green()
+        } else if device.rssi >= -70 {
+            format!("{:>7} dB", device.rssi).green()
+        } else if device.rssi >= -85 {
+            format!("{:>7} dB", device.rssi).yellow()
+        } else {
+            format!("{:>7} dB", device.rssi).red()
+        };
+
+        let mac_colored = device.mac_address.bright_white().bold();
+        let name_display = if name.len() > 19 {
+            format!("{}...", &name[..16])
+        } else {
+            format!("{:<19}", name)
+        };
+
+
+
+        execute!(stdout, MoveTo(0, current_y))?;
+        writeln!(
+            stdout,
+            "║ {} │ {} │ {} │ {} {:<6} │ {:>7} ms │ {:>4} │ {:<13} ║",
+            mac_colored,
+            name_display.bright_white(),
+            rssi_display,
             emoji,
             strength,
             device.response_time_ms,
@@ -291,19 +322,35 @@ pub fn display_devices_simple(devices: &[BluetoothDevice]) {
             } else {
                 format!("{:<13}", mfg)
             }
-        );
-        
-        // Log device details
-        if services_count > 0 {
-            log::info!("📱 {}: {} serwis(ów), RSSI={} dB, siła: {}", 
-                device.mac_address, services_count, device.rssi, strength);
-        }
+        )?;
+        current_y += 1;
     }
 
-    println!("╚══════════════════════════════════════════════════════════════════════════════════════════════════════╝");
-    println!("📊 Razem: {} urządzeń", devices.len());
-    println!("🟢 Mocny (>-67dB) │ 🟡 Średni (-70..-68dB) │ 🟠 Słaby (-80..-71dB) │ 🔴 Bardzo słaby (<-80dB)");
-    println!();
+    if let Some(extra) = overflow {
+        execute!(stdout, MoveTo(0, current_y))?;
+        writeln!(stdout, "{}", format!("... i jeszcze {} urządzeń", extra).bright_black())?;
+        current_y += 1;
+    }
+
+    // Clear remaining lines if new device list is shorter
+    let devices_height = to_show.len() + overflow.is_some().then_some(1).unwrap_or(0);
+    let clear_until = (start_y as usize + devices_height + 1) as u16;
+    for y in current_y..clear_until {
+        execute!(stdout, MoveTo(0, y), crossterm::terminal::Clear(crossterm::terminal::ClearType::CurrentLine))?;
+    }
+    
+    execute!(stdout, MoveTo(0, current_y))?;
+    writeln!(stdout, "{}", "╚══════════════════════════════════════════════════════════════════════════════════════════════════════╝".bright_blue())?;
+    current_y += 1;
+    execute!(stdout, MoveTo(0, current_y))?;
+    writeln!(stdout, "{}", format!("📊 Razem: {} urządzeń", devices.len()).bright_cyan().bold())?;
+    current_y += 1;
+    execute!(stdout, MoveTo(0, current_y))?;
+    writeln!(stdout, "{}", "🟢 Mocny (>-67dB) │ 🟡 Średni (-70..-68dB) │ 🟠 Słaby (-80..-71dB) │ 🔴 Bardzo słaby (<-80dB)".bright_white())?;
+    current_y += 1;
+    writeln!(stdout)?; // Print an extra newline at the end
+
+    Ok(())
 }
 
 /// Check and display Bluetooth permissions on startup

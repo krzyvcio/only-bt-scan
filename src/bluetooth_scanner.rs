@@ -445,7 +445,6 @@ impl BluetoothScanner {
                             warn!("Failed to save service for {}: {}", device.mac_address, e);
                         }
                     }
-                    db::record_scan_rssi(device_id, device.rssi).ok();
                 }
                 Err(e) => {
                     error!("Failed to save device {}: {}", device.mac_address, e);

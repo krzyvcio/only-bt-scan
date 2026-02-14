@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLE Scanner Panel</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    <h1>BLE Scanner</h1>
+                </div>
+                <div class="header-stats">
+                    <div class="stat-badge">
+                        <span class="stat-label">Devices</span>
+                        <span class="stat-value" id="total-devices">0</span>
+                    </div>
+                    <div class="stat-badge">
+                        <span class="stat-label">Packets</span>
+                        <span class="stat-value" id="total-packets">0</span>
+                    </div>
+                    <div class="stat-badge stat-badge-success">
+                        <span class="stat-label">Active</span>
+                        <span class="stat-value" id="active-devices">0</span>
+                    </div>
+                    <div class="stat-badge stat-badge-info">
+                        <span class="stat-label">Scans</span>
+                        <span class="stat-value" id="total-scans">0</span>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-refresh" id="refresh-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M23 4v6h-6M1 20v-6h6"/>
+                            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                        </svg>
+                        Refresh
+                    </button>
+                    <div class="status-indicator" id="status-indicator">
+                        <span class="status-dot"></span>
+                        <span class="status-text">Scanning...</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <section class="devices-section">
+                <div class="section-header">
+                    <h2>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+                            <path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/>
+                        </svg>
+                        Scanned Devices
+                    </h2>
+                    <div class="search-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/>
+                            <path d="M21 21l-4.35-4.35"/>
+                        </svg>
+                        <input type="text" id="search-input" placeholder="Search devices...">
+                    </div>
+                </div>
+                <div class="devices-table-container">
+                    <table class="devices-table" id="devices-table">
+                        <thead>
+                            <tr>
+                                <th>Signal</th>
+                                <th>Name</th>
+                                <th>MAC Address</th>
+                                <th>Manufacturer</th>
+                                <th>Scans</th>
+                                <th>Last Seen</th>
+                                <th>History</th>
+                            </tr>
+                        </thead>
+                        <tbody id="devices-tbody">
+                            <tr class="loading-row">
+                                <td colspan="7">
+                                    <div class="loading-spinner">
+                                        <div class="spinner"></div>
+                                        <span>Loading devices...</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="packets-section">
+                <div class="section-header">
+                    <h2>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                        </svg>
+                        Raw Packets (Live)
+                    </h2>
+                    <div class="packets-controls">
+                        <span class="packet-count" id="packet-count">0 packets</span>
+                        <label class="auto-scroll-toggle">
+                            <input type="checkbox" id="auto-scroll" checked>
+                            <span>Auto-scroll</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="packets-container">
+                    <div class="packets-header">
+                        <span class="col-time">Timestamp</span>
+                        <span class="col-mac">MAC</span>
+                        <span class="col-rssi">RSSI</span>
+                        <span class="col-data">Data (Hex)</span>
+                    </div>
+                    <div class="packets-list" id="packets-list">
+                        <div class="empty-packets">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                            </svg>
+                            <span>Waiting for packets...</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Device History Modal -->
+    <div class="modal" id="device-history-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Device History</h3>
+                <button class="modal-close" id="close-modal">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                Loading...
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="/app.js"></script>
+</body>
+</html>

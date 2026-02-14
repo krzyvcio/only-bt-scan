@@ -1,5 +1,8 @@
+#![allow(dead_code)]
+
 /// Bluetooth Feature Detection and Version Mapping
 /// Supports Bluetooth 1.0 through 6.0 with comprehensive feature tracking
+
 use std::collections::HashSet;
 
 /// Bluetooth Core Specification Versions

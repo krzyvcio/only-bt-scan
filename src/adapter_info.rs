@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 /// Bluetooth Adapter Information Discovery
 /// Shows available adapters and their capabilities
 

@@ -1,5 +1,5 @@
-use rusqlite::{Connection, Result as SqliteResult, params, OptionalExtension};
 use chrono::{DateTime, Utc};
+use rusqlite::{params, Connection, OptionalExtension, Result as SqliteResult};
 
 const DB_PATH: &str = "bluetooth_scan.db";
 
@@ -25,7 +25,7 @@ pub struct BleService {
 /// Initialize the database with required tables
 pub fn init_database() -> SqliteResult<()> {
     let conn = Connection::open(DB_PATH)?;
-    
+
     // Create devices table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS devices (
@@ -38,10 +38,18 @@ pub fn init_database() -> SqliteResult<()> {
             manufacturer_id INTEGER,
             manufacturer_name TEXT,
             device_type TEXT,
+            number_of_scan INTEGER DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )",
         [],
     )?;
+
+    // Add column if not exists (for existing databases)
+    conn.execute(
+        "ALTER TABLE devices ADD COLUMN number_of_scan INTEGER DEFAULT 1",
+        [],
+    )
+    .ok();
 
     // Create BLE services table
     conn.execute(
@@ -65,17 +73,37 @@ pub fn init_database() -> SqliteResult<()> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             device_id INTEGER NOT NULL,
             rssi INTEGER NOT NULL,
+            scan_number INTEGER DEFAULT 1,
             scan_timestamp TIMESTAMP NOT NULL,
             FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE
         )",
         [],
     )?;
 
+    // Add column if not exists
+    conn.execute(
+        "ALTER TABLE scan_history ADD COLUMN scan_number INTEGER DEFAULT 1",
+        [],
+    )
+    .ok();
+
     // Create indexes for better query performance
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_devices_mac ON devices(mac_address)", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_devices_last_seen ON devices(last_seen)", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_ble_services_device ON ble_services(device_id)", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_scan_history_device ON scan_history(device_id)", [])?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_devices_mac ON devices(mac_address)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_devices_last_seen ON devices(last_seen)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ble_services_device ON ble_services(device_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_scan_history_device ON scan_history(device_id)",
+        [],
+    )?;
 
     Ok(())
 }
@@ -85,10 +113,10 @@ pub fn insert_or_update_device(device: &ScannedDevice) -> SqliteResult<i32> {
     let conn = Connection::open(DB_PATH)?;
     let now = Utc::now();
 
-    // Try to update first
+    // Try to update first (increment scan count)
     let updated = conn.execute(
         "UPDATE devices 
-         SET rssi = ?1, last_seen = ?2, device_name = ?3, manufacturer_id = ?4, manufacturer_name = ?5
+         SET rssi = ?1, last_seen = ?2, device_name = ?3, manufacturer_id = ?4, manufacturer_name = ?5, number_of_scan = number_of_scan + 1
          WHERE mac_address = ?6",
         params![
             device.rssi,
@@ -109,8 +137,8 @@ pub fn insert_or_update_device(device: &ScannedDevice) -> SqliteResult<i32> {
 
     // If no update, insert new device
     conn.execute(
-        "INSERT INTO devices (mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO devices (mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name, number_of_scan)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1)",
         params![
             &device.mac_address,
             &device.name,
@@ -127,9 +155,14 @@ pub fn insert_or_update_device(device: &ScannedDevice) -> SqliteResult<i32> {
 }
 
 /// Insert BLE service for a device
-pub fn insert_ble_service(device_id: i32, uuid16: Option<u16>, uuid128: Option<&str>, name: Option<&str>) -> SqliteResult<()> {
+pub fn insert_ble_service(
+    device_id: i32,
+    uuid16: Option<u16>,
+    uuid128: Option<&str>,
+    name: Option<&str>,
+) -> SqliteResult<()> {
     let conn = Connection::open(DB_PATH)?;
-    
+
     conn.execute(
         "INSERT OR IGNORE INTO ble_services (device_id, uuid16, uuid128, service_name)
          VALUES (?1, ?2, ?3, ?4)",
@@ -139,15 +172,44 @@ pub fn insert_ble_service(device_id: i32, uuid16: Option<u16>, uuid128: Option<&
     Ok(())
 }
 
-/// Record RSSI value in scan history
-pub fn record_scan_rssi(device_id: i32, rssi: i8) -> SqliteResult<()> {
+/// Get or create global scan counter
+pub fn get_next_scan_number() -> SqliteResult<i32> {
+    let conn = Connection::open(DB_PATH)?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS scan_counter (
+            id INTEGER PRIMARY KEY,
+            counter INTEGER DEFAULT 0
+        )",
+        [],
+    )
+    .ok();
+
+    let count: i32 = conn
+        .query_row("SELECT counter FROM scan_counter WHERE id = 1", [], |row| {
+            row.get(0)
+        })
+        .unwrap_or(0);
+
+    let new_count = count + 1;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO scan_counter (id, counter) VALUES (1, ?1)",
+        params![new_count],
+    )?;
+
+    Ok(new_count)
+}
+
+/// Record RSSI value in scan history with scan number
+pub fn record_scan_rssi(device_id: i32, rssi: i8, scan_number: i32) -> SqliteResult<()> {
     let conn = Connection::open(DB_PATH)?;
     let now = Utc::now();
 
     conn.execute(
-        "INSERT INTO scan_history (device_id, rssi, scan_timestamp)
-         VALUES (?1, ?2, ?3)",
-        params![device_id, rssi, now],
+        "INSERT INTO scan_history (device_id, rssi, scan_number, scan_timestamp)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![device_id, rssi, scan_number, now],
     )?;
 
     Ok(())
@@ -186,18 +248,19 @@ pub fn get_device(mac_address: &str) -> SqliteResult<Option<ScannedDevice>> {
          WHERE mac_address = ?1"
     )?;
 
-    let device: Option<ScannedDevice> = stmt.query_row(params![mac_address], |row| {
-        Ok(ScannedDevice {
-            mac_address: row.get(0)?,
-            name: row.get(1)?,
-            rssi: row.get(2)?,
-            first_seen: row.get(3)?,
-            last_seen: row.get(4)?,
-            manufacturer_id: row.get(5)?,
-            manufacturer_name: row.get(6)?,
+    let device: Option<ScannedDevice> = stmt
+        .query_row(params![mac_address], |row| {
+            Ok(ScannedDevice {
+                mac_address: row.get(0)?,
+                name: row.get(1)?,
+                rssi: row.get(2)?,
+                first_seen: row.get(3)?,
+                last_seen: row.get(4)?,
+                manufacturer_id: row.get(5)?,
+                manufacturer_name: row.get(6)?,
+            })
         })
-    })
-    .optional()?;
+        .optional()?;
 
     Ok(device)
 }
@@ -209,7 +272,7 @@ pub fn get_device_services(device_id: i32) -> SqliteResult<Vec<BleService>> {
         "SELECT device_id, uuid16, uuid128, service_name
          FROM ble_services
          WHERE device_id = ?1
-         ORDER BY service_name"
+         ORDER BY service_name",
     )?;
 
     let services = stmt.query_map(params![device_id], |row| {
@@ -260,7 +323,7 @@ pub fn get_device_count() -> SqliteResult<i32> {
 pub fn cleanup_old_scans(days: u32) -> SqliteResult<usize> {
     let conn = Connection::open(DB_PATH)?;
     let time_filter = format!("-{} days", days);
-    
+
     conn.execute(
         "DELETE FROM scan_history WHERE scan_timestamp < datetime('now', ?1)",
         params![&time_filter],

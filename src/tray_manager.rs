@@ -98,7 +98,7 @@ impl Drop for TrayManager {
 /// Helper: Prevent console window from closing
 pub fn prevent_console_close() -> Result<(), Box<dyn std::error::Error>> {
     unsafe {
-        use windows::Win32::System::Console::{GetConsoleWindow, SetConsoleCtrlHandler};
+        use windows::Win32::System::Console::SetConsoleCtrlHandler;
         use windows::Win32::Foundation::BOOL;
         
         extern "system" fn console_handler(_ctrl_type: u32) -> BOOL {
