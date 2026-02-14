@@ -12,6 +12,7 @@ mod db_frames;
 mod gatt_client;
 mod html_report;
 mod interactive_ui;
+mod l2cap_analyzer;
 mod link_layer;
 mod raw_sniffer;
 mod telegram_notifier;
