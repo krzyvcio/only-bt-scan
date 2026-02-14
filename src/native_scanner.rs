@@ -5,11 +5,9 @@
 /// - Windows: winbluetooth + Windows Bluetooth API
 /// - Linux: BlueZ + hci
 /// - macOS: CoreBluetooth (via btleplug)
-
 use crate::bluetooth_scanner::{BluetoothDevice, BluetoothScanner, ScanConfig};
-use crate::windows_bluetooth::windows_bt::{WindowsBluetoothManager, WindowsBluetoothCapabilities};
-use log::{info, debug, error};
-use std::time::Duration;
+use crate::windows_bluetooth::windows_bt::{WindowsBluetoothCapabilities, WindowsBluetoothManager};
+use log::{debug, info};
 
 /// Multi-platform Bluetooth scanner with native API support
 pub struct NativeBluetoothScanner {
@@ -36,7 +34,9 @@ impl NativeBluetoothScanner {
     }
 
     /// Run native platform scan
-    pub async fn run_native_scan(&mut self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
+    pub async fn run_native_scan(
+        &mut self,
+    ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         #[cfg(target_os = "windows")]
         {
             return self.scan_windows().await;
@@ -188,11 +188,19 @@ impl std::fmt::Display for PlatformCapabilities {
              BLE: {}, BR/EDR: {}, Dual: {}\n  \
              HCI Raw: {}, GATT: {}, Pairing: {}",
             self.platform,
-            if self.supports_native_api { "✓" } else { "✗" },
+            if self.supports_native_api {
+                "✓"
+            } else {
+                "✗"
+            },
             self.api_name,
             if self.supports_ble { "✓" } else { "✗" },
             if self.supports_bredr { "✓" } else { "✗" },
-            if self.supports_dual_mode { "✓" } else { "✗" },
+            if self.supports_dual_mode {
+                "✓"
+            } else {
+                "✗"
+            },
             if self.supports_hci_raw { "✓" } else { "✗" },
             if self.supports_gatt { "✓" } else { "✗" },
             if self.supports_pairing { "✓" } else { "✗" },

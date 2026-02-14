@@ -3,6 +3,364 @@ use rusqlite::{params, Connection, OptionalExtension, Result as SqliteResult};
 
 const DB_PATH: &str = "bluetooth_scan.db";
 
+/// Parsed BLE Advertisement Data struktura
+#[derive(Debug, Clone, Default)]
+pub struct ParsedAdvertisementData {
+    pub local_name: Option<String>,
+    pub tx_power: Option<i8>,
+    pub flags: Option<String>,
+    pub appearance: Option<String>,
+    pub service_uuids: Vec<String>,
+    pub manufacturer_name: Option<String>,
+    pub manufacturer_data: Option<String>,
+    
+    // Temporal metrics (1ms resolution)
+    pub frame_interval_ms: Option<i32>,        // Time since last frame for THIS device
+    pub frames_per_second: Option<f32>,        // Rate this device is transmitting
+}
+
+/// Get last advertisement data for a device and parse it
+/// WITH frame interval timing (millisecond precision)
+pub fn get_parsed_advertisement_with_timing(
+    mac_address: &str,
+) -> ParsedAdvertisementData {
+    if let Ok(conn) = Connection::open(DB_PATH) {
+        // Get last 2 frames for this device to calculate interval
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT advertising_data, timestamp FROM ble_advertisement_frames
+             WHERE mac_address = ?
+             ORDER BY timestamp DESC
+             LIMIT 2"
+        ) {
+            let mut results: Vec<(String, i64)> = Vec::new();
+            if let Ok(rows) = stmt.query_map([mac_address], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,  // timestamp in milliseconds
+                ))
+            }) {
+                for row in rows {
+                    if let Ok((ad_hex, ts_ms)) = row {
+                        results.push((ad_hex, ts_ms));
+                    }
+                }
+            }
+            
+            if !results.is_empty() {
+                let mut ad_data = parse_advertisement_data(&results[0].0);
+                
+                // Calculate frame interval if we have 2 timestamps
+                if results.len() >= 2 {
+                    let interval_ms = (results[0].1 - results[1].1) as i32;
+                    ad_data.frame_interval_ms = Some(interval_ms.abs());
+                    
+                    // Calculate frames per second (if interval > 0)
+                    if interval_ms > 0 {
+                        ad_data.frames_per_second = Some(1000.0 / interval_ms as f32);
+                    }
+                }
+                
+                return ad_data;
+            }
+        }
+    }
+    
+    ParsedAdvertisementData::default()
+}
+
+/// Parse BLE Advertisement Data from hex string
+/// Format: Length-Type-Value (LTV) frames
+/// 1eff060001092022... = 1e(len) ff(type=mfg) 0600(mfg_id=Microsoft) 01092022...(data)
+pub fn parse_advertisement_data(hex_data: &str) -> ParsedAdvertisementData {
+    let mut result = ParsedAdvertisementData::default();
+    
+    // Convert hex string to bytes
+    let bytes = match hex_to_bytes(hex_data) {
+        Some(b) => b,
+        None => return result,
+    };
+    
+    let mut pos = 0;
+    while pos < bytes.len() {
+        // Read length
+        let length = bytes[pos] as usize;
+        if length == 0 || pos + length + 1 > bytes.len() {
+            break;
+        }
+        pos += 1;
+        
+        // Read type
+        let ad_type = bytes[pos];
+        pos += 1;
+        
+        let data_len = length - 1; // Subtract type byte
+        
+        match ad_type {
+            0x01 => {
+                // Flags
+                if pos < bytes.len() {
+                    result.flags = parse_flags(bytes[pos]);
+                }
+            }
+            0x08 | 0x09 => {
+                // Incomplete / Complete Local Name
+                if let Ok(name) = std::str::from_utf8(&bytes[pos..pos.min(pos + data_len)]) {
+                    result.local_name = Some(name.to_string());
+                }
+            }
+            0x0A => {
+                // TX Power Level
+                if pos < bytes.len() {
+                    result.tx_power = Some(bytes[pos] as i8);
+                }
+            }
+            0x19 => {
+                // Appearance (2 bytes, little-endian)
+                if pos + 1 < bytes.len() {
+                    let appearance = u16::from_le_bytes([bytes[pos], bytes[pos + 1]]) as u32;
+                    result.appearance = Some(format!("0x{:04x}", appearance));
+                }
+            }
+            0x06 | 0x07 => {
+                // Incomplete / Complete 128-bit Service UUIDs
+                let mut uuid_pos = pos;
+                while uuid_pos + 16 <= pos + data_len && uuid_pos + 16 <= bytes.len() {
+                    let uuid = format!(
+                        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+                        bytes[uuid_pos + 0], bytes[uuid_pos + 1], bytes[uuid_pos + 2], bytes[uuid_pos + 3],
+                        bytes[uuid_pos + 4], bytes[uuid_pos + 5], bytes[uuid_pos + 6], bytes[uuid_pos + 7],
+                        bytes[uuid_pos + 8], bytes[uuid_pos + 9], bytes[uuid_pos + 10], bytes[uuid_pos + 11],
+                        bytes[uuid_pos + 12], bytes[uuid_pos + 13], bytes[uuid_pos + 14], bytes[uuid_pos + 15]
+                    );
+                    result.service_uuids.push(uuid);
+                    uuid_pos += 16;
+                }
+            }
+            0xFF => {
+                // Manufacturer Specific Data (little-endian 16-bit company ID)
+                if pos + 1 < bytes.len() {
+                    let mfg_id = u16::from_le_bytes([bytes[pos], bytes[pos + 1]]);
+                    result.manufacturer_name = Some(get_manufacturer_name(mfg_id));
+                    
+                    // Format manufacturer data as hex
+                    if data_len > 2 {
+                        let mfg_data = &bytes[pos + 2..pos + data_len];
+                        result.manufacturer_data = Some(format!("0x{}", bytes_to_hex(mfg_data)));
+                    }
+                }
+            }
+            _ => {} // Ignore other types for now
+        }
+        
+        pos += data_len;
+    }
+    
+    result
+}
+
+/// Convert hex string to bytes
+fn hex_to_bytes(hex_str: &str) -> Option<Vec<u8>> {
+    let mut bytes = Vec::new();
+    let hex_str = hex_str.trim().replace(" ", "").replace("\n", "");
+    
+    for i in (0..hex_str.len()).step_by(2) {
+        if i + 1 < hex_str.len() {
+            if let Ok(byte) = u8::from_str_radix(&hex_str[i..i + 2], 16) {
+                bytes.push(byte);
+            } else {
+                return None;
+            }
+        }
+    }
+    
+    if bytes.is_empty() {
+        None
+    } else {
+        Some(bytes)
+    }
+}
+
+/// Convert bytes to hex string
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+/// Parse flags byte
+fn parse_flags(flags: u8) -> Option<String> {
+    let mut flag_list = Vec::new();
+    
+    if flags & 0x01 != 0 { flag_list.push("LE Limited Discoverable"); }
+    if flags & 0x02 != 0 { flag_list.push("LE General Discoverable"); }
+    if flags & 0x04 != 0 { flag_list.push("BR/EDR Not Supported"); }
+    if flags & 0x08 != 0 { flag_list.push("Simultaneous LE+BR/EDR"); }
+    if flags & 0x10 != 0 { flag_list.push("LE BR/EDR Controller"); }
+    if flags & 0x20 != 0 { flag_list.push("LE BR/EDR Host"); }
+    
+    if flag_list.is_empty() {
+        None
+    } else {
+        Some(flag_list.join(", "))
+    }
+}
+
+/// Get manufacturer name by ID
+fn get_manufacturer_name(mfg_id: u16) -> String {
+    match mfg_id {
+        0x004C => "Apple".to_string(),
+        0x0006 => "Microsoft".to_string(),
+        0x00E0 => "Google".to_string(),
+        0x00D0 => "Qualcomm".to_string(),
+        0x0075 => "Samsung".to_string(),
+        0x004F => "Cisco".to_string(),
+        0x0059 => "Nordic Semiconductor".to_string(),
+        0x0089 => "Intel".to_string(),
+        0x025E => "Broadcom".to_string(),
+        0x0197 => "Motorola".to_string(),
+        0x00A9 => "Eastman Kodak".to_string(),
+        0x018D => "MediaTek".to_string(),
+        0x0268 => "Huawei".to_string(),
+        0x014D => "Xiaomi".to_string(),
+        0x01D5 => "Amazon".to_string(),
+        _ => format!("0x{:04x}", mfg_id),
+    }
+}
+
+/// Parse Device Class (0x005a420c format) to Service Classes and Device Type
+pub fn parse_device_class(device_class_str: Option<&str>) -> (Option<String>, Option<String>) {
+    if let Some(dc_str) = device_class_str {
+        // Remove "0x" prefix if exists
+        let hex_str = dc_str.trim_start_matches("0x").trim_start_matches("0X");
+        
+        if hex_str.len() >= 6 {
+            // Parse three bytes: service classes, major, minor
+            if let Ok(service_byte) = u8::from_str_radix(&hex_str[0..2], 16) {
+                if let Ok(major_byte) = u8::from_str_radix(&hex_str[2..4], 16) {
+                    if let Ok(minor_byte) = u8::from_str_radix(&hex_str[4..6], 16) {
+                        let services = parse_service_classes(service_byte);
+                        let device_type = parse_device_type(major_byte, minor_byte);
+                        return (services, device_type);
+                    }
+                }
+            }
+        }
+    }
+    (None, None)
+}
+
+fn parse_service_classes(byte: u8) -> Option<String> {
+    let mut classes = Vec::new();
+    
+    if byte & 0x80 != 0 { classes.push("LE Audio"); }
+    if byte & 0x40 != 0 { classes.push("Rendering"); }
+    if byte & 0x20 != 0 { classes.push("Capturing"); }
+    if byte & 0x10 != 0 { classes.push("Object Transfer"); }
+    if byte & 0x08 != 0 { classes.push("Audio"); }
+    if byte & 0x04 != 0 { classes.push("Telephony"); }
+    if byte & 0x02 != 0 { classes.push("Networking"); }
+    if byte & 0x01 != 0 { classes.push("Limited Discoverable"); }
+    
+    if classes.is_empty() {
+        None
+    } else {
+        Some(classes.join(", "))
+    }
+}
+
+fn parse_device_type(major: u8, minor: u8) -> Option<String> {
+    let major_class = major >> 2; // Top 6 bits
+    let minor_class = (major & 0x03) << 4 | (minor >> 4); // Bottom 2 of major + top 4 of minor
+    
+    let major_name = match major_class {
+        0 => "Miscellaneous",
+        1 => "Computer",
+        2 => "Phone",
+        3 => "LAN/Network",
+        4 => "Audio/Video",
+        5 => "Peripheral",
+        6 => "Imaging",
+        7 => "Wearable",
+        8 => "Toy",
+        9 => "Health",
+        _ => "Uncategorized",
+    };
+    
+    let minor_name = match major_class {
+        1 => match minor_class >> 2 { // Computer
+            0 => "Unspecified",
+            1 => "Desktop",
+            2 => "Laptop",
+            3 => "Handheld",
+            4 => "Pad",
+            5 => "Server",
+            _ => "Other",
+        },
+        2 => match minor_class >> 2 { // Phone
+            0 => "Unspecified",
+            1 => "Cellular",
+            2 => "Cordless",
+            3 => "Smartphone",
+            4 => "Wired",
+            _ => "Other",
+        },
+        4 => match minor_class >> 2 { // Audio/Video
+            0 => "Unspecified",
+            1 => "Headset",
+            2 => "Hands-Free",
+            3 => "Microphone",
+            4 => "Loudspeaker",
+            5 => "Headphones",
+            6 => "Portable Audio",
+            7 => "Car Audio",
+            8 => "Set-top Box",
+            9 => "HiFi Audio",
+            10 => "VCR",
+            11 => "Video Camera",
+            12 => "Camcorder",
+            13 => "Video Monitor",
+            14 => "Video Display",
+            15 => "Video Conferencing",
+            _ => "Other",
+        },
+        7 => match minor_class >> 2 { // Wearable
+            1 => "Wristwatch",
+            2 => "Pager",
+            3 => "Jacket",
+            4 => "Helmet",
+            5 => "Glasses",
+            _ => "Wearable Device",
+        },
+        8 => match minor_class >> 2 { // Toy
+            1 => "Robot",
+            2 => "Vehicle",
+            3 => "Doll",
+            4 => "Controller",
+            5 => "Game",
+            _ => "Toy",
+        },
+        9 => match minor_class >> 2 { // Health
+            1 => "Blood Pressure Monitor",
+            2 => "Thermometer",
+            3 => "Weighing Scale",
+            4 => "Glucose Meter",
+            5 => "Pulse Oximeter",
+            6 => "Heart/Pulse Rate Monitor",
+            7 => "Health Data Display",
+            8 => "Step Counter",
+            9 => "Body Composition Scale",
+            10 => "Peak Flow Monitor",
+            11 => "Medication Dispenser",
+            _ => "Health Device",
+        },
+        _ => "Device",
+    };
+    
+    if minor_name == "Other" || minor_name == "Unspecified" || minor_name == "Device" {
+        Some(major_name.to_string())
+    } else {
+        Some(format!("{}/{}", major_name, minor_name))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ScannedDevice {
     pub mac_address: String,
@@ -16,6 +374,10 @@ pub struct ScannedDevice {
     pub is_rpa: bool,
     pub security_level: Option<String>,
     pub pairing_method: Option<String>,
+    pub is_authenticated: bool,
+    pub device_class: Option<String>,
+    pub service_classes: Option<String>,  // "LE Audio, Networking, ..."
+    pub device_type: Option<String>,       // "Phone/Smart", "Laptop", "Speaker", ...
 }
 
 #[derive(Debug, Clone)]
@@ -74,6 +436,30 @@ pub fn init_database() -> SqliteResult<()> {
     conn.execute("ALTER TABLE devices ADD COLUMN pairing_method TEXT", [])
         .ok();
 
+    conn.execute(
+        "ALTER TABLE devices ADD COLUMN is_authenticated INTEGER DEFAULT 0",
+        [],
+    )
+    .ok();
+
+    conn.execute(
+        "ALTER TABLE devices ADD COLUMN device_class TEXT",
+        [],
+    )
+    .ok();
+
+    conn.execute(
+        "ALTER TABLE devices ADD COLUMN service_classes TEXT",
+        [],
+    )
+    .ok();
+
+    conn.execute(
+        "ALTER TABLE devices ADD COLUMN device_type TEXT",
+        [],
+    )
+    .ok();
+
     // Create BLE services table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS ble_services (
@@ -128,6 +514,51 @@ pub fn init_database() -> SqliteResult<()> {
         [],
     )?;
 
+    // ═══════════════════════════════════════════════════════════════
+    // TELEMETRY HISTORY TABLES (for v0.4.0 persistence)
+    // ═══════════════════════════════════════════════════════════════
+    
+    // Telemetry snapshots - overall stats every 5 minutes
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS telemetry_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_timestamp DATETIME NOT NULL,
+            total_packets INTEGER NOT NULL,
+            total_devices INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )?;
+
+    // Per-device telemetry history
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS device_telemetry_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id INTEGER NOT NULL,
+            device_mac TEXT NOT NULL,
+            packet_count INTEGER NOT NULL,
+            avg_rssi REAL NOT NULL,
+            min_latency_ms INTEGER DEFAULT 0,
+            max_latency_ms INTEGER DEFAULT 0,
+            FOREIGN KEY(snapshot_id) REFERENCES telemetry_snapshots(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
+    // Create indexes for telemetry queries
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_telemetry_snapshots_timestamp ON telemetry_snapshots(snapshot_timestamp)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_device_telemetry_snapshot ON device_telemetry_history(snapshot_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_device_telemetry_mac ON device_telemetry_history(device_mac)",
+        [],
+    )?;
+
     Ok(())
 }
 
@@ -161,8 +592,8 @@ pub fn insert_or_update_device(device: &ScannedDevice) -> SqliteResult<i32> {
             if let Some(ref security) = device.security_level {
                 if let Some(ref pairing) = device.pairing_method {
                     conn.execute(
-                        "UPDATE devices SET mac_type = ?1, is_rpa = ?2, security_level = ?3, pairing_method = ?4 WHERE id = ?5",
-                        params![mac_type, device.is_rpa as i32, security, pairing, device_id],
+                        "UPDATE devices SET mac_type = ?1, is_rpa = ?2, security_level = ?3, pairing_method = ?4, is_authenticated = ?5 WHERE id = ?6",
+                        params![mac_type, device.is_rpa as i32, security, pairing, device.is_authenticated as i32, device_id],
                     ).ok();
                 }
             }
@@ -173,8 +604,8 @@ pub fn insert_or_update_device(device: &ScannedDevice) -> SqliteResult<i32> {
 
     // If no update, insert new device
     conn.execute(
-        "INSERT INTO devices (mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name, number_of_scan, mac_type, is_rpa, security_level, pairing_method)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, ?10, ?11)",
+        "INSERT INTO devices (mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name, number_of_scan, mac_type, is_rpa, security_level, pairing_method, is_authenticated)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, ?10, ?11, ?12)",
         params![
             &device.mac_address,
             &device.name,
@@ -187,6 +618,7 @@ pub fn insert_or_update_device(device: &ScannedDevice) -> SqliteResult<i32> {
             device.is_rpa as i32,
             &device.security_level,
             &device.pairing_method,
+            device.is_authenticated as i32,
         ],
     )?;
 
@@ -259,7 +691,7 @@ pub fn record_scan_rssi(device_id: i32, rssi: i8, scan_number: i32) -> SqliteRes
 pub fn get_all_devices() -> SqliteResult<Vec<ScannedDevice>> {
     let conn = Connection::open(DB_PATH)?;
     let mut stmt = conn.prepare(
-        "SELECT mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name
+        "SELECT mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name, is_authenticated, device_class
          FROM devices
          ORDER BY last_seen DESC"
     )?;
@@ -277,6 +709,10 @@ pub fn get_all_devices() -> SqliteResult<Vec<ScannedDevice>> {
             is_rpa: false,
             security_level: None,
             pairing_method: None,
+            is_authenticated: row.get::<_, i32>(7).unwrap_or(0) != 0,
+            device_class: row.get(8).ok(),
+            service_classes: None,
+            device_type: None,
         })
     })?;
 
@@ -287,7 +723,7 @@ pub fn get_all_devices() -> SqliteResult<Vec<ScannedDevice>> {
 pub fn get_device(mac_address: &str) -> SqliteResult<Option<ScannedDevice>> {
     let conn = Connection::open(DB_PATH)?;
     let mut stmt = conn.prepare(
-        "SELECT mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name
+        "SELECT mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name, is_authenticated, device_class
          FROM devices
          WHERE mac_address = ?1"
     )?;
@@ -306,6 +742,10 @@ pub fn get_device(mac_address: &str) -> SqliteResult<Option<ScannedDevice>> {
                 is_rpa: false,
                 security_level: None,
                 pairing_method: None,
+                is_authenticated: row.get::<_, i32>(7).unwrap_or(0) != 0,
+                device_class: row.get(8).ok(),
+                service_classes: None,
+                device_type: None,
             })
         })
         .optional()?;
@@ -339,7 +779,7 @@ pub fn get_device_services(device_id: i32) -> SqliteResult<Vec<BleService>> {
 pub fn get_recent_devices(minutes: u32) -> SqliteResult<Vec<ScannedDevice>> {
     let conn = Connection::open(DB_PATH)?;
     let mut stmt = conn.prepare(
-        "SELECT mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name
+        "SELECT mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name, is_authenticated, device_class
          FROM devices
          WHERE last_seen > datetime('now', ?1)
          ORDER BY last_seen DESC"
@@ -359,6 +799,10 @@ pub fn get_recent_devices(minutes: u32) -> SqliteResult<Vec<ScannedDevice>> {
             is_rpa: false,
             security_level: None,
             pairing_method: None,
+            is_authenticated: row.get::<_, i32>(7).unwrap_or(0) != 0,
+            device_class: row.get(8).ok(),
+            service_classes: None,
+            device_type: None,
         })
     })?;
 
@@ -380,4 +824,197 @@ pub fn cleanup_old_scans(days: u32) -> SqliteResult<usize> {
         "DELETE FROM scan_history WHERE scan_timestamp < datetime('now', ?1)",
         params![&time_filter],
     )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TELEMETRY PERSISTENCE FUNCTIONS (v0.4.0+)
+// ═══════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone)]
+pub struct TelemetrySnapshot {
+    pub id: i32,
+    pub snapshot_timestamp: DateTime<Utc>,
+    pub total_packets: i32,
+    pub total_devices: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeviceTelemetryRecord {
+    pub id: i32,
+    pub snapshot_id: i32,
+    pub device_mac: String,
+    pub packet_count: i32,
+    pub avg_rssi: f64,
+    pub min_latency_ms: i32,
+    pub max_latency_ms: i32,
+}
+
+/// Save telemetry snapshot to database
+pub fn save_telemetry_snapshot(
+    snapshot_timestamp: DateTime<Utc>,
+    total_packets: i32,
+    total_devices: i32,
+) -> SqliteResult<i32> {
+    let conn = Connection::open(DB_PATH)?;
+    
+    conn.execute(
+        "INSERT INTO telemetry_snapshots (snapshot_timestamp, total_packets, total_devices)
+         VALUES (?1, ?2, ?3)",
+        params![snapshot_timestamp, total_packets, total_devices],
+    )?;
+    
+    let snapshot_id = conn.last_insert_rowid() as i32;
+    Ok(snapshot_id)
+}
+
+/// Save device telemetry for a snapshot
+pub fn save_device_telemetry(
+    snapshot_id: i32,
+    device_mac: &str,
+    packet_count: u64,
+    avg_rssi: f64,
+    min_latency_ms: u64,
+    max_latency_ms: u64,
+) -> SqliteResult<()> {
+    let conn = Connection::open(DB_PATH)?;
+    
+    conn.execute(
+        "INSERT INTO device_telemetry_history 
+         (snapshot_id, device_mac, packet_count, avg_rssi, min_latency_ms, max_latency_ms)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            snapshot_id,
+            device_mac,
+            packet_count as i32,
+            avg_rssi,
+            min_latency_ms as i32,
+            max_latency_ms as i32
+        ],
+    )?;
+    
+    Ok(())
+}
+
+/// Get telemetry snapshots from last N hours
+pub fn get_telemetry_snapshots(hours: u32) -> SqliteResult<Vec<TelemetrySnapshot>> {
+    let conn = Connection::open(DB_PATH)?;
+    let time_filter = format!("-{} hours", hours);
+    
+    let mut stmt = conn.prepare(
+        "SELECT id, snapshot_timestamp, total_packets, total_devices
+         FROM telemetry_snapshots
+         WHERE snapshot_timestamp > datetime('now', ?1)
+         ORDER BY snapshot_timestamp DESC"
+    )?;
+    
+    let snapshots = stmt.query_map(params![&time_filter], |row| {
+        let ts_str: String = row.get(1)?;
+        let timestamp = DateTime::parse_from_rfc3339(&ts_str)
+            .unwrap_or_else(|_| chrono::Local::now().with_timezone(&chrono::FixedOffset::east_opt(0).unwrap()))
+            .with_timezone(&Utc);
+        
+        Ok(TelemetrySnapshot {
+            id: row.get(0)?,
+            snapshot_timestamp: timestamp,
+            total_packets: row.get(2)?,
+            total_devices: row.get(3)?,
+        })
+    })?;
+    
+    snapshots.collect()
+}
+
+/// Get device telemetry for a snapshot
+pub fn get_snapshot_device_telemetry(snapshot_id: i32) -> SqliteResult<Vec<DeviceTelemetryRecord>> {
+    let conn = Connection::open(DB_PATH)?;
+    
+    let mut stmt = conn.prepare(
+        "SELECT id, snapshot_id, device_mac, packet_count, avg_rssi, min_latency_ms, max_latency_ms
+         FROM device_telemetry_history
+         WHERE snapshot_id = ?1
+         ORDER BY packet_count DESC"
+    )?;
+    
+    let records = stmt.query_map(params![snapshot_id], |row| {
+        Ok(DeviceTelemetryRecord {
+            id: row.get(0)?,
+            snapshot_id: row.get(1)?,
+            device_mac: row.get(2)?,
+            packet_count: row.get(3)?,
+            avg_rssi: row.get(4)?,
+            min_latency_ms: row.get(5)?,
+            max_latency_ms: row.get(6)?,
+        })
+    })?;
+    
+    records.collect()
+}
+
+/// Delete telemetry snapshots older than X days
+pub fn cleanup_old_telemetry(days: u32) -> SqliteResult<usize> {
+    let conn = Connection::open(DB_PATH)?;
+    let time_filter = format!("-{} days", days);
+    
+    conn.execute(
+        "DELETE FROM telemetry_snapshots WHERE snapshot_timestamp < datetime('now', ?1)",
+        params![&time_filter],
+    )
+}
+
+/// Insert advertisement frame (for real-time HCI capture)
+/// Called directly from HCI sniffer task
+pub fn insert_advertisement_frame(
+    mac_address: &str,
+    rssi: i8,
+    advertising_data_hex: &str,
+    phy: &str,
+    channel: u8,
+    frame_type: &str,
+    timestamp_ms: u64,
+) -> SqliteResult<()> {
+    let conn = Connection::open(DB_PATH)?;
+    
+    // Convert milliseconds to ISO 8601 datetime string
+    let timestamp_str = if let Some(dt) = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(timestamp_ms as i64) {
+        dt.to_rfc3339()
+    } else {
+        chrono::Utc::now().to_rfc3339()
+    };
+    
+    // Get or create device
+    let device_id: i32 = conn.query_row(
+        "SELECT id FROM devices WHERE mac_address = ?",
+        [mac_address],
+        |row| row.get(0),
+    ).optional()?
+     .unwrap_or_else(|| {
+        // Create new device if doesn't exist
+        conn.execute(
+            "INSERT INTO devices (mac_address, device_name, rssi, first_seen, last_seen)
+             VALUES (?, NULL, ?, datetime('now'), datetime('now'))",
+            [mac_address, &rssi.to_string(), ""],
+        ).ok();
+        
+        conn.query_row(
+            "SELECT id FROM devices WHERE mac_address = ?",
+            [mac_address],
+            |row| row.get(0),
+        ).unwrap_or(0)
+    });
+    
+    // Insert advertisement frame
+    conn.execute(
+        "INSERT INTO ble_advertisement_frames 
+         (device_id, mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp, timestamp_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![device_id, mac_address, rssi, advertising_data_hex, phy, channel as i32, frame_type, timestamp_str, timestamp_ms as i64],
+    )?;
+    
+    // Update device last_seen
+    conn.execute(
+        "UPDATE devices SET last_seen = ?, rssi = ? WHERE mac_address = ?",
+        params![timestamp_str, rssi, mac_address],
+    )?;
+    
+    Ok(())
 }

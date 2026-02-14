@@ -23,7 +23,7 @@ function initApp() {
     setupEventListeners();
     loadData();
     startPolling();
-    showToast('info', 'Connected to scanner panel');
+    showToast('info', 'Połączono z panelem skanera');
 }
 
 function setupEventListeners() {
@@ -31,7 +31,21 @@ function setupEventListeners() {
     if (refreshBtn) {
         refreshBtn.addEventListener('click', () => {
             loadData();
-            showToast('info', 'Refreshing data...');
+            showToast('info', 'Odświeżanie danych...');
+        });
+    }
+
+    const telemetryBtn = document.getElementById('telemetry-toggle-btn');
+    if (telemetryBtn) {
+        telemetryBtn.style.display = 'block';
+        telemetryBtn.addEventListener('click', () => {
+            const telemetrySection = document.getElementById('telemetry-section-hidden');
+            if (telemetrySection) {
+                const isHidden = telemetrySection.style.display === 'none';
+                telemetrySection.style.display = isHidden ? 'flex' : 'none';
+                telemetryBtn.textContent = isHidden ? '📊 Pokaż Telemetrię' : '📊 Ukryj Telemetrię';
+                if (isHidden) loadTelemetry();
+            }
         });
     }
 
@@ -79,6 +93,7 @@ function startPolling() {
     pollTimers.devices = setInterval(loadDevices, POLL_INTERVAL);
     pollTimers.packets = setInterval(loadPackets, PACKET_POLL_INTERVAL);
     pollTimers.stats = setInterval(loadStats, POLL_INTERVAL);
+    pollTimers.telemetry = setInterval(loadTelemetry, POLL_INTERVAL);
 }
 
 function stopPolling() {
@@ -141,6 +156,57 @@ async function loadStats() {
     } catch (error) {
         console.error('Error loading stats:', error);
     }
+}
+
+async function loadTelemetry() {
+    try {
+        const response = await fetch(`${API_BASE}/telemetry`);
+        if (!response.ok) throw new Error('Failed to fetch telemetry');
+        
+        const telemetry = await response.json();
+        updateTelemetry(telemetry);
+    } catch (error) {
+        console.error('Error loading telemetry:', error);
+    }
+}
+
+function updateTelemetry(telemetry) {
+    // Display timestamp
+    if (telemetry.timestamp) {
+        const date = new Date(telemetry.timestamp);
+        const timeStr = date.toLocaleTimeString('en-US', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit',
+            hour12: false
+        });
+        document.getElementById('telem-timestamp').textContent = timeStr;
+    }
+    
+    document.getElementById('telem-total-packets').textContent = formatNumber(telemetry.total_packets || 0);
+    document.getElementById('telem-total-devices').textContent = telemetry.total_devices || 0;
+    
+    const tbody = document.getElementById('telemetry-tbody');
+    if (!tbody) return;
+    
+    if (!telemetry.devices || Object.keys(telemetry.devices).length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="loading-msg">No telemetry data yet...</td></tr>';
+        return;
+    }
+    
+    const devicesList = Object.entries(telemetry.devices)
+        .sort((a, b) => b[1].packet_count - a[1].packet_count)
+        .slice(0, 20);
+    
+    tbody.innerHTML = devicesList.map(([mac, data]) => `
+        <tr>
+            <td style="font-family: var(--font-mono); font-size: 0.8rem;">${mac}</td>
+            <td style="text-align: center; font-weight: 600; color: var(--accent-cyan);">${formatNumber(data.packet_count)}</td>
+            <td style="text-align: center;">${data.avg_rssi ? data.avg_rssi.toFixed(1) : '-'} dBm</td>
+            <td style="text-align: center;">${data.latencies?.min_ms ? data.latencies.min_ms + ' ms' : '-'}</td>
+            <td style="text-align: center;">${data.latencies?.max_ms ? data.latencies.max_ms + ' ms' : '-'}</td>
+        </tr>
+    `).join('');
 }
 
 function updateStats(stats) {
@@ -243,13 +309,13 @@ function renderDevices(deviceList) {
     if (!deviceList || deviceList.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="8">
+                <td colspan="10">
                     <div class="empty-state">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
                             <path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/>
                         </svg>
-                        <span>No devices found. Scanning...</span>
+                        <span>Nie znaleziono urządzeń. Skanowanie w toku...</span>
                     </div>
                 </td>
             </tr>
@@ -262,7 +328,7 @@ function renderDevices(deviceList) {
         const rssiClass = getRssiClass(device.rssi);
         const firstSeen = device.first_seen ? formatTimestamp(device.first_seen) : '-';
         const lastSeen = device.last_seen ? formatTimestamp(device.last_seen) : '-';
-        const macType = device.mac_type || '-';
+        const manufacturer = device.manufacturer_name || '-';
         const securityLevel = device.security_level || '-';
         const isRpa = device.is_rpa ? '<span class="rpa-badge">RPA</span>' : '';
         
@@ -275,15 +341,18 @@ function renderDevices(deviceList) {
                     <span class="rssi-value ${rssiClass}">${device.rssi} dBm</span>
                 </td>
                 <td>
-                    <span class="device-name" title="${device.device_name || 'Unknown'}">
-                        ${device.device_name || '<em>Unknown</em>'}
+                    <span class="device-name" title="${device.device_name || 'Brak nazwy'}">
+                        ${device.device_name || '<em>Brak nazwy</em>'}
                     </span>
                 </td>
                 <td>
                     <span class="mac-address">${device.mac_address}</span>
                 </td>
                 <td>
-                    <span class="mac-type">${macType} ${isRpa}</span>
+                    <span class="manufacturer" title="${manufacturer}">${manufacturer}</span>
+                </td>
+                <td>
+                    <span class="mac-type">${device.mac_type || '-'} ${isRpa}</span>
                 </td>
                 <td>
                     <span class="security-badge ${device.security_level === 'Secure Connections' ? 'secure' : ''}">${securityLevel}</span>
@@ -292,14 +361,33 @@ function renderDevices(deviceList) {
                     <span class="detection-count">${device.number_of_scan || 1}</span>
                 </td>
                 <td>
-                    <span class="last-seen">${lastSeen}</span>
+                    <span class="first-seen" title="${firstSeen}">${firstSeen}</span>
                 </td>
                 <td>
-                    <button class="history-btn" onclick="showDeviceHistory('${device.mac_address}')">View</button>
+                    <span class="last-seen" title="${lastSeen}">${lastSeen}</span>
+                </td>
+                <td>
+                    <button class="history-btn" onclick="showDeviceHistory('${device.mac_address}')">Wyświetl</button>
                 </td>
             </tr>
         `;
     }).join('');
+    
+    // Initialize DataTables after rendering
+    if ($.fn.dataTable.isDataTable('#devices-table')) {
+        $('#devices-table').DataTable().destroy();
+    }
+    
+    $('#devices-table').DataTable({
+        language: {
+            url: 'https://cdn.datatables.net/plug-ins/1.13.7/i18n/pl.json'
+        },
+        pageLength: 25,
+        searching: true,
+        ordering: true,
+        paging: true,
+        info: true
+    });
 }
 
 function renderPackets() {

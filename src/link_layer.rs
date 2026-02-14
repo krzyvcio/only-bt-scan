@@ -252,7 +252,7 @@ pub enum OverallHealth {
 
 /// Analyze link layer health
 pub fn assess_link_health(
-    params: &LinkLayerParameters,
+    _params: &LinkLayerParameters,
     stats: &PacketStatistics,
     channel_map: Option<&ChannelMap>,
 ) -> LinkLayerHealth {

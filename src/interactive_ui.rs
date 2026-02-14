@@ -284,7 +284,7 @@ pub fn display_devices_simple(
         };
         
         let (emoji, strength) = rssi_to_strength(device.rssi);
-        let services_count = device.services.len();
+        let _services_count = device.services.len();
 
         // Color code RSSI
         let rssi_display = if device.rssi >= -50 {
@@ -347,7 +347,6 @@ pub fn display_devices_simple(
     current_y += 1;
     execute!(stdout, MoveTo(0, current_y))?;
     writeln!(stdout, "{}", "🟢 Mocny (>-67dB) │ 🟡 Średni (-70..-68dB) │ 🟠 Słaby (-80..-71dB) │ 🔴 Bardzo słaby (<-80dB)".bright_white())?;
-    current_y += 1;
     writeln!(stdout)?; // Print an extra newline at the end
 
     Ok(())

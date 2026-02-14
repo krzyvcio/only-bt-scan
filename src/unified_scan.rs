@@ -6,17 +6,13 @@
 /// - Device event listening
 /// - Raw HCI scanning
 /// - Telemetry collection
-use crate::bluetooth_scanner::{BluetoothDevice, BluetoothScanner, ScanConfig};
+use crate::bluetooth_scanner::{BluetoothDevice, ScanConfig};
 use crate::data_models::RawPacketModel;
 use crate::device_events::{BluetoothDeviceEvent, DeviceEventListener};
 use crate::native_scanner::NativeBluetoothScanner;
-use crate::packet_tracker::GlobalPacketTracker;
 use crate::scanner_integration::ScannerWithTracking;
-use crate::telemetry::TelemetryCollector;
-use log::{debug, info, warn};
+use log::{debug, info};
 use std::sync::Arc;
-use tokio::sync::RwLock;
-
 /// Main scanning engine combining all subsystems
 pub struct UnifiedScanEngine {
     config: ScanConfig,
@@ -143,7 +139,7 @@ impl UnifiedScanEngine {
         let mut hci_scanner = WindowsHciScanner::new("BT0".to_string());
         hci_scanner.start_scan().await?;
 
-        let mut devices = Vec::new();
+        let devices = Vec::new();
 
         // Collect advertisements for 100ms
         let start = std::time::Instant::now();

@@ -9,10 +9,9 @@
 
 #[cfg(target_os = "windows")]
 pub mod windows_bt {
-    use log::{info, warn, debug, error};
+    use crate::bluetooth_scanner::{BluetoothDevice, ServiceInfo};
+    use log::{debug, info};
     use std::collections::HashMap;
-    use crate::bluetooth_scanner::{BluetoothDevice, DeviceType, ServiceInfo};
-    use chrono::Utc;
 
     /// Wrapper for Windows Bluetooth operations
     pub struct WindowsBluetoothManager {
@@ -27,10 +26,12 @@ pub mod windows_bt {
         }
 
         /// Enumerate all Bluetooth devices on Windows
-        pub async fn enumerate_devices(&mut self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
+        pub async fn enumerate_devices(
+            &mut self,
+        ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
             info!("🪟 Windows Bluetooth: Enumerating devices via native API");
 
-            let mut result_devices = Vec::new();
+            let result_devices = Vec::new();
 
             // Note: winbluetooth provides low-level access, but device enumeration
             // requires additional registry/API calls. This is a foundation for future enhancements.
@@ -42,7 +43,10 @@ pub mod windows_bt {
         }
 
         /// Get RSSI for a specific device
-        pub async fn get_device_rssi(&self, mac_address: &str) -> Result<i8, Box<dyn std::error::Error>> {
+        pub async fn get_device_rssi(
+            &self,
+            mac_address: &str,
+        ) -> Result<i8, Box<dyn std::error::Error>> {
             debug!("Querying RSSI for {} via Windows API", mac_address);
 
             // Windows Bluetooth API provides RSSI through BluetoothGetDeviceInfo
@@ -52,7 +56,10 @@ pub mod windows_bt {
         }
 
         /// Check if device is paired
-        pub async fn is_device_paired(&self, mac_address: &str) -> Result<bool, Box<dyn std::error::Error>> {
+        pub async fn is_device_paired(
+            &self,
+            mac_address: &str,
+        ) -> Result<bool, Box<dyn std::error::Error>> {
             debug!("Checking pairing status for {}", mac_address);
             Ok(false)
         }
@@ -71,7 +78,10 @@ pub mod windows_bt {
         }
 
         /// Connect to device
-        pub async fn connect_device(&self, mac_address: &str) -> Result<(), Box<dyn std::error::Error>> {
+        pub async fn connect_device(
+            &self,
+            mac_address: &str,
+        ) -> Result<(), Box<dyn std::error::Error>> {
             info!("🔗 Connecting to {} via Windows Bluetooth", mac_address);
 
             // Windows provides BluetoothAuthenticateDevice / BluetoothConnectDevice APIs
@@ -81,8 +91,14 @@ pub mod windows_bt {
         }
 
         /// Disconnect device
-        pub async fn disconnect_device(&self, mac_address: &str) -> Result<(), Box<dyn std::error::Error>> {
-            info!("🔌 Disconnecting from {} via Windows Bluetooth", mac_address);
+        pub async fn disconnect_device(
+            &self,
+            mac_address: &str,
+        ) -> Result<(), Box<dyn std::error::Error>> {
+            info!(
+                "🔌 Disconnecting from {} via Windows Bluetooth",
+                mac_address
+            );
 
             Ok(())
         }
@@ -171,7 +187,7 @@ pub mod windows_bt {
                 supports_ble: true,
                 supports_bredr: true,
                 supports_dual_mode: true,
-                supports_hci_raw: true,        // Via WinUSB
+                supports_hci_raw: true, // Via WinUSB
                 supports_gatt: true,
                 supports_pairing: true,
                 supports_device_monitoring: true,
@@ -213,7 +229,7 @@ pub mod windows_bt {
 
 #[cfg(not(target_os = "windows"))]
 pub mod windows_bt {
-    use crate::bluetooth_scanner::BluetoothDevice;
+    use crate::bluetooth_scanner::{BluetoothDevice, ServiceInfo};
 
     pub struct WindowsBluetoothManager;
 
@@ -222,7 +238,9 @@ pub mod windows_bt {
             Self
         }
 
-        pub async fn enumerate_devices(&mut self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
+        pub async fn enumerate_devices(
+            &mut self,
+        ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
             Err("Windows Bluetooth not available on non-Windows platforms".into())
         }
     }

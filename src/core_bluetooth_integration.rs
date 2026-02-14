@@ -1,13 +1,12 @@
+use crate::data_models::DeviceModel;
+use crate::l2cap_analyzer::L2CapChannel;
 /// Core Bluetooth Integration (macOS/iOS)
 /// Provides native CoreBluetooth access for L2CAP channel information,
 /// advanced GATT operations, and platform-specific optimizations
 ///
 /// Uses the `core_bluetooth` crate for safe Rust bindings to Apple's CoreBluetooth
-
-use log::{info, warn, debug};
+use log::{info, warn};
 use std::time::Duration;
-use crate::data_models::DeviceModel;
-use crate::l2cap_analyzer::L2CapChannel;
 
 /// CoreBluetooth Configuration
 #[derive(Debug, Clone)]
@@ -72,7 +71,10 @@ impl CoreBluetoothScanner {
         &self,
         mac_address: &str,
     ) -> Result<Vec<L2CapChannel>, Box<dyn std::error::Error>> {
-        info!("🍎 Extracting L2CAP channels for {} via CoreBluetooth", mac_address);
+        info!(
+            "🍎 Extracting L2CAP channels for {} via CoreBluetooth",
+            mac_address
+        );
 
         #[cfg(target_os = "macos")]
         {

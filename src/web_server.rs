@@ -1,11 +1,11 @@
+use crate::hci_scanner::HciScanner;
+use crate::mac_address_handler::MacAddress;
+use crate::pcap_exporter::{HciPcapPacket, PcapExporter};
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::Mutex;
-use crate::hci_scanner::{HciScanner, HciScannerConfig, HciScanResult};
-use crate::pcap_exporter::{PcapExporter, HciPcapPacket, PcapExportStats};
-use crate::mac_address_handler::{MacAddress, MacAddressFilter};
 
 const MAX_RAW_PACKETS: usize = 500;
 const DEFAULT_PAGE_SIZE: usize = 50;
@@ -29,6 +29,24 @@ pub struct ApiDevice {
     pub services: Vec<ApiService>,
     pub detection_count: Option<i64>,
     pub avg_rssi: Option<f64>,
+    pub detection_percentage: f64,
+    pub is_authenticated: bool,
+    pub device_class: Option<String>,
+    pub service_classes: Option<String>,  // Parsed from Device Class
+    pub bt_device_type: Option<String>,   // Parsed from Device Class (renamed to avoid conflict)
+    
+    // Advertisement Data fields (wszystkie możliwe pola)
+    pub ad_local_name: Option<String>,
+    pub ad_tx_power: Option<i8>,
+    pub ad_flags: Option<String>,
+    pub ad_appearance: Option<String>,
+    pub ad_service_uuids: Vec<String>,
+    pub ad_manufacturer_name: Option<String>,
+    pub ad_manufacturer_data: Option<String>,
+    
+    // Temporal metrics (1ms resolution)
+    pub frame_interval_ms: Option<i32>,        // Time since last frame in milliseconds
+    pub frames_per_second: Option<f32>,        // Transmission rate Hz
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,6 +159,21 @@ pub fn init_state() -> web::Data<AppState> {
     web::Data::new(AppState::default())
 }
 
+/// Get last advertisement data for a device and parse it
+fn get_parsed_ad_data(conn: &rusqlite::Connection, mac_address: &str) -> crate::db::ParsedAdvertisementData {
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT advertising_data FROM ble_advertisement_frames
+         WHERE mac_address = ?
+         ORDER BY timestamp DESC
+         LIMIT 1"
+    ) {
+        if let Ok(ad_hex) = stmt.query_row([mac_address], |row| row.get::<_, String>(0)) {
+            return crate::db::parse_advertisement_data(&ad_hex);
+        }
+    }
+    crate::db::ParsedAdvertisementData::default()
+}
+
 #[derive(Debug, Deserialize)]
 pub struct PaginationParams {
     page: Option<usize>,
@@ -172,7 +205,7 @@ pub async fn get_devices(web::Query(params): web::Query<PaginationParams>) -> im
     let mut stmt = match conn.prepare(
         "SELECT d.id, d.mac_address, d.device_name, d.rssi, d.first_seen, d.last_seen,
                 d.manufacturer_id, d.manufacturer_name, d.device_type, d.number_of_scan,
-                d.mac_type, d.is_rpa, d.security_level, d.pairing_method
+                d.mac_type, d.is_rpa, d.security_level, d.pairing_method, d.is_authenticated, d.device_class
          FROM devices d
          ORDER BY d.last_seen DESC
          LIMIT ? OFFSET ?",
@@ -187,6 +220,13 @@ pub async fn get_devices(web::Query(params): web::Query<PaginationParams>) -> im
 
     let devices: Result<Vec<ApiDevice>, _> = stmt
         .query_map([page_size as i64, offset as i64], |row| {
+            let device_class: Option<String> = row.get(15).ok();
+            let (service_classes, bt_device_type) = if let Some(ref dc) = device_class {
+                crate::db::parse_device_class(Some(dc.as_str()))
+            } else {
+                (None, None)
+            };
+            
             Ok(ApiDevice {
                 id: row.get(0)?,
                 mac_address: row.get(1)?,
@@ -205,6 +245,21 @@ pub async fn get_devices(web::Query(params): web::Query<PaginationParams>) -> im
                 services: Vec::new(),
                 detection_count: None,
                 avg_rssi: None,
+                detection_percentage: 0.0,
+                is_authenticated: row.get::<_, i32>(14).unwrap_or(0) != 0,
+                device_class,
+                service_classes,
+                bt_device_type,
+                // Advertisement Data fields (default, będzie updates w Rust)
+                ad_local_name: None,
+                ad_tx_power: None,
+                ad_flags: None,
+                ad_appearance: None,
+                ad_service_uuids: Vec::new(),
+                ad_manufacturer_name: None,
+                ad_manufacturer_data: None,
+                frame_interval_ms: None,
+                frames_per_second: None,
             })
         })
         .map_err(|e| e.to_string())
@@ -228,6 +283,19 @@ pub async fn get_devices(web::Query(params): web::Query<PaginationParams>) -> im
                     }
                 }
             }
+            
+            // Load Advertisement Data for all devices
+            for device in &mut device_list {
+                let ad_data = get_parsed_ad_data(&conn, &device.mac_address);
+                device.ad_local_name = ad_data.local_name;
+                device.ad_tx_power = ad_data.tx_power;
+                device.ad_flags = ad_data.flags;
+                device.ad_appearance = ad_data.appearance;
+                device.ad_service_uuids = ad_data.service_uuids;
+                device.ad_manufacturer_name = ad_data.manufacturer_name;
+                device.ad_manufacturer_data = ad_data.manufacturer_data;
+            }
+            
             let total_pages = (total as f64 / page_size as f64).ceil() as usize;
             HttpResponse::Ok().json(PaginatedResponse {
                 data: device_list,
@@ -316,11 +384,19 @@ pub async fn get_device_detail(path: web::Path<String>) -> impl Responder {
     let device: Option<ApiDevice> = conn
         .query_row(
             "SELECT d.id, d.mac_address, d.device_name, d.rssi, d.first_seen, d.last_seen,
-                d.manufacturer_id, d.manufacturer_name, d.device_type, d.number_of_scan
+                d.manufacturer_id, d.manufacturer_name, d.device_type, d.number_of_scan,
+                d.mac_type, d.is_rpa, d.security_level, d.pairing_method, d.is_authenticated, d.device_class
          FROM devices d
          WHERE d.mac_address = ?",
             [&mac],
             |row| {
+                let device_class: Option<String> = row.get(15).ok();
+                let (service_classes, bt_device_type) = if let Some(ref dc) = device_class {
+                    crate::db::parse_device_class(Some(dc.as_str()))
+                } else {
+                    (None, None)
+                };
+                
                 Ok(ApiDevice {
                     id: row.get(0)?,
                     mac_address: row.get(1)?,
@@ -339,6 +415,20 @@ pub async fn get_device_detail(path: web::Path<String>) -> impl Responder {
                     services: Vec::new(),
                     detection_count: None,
                     avg_rssi: None,
+                    detection_percentage: 0.0,
+                    is_authenticated: row.get::<_, i32>(14).unwrap_or(0) != 0,
+                    device_class,
+                    service_classes,
+                    bt_device_type,
+                    ad_local_name: None,
+                    ad_tx_power: None,
+                    ad_flags: None,
+                    ad_appearance: None,
+                    ad_service_uuids: Vec::new(),
+                    ad_manufacturer_name: None,
+                    ad_manufacturer_data: None,
+                    frame_interval_ms: None,
+                    frames_per_second: None,
                 })
             },
         )
@@ -354,6 +444,17 @@ pub async fn get_device_detail(path: web::Path<String>) -> impl Responder {
                     d.services = services;
                 }
             }
+            
+            // Load Advertisement Data
+            let ad_data = get_parsed_ad_data(&conn, &d.mac_address);
+            d.ad_local_name = ad_data.local_name;
+            d.ad_tx_power = ad_data.tx_power;
+            d.ad_flags = ad_data.flags;
+            d.ad_appearance = ad_data.appearance;
+            d.ad_service_uuids = ad_data.service_uuids;
+            d.ad_manufacturer_name = ad_data.manufacturer_name;
+            d.ad_manufacturer_data = ad_data.manufacturer_data;
+            
             HttpResponse::Ok().json(d)
         }
         None => HttpResponse::NotFound().json(serde_json::json!({
@@ -651,11 +752,18 @@ pub async fn get_device_history(path: web::Path<String>) -> impl Responder {
         .query_row(
             "SELECT d.id, d.mac_address, d.device_name, d.rssi, d.first_seen, d.last_seen,
                 d.manufacturer_id, d.manufacturer_name, d.device_type, d.number_of_scan,
-                d.mac_type, d.is_rpa, d.security_level, d.pairing_method
+                d.mac_type, d.is_rpa, d.security_level, d.pairing_method, d.is_authenticated, d.device_class
          FROM devices d
          WHERE d.mac_address = ?",
             [&mac],
             |row| {
+                let device_class: Option<String> = row.get(15).ok();
+                let (service_classes, bt_device_type) = if let Some(ref dc) = device_class {
+                    crate::db::parse_device_class(Some(dc.as_str()))
+                } else {
+                    (None, None)
+                };
+                
                 Ok(ApiDevice {
                     id: row.get(0)?,
                     mac_address: row.get(1)?,
@@ -674,6 +782,20 @@ pub async fn get_device_history(path: web::Path<String>) -> impl Responder {
                     services: Vec::new(),
                     detection_count: None,
                     avg_rssi: None,
+                    detection_percentage: 0.0,
+                    is_authenticated: row.get::<_, i32>(14).unwrap_or(0) != 0,
+                    device_class,
+                    service_classes,
+                    bt_device_type,
+                    ad_local_name: None,
+                    ad_tx_power: None,
+                    ad_flags: None,
+                    ad_appearance: None,
+                    ad_service_uuids: Vec::new(),
+                    ad_manufacturer_name: None,
+                    ad_manufacturer_data: None,
+                    frame_interval_ms: None,
+                    frames_per_second: None,
                 })
             },
         )
@@ -683,7 +805,17 @@ pub async fn get_device_history(path: web::Path<String>) -> impl Responder {
         .flatten();
 
     match device {
-        Some(d) => {
+        Some(mut d) => {
+            // Load Advertisement Data
+            let ad_data = get_parsed_ad_data(&conn, &d.mac_address);
+            d.ad_local_name = ad_data.local_name;
+            d.ad_tx_power = ad_data.tx_power;
+            d.ad_flags = ad_data.flags;
+            d.ad_appearance = ad_data.appearance;
+            d.ad_service_uuids = ad_data.service_uuids;
+            d.ad_manufacturer_name = ad_data.manufacturer_name;
+            d.ad_manufacturer_data = ad_data.manufacturer_data;
+            
             let mut scan_history = Vec::new();
             let mut packet_history = Vec::new();
 
@@ -767,11 +899,14 @@ pub async fn get_l2cap_info(path: web::Path<String>) -> impl Responder {
     match rusqlite::Connection::open("bluetooth_scan.db") {
         Ok(conn) => {
             // Get device_id first
-            let device_id: Option<i32> = conn.query_row(
-                "SELECT id FROM devices WHERE mac_address = ?",
-                [&mac_address],
-                |row| row.get(0),
-            ).optional().unwrap_or(None);
+            let device_id: Option<i32> = conn
+                .query_row(
+                    "SELECT id FROM devices WHERE mac_address = ?",
+                    [&mac_address],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap_or(None);
 
             match device_id {
                 Some(_id) => {
@@ -788,12 +923,12 @@ pub async fn get_l2cap_info(path: web::Path<String>) -> impl Responder {
                         supports_eatt: false,
                     };
                     HttpResponse::Ok().json(profile)
-                },
+                }
                 None => HttpResponse::NotFound().json(serde_json::json!({
                     "error": "Device not found"
                 })),
             }
-        },
+        }
         Err(_) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": "Database error"
         })),
@@ -837,20 +972,20 @@ pub async fn export_pcap() -> impl Responder {
                 "bytes": stats.total_bytes,
                 "message": "PCAP file created successfully - open with Wireshark"
             }))
-        },
+        }
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": format!("Failed to create PCAP file: {}", e)
-        }))
+        })),
     }
 }
 
 pub async fn get_mac_info(path: web::Path<String>) -> impl Responder {
     let mac_str = path.into_inner();
-    
+
     match MacAddress::from_string(&mac_str) {
         Ok(mac) => {
             HttpResponse::Ok().json(serde_json::json!({
-                "mac_address": mac.as_str(),
+                "mac_address": mac.as_str().to_string(),
                 "is_unicast": mac.is_unicast(),
                 "is_multicast": mac.is_multicast(),
                 "is_locally_administered": mac.is_locally_administered(),
@@ -871,18 +1006,18 @@ pub async fn get_mac_info(path: web::Path<String>) -> impl Responder {
 
 pub async fn get_hci_scan() -> impl Responder {
     let mut scanner = HciScanner::default();
-    
+
     // Simulate HCI events for demo
     scanner.simulate_hci_event(0x05, &[0x00, 0x01, 0x02, 0x13]);
     scanner.simulate_hci_event(0x3E, &[0x02, 0x01, 0x7F, 0x01, 0x01]);
-    
+
     // Simulate L2CAP packets
     let att_packet = vec![0x04, 0x00, 0x1F, 0x00, 0x01, 0x02, 0x03, 0x04];
     let _ = scanner.simulate_l2cap_packet(&att_packet, Some("AA:BB:CC:DD:EE:FF".to_string()));
-    
+
     let smp_packet = vec![0x06, 0x00, 0x23, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
     let _ = scanner.simulate_l2cap_packet(&smp_packet, Some("AA:BB:CC:DD:EE:FF".to_string()));
-    
+
     let result = scanner.get_results();
     HttpResponse::Ok().json(result)
 }
@@ -908,6 +1043,15 @@ pub async fn static_js() -> impl Responder {
         .body(js)
 }
 
+pub async fn get_telemetry() -> impl Responder {
+    match crate::telemetry::get_global_telemetry() {
+        Some(snapshot) => HttpResponse::Ok().json(snapshot),
+        None => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": "Telemetry not available yet"
+        })),
+    }
+}
+
 pub fn configure_services(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api")
@@ -922,6 +1066,7 @@ pub fn configure_services(cfg: &mut web::ServiceConfig) {
             .route("/raw-packets/latest", web::get().to(get_latest_raw_packets))
             .route("/raw-packets/all", web::get().to(get_all_raw_packets))
             .route("/scan-history", web::get().to(get_scan_history))
+            .route("/telemetry", web::get().to(get_telemetry))
             .route("/stats", web::get().to(get_stats)),
     )
     .route("/", web::get().to(index))

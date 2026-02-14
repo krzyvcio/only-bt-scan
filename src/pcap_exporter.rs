@@ -1,10 +1,10 @@
 //! PCAP Exporter - Export Bluetooth packets to Wireshark-compatible PCAP format
 
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
-use log::{info, error};
 
 #[derive(Debug, Clone)]
 struct PcapGlobalHeader {
@@ -176,7 +176,10 @@ impl PcapExporter {
         Ok(())
     }
 
-    pub fn write_packet(&mut self, packet: &HciPcapPacket) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn write_packet(
+        &mut self,
+        packet: &HciPcapPacket,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(ref mut file) = self.file {
             let packet_size = packet.get_size();
             let pkt_header = PcapPacketHeader::new(packet_size);

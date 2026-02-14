@@ -49,15 +49,22 @@ pub fn init_telegram_notifications() -> Result<(), String> {
         "CREATE TABLE IF NOT EXISTS telegram_reports (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             last_report_time DATETIME,
-            report_count INTEGER DEFAULT 0
+            report_count INTEGER DEFAULT 0,
+            scan_session_number INTEGER DEFAULT 0
         )",
         [],
     ).map_err(|e| e.to_string())?;
     
     // Initialize if empty
     conn.execute(
-        "INSERT OR IGNORE INTO telegram_reports (id, last_report_time, report_count)
-         VALUES (1, datetime('now', '-6 minutes'), 0)",
+        "INSERT OR IGNORE INTO telegram_reports (id, last_report_time, report_count, scan_session_number)
+         VALUES (1, datetime('now', '-6 minutes'), 0, 0)",
+        [],
+    ).map_err(|e| e.to_string())?;
+    
+    // Increment scan session number
+    conn.execute(
+        "UPDATE telegram_reports SET scan_session_number = scan_session_number + 1 WHERE id = 1",
         [],
     ).map_err(|e| e.to_string())?;
     
@@ -75,7 +82,12 @@ pub async fn send_startup_notification(
     }
     
     let hostname = get_hostname();
-    let message = format_startup_message(&hostname, adapter_mac, adapter_name);
+    
+    // Get scan session number from database
+    let session_number = get_scan_session_number()
+        .unwrap_or(1);
+    
+    let message = format_startup_message(&hostname, adapter_mac, adapter_name, session_number);
     
     send_telegram_message(&config.bot_token, &config.chat_id, &message).await
 }
@@ -100,15 +112,32 @@ fn get_hostname() -> String {
     }
 }
 
-fn format_startup_message(hostname: &str, adapter_mac: &str, adapter_name: &str) -> String {
+fn get_scan_session_number() -> Result<u32, String> {
+    let conn = rusqlite::Connection::open("bluetooth_scan.db")
+        .map_err(|e| e.to_string())?;
+    
+    let session_number: u32 = conn
+        .query_row(
+            "SELECT scan_session_number FROM telegram_reports WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    
+    Ok(session_number)
+}
+
+fn format_startup_message(hostname: &str, adapter_mac: &str, adapter_name: &str, session_number: u32) -> String {
     let mut message = String::new();
     
-    message.push_str("🚀 <b>BLUETOOTH SCAN STARTED</b>\n\n");
-    message.push_str(&format!("🖥️  <b>Computer:</b> <code>{}</code>\n", hostname));
+    // Main heading in Polish
+    message.push_str(&format!("🚀 <b>włączono skanowanie na {}</b>\n\n", hostname));
+    
+    message.push_str(&format!("📍 <b>Sesja skanowania:</b> #{}\n", session_number));
     message.push_str(&format!("📱 <b>Adapter:</b> {}\n", adapter_name));
-    message.push_str(&format!("🔗 <b>Adapter MAC:</b> <code>{}</code>\n", adapter_mac));
-    message.push_str(&format!("🕐 <b>Started at:</b> {}\n", chrono::Local::now().format("%H:%M:%S")));
-    message.push_str("\n✅ Scanning in progress...\n");
+    message.push_str(&format!("🔗 <b>MAC:</b> <code>{}</code>\n", adapter_mac));
+    message.push_str(&format!("🕐 <b>Czas startu:</b> {}\n", chrono::Local::now().format("%H:%M:%S")));
+    message.push_str("\n✅ Skanowanie w toku...\n");
     
     message
 }
@@ -116,15 +145,15 @@ fn format_startup_message(hostname: &str, adapter_mac: &str, adapter_name: &str)
 fn format_devices_report(devices: &[DeviceReport], duration_minutes: i64) -> String {
     let mut message = String::new();
     
-    message.push_str(&format!("📊 <b>BLE DEVICES REPORT</b>\n"));
-    message.push_str(&format!("🕐 Last {} minutes scan\n\n", duration_minutes));
+    message.push_str(&format!("📊 <b>RAPORT URZĄDZEŃ BLE</b>\n"));
+    message.push_str(&format!("🕐 Urządzenia z ostatnich {} minut\n\n", duration_minutes));
     
     if devices.is_empty() {
-        message.push_str("❌ No devices detected\n");
+        message.push_str("❌ Nie wykryto urządzeń\n");
         return message;
     }
     
-    message.push_str(&format!("✅ Found <b>{}</b> device(s):\n\n", devices.len()));
+    message.push_str(&format!("✅ Znaleziono <b>{}</b> urządzenie(ń):\n\n", devices.len()));
     
     for (idx, device) in devices.iter().enumerate() {
         let name = device.device_name.as_deref().unwrap_or("Unknown");
@@ -133,22 +162,19 @@ fn format_devices_report(devices: &[DeviceReport], duration_minutes: i64) -> Str
         message.push_str(&format!("<b>{}. {}</b> ({})\n", idx + 1, name, manufacturer));
         message.push_str(&format!("   📱 MAC: <code>{}</code>\n", device.mac_address));
         message.push_str(&format!("   📶 RSSI: {} dBm | ", device.current_rssi));
-        message.push_str(&format!("Avg: {} dBm\n", device.avg_rssi));
-        message.push_str(&format!("   🕐 Latest: {}\n", device.last_seen));
-        
-        if device.is_connectable {
-            message.push_str("   🔗 <i>Connectable</i>\n");
-        }
+        message.push_str(&format!("Średni: {} dBm\n", device.avg_rssi));
+        message.push_str(&format!("   🆕 Pierwsze wykrycie: {}\n", device.first_seen));
+        message.push_str(&format!("   🕐 Ostatnie: {}\n", device.last_seen));
         
         if device.services_count > 0 {
-            message.push_str(&format!("   🔌 Services: {}\n", device.services_count));
+            message.push_str(&format!("   🔌 Serwisy: {}\n", device.services_count));
         }
         
         message.push_str("\n");
     }
     
     message.push_str("━━━━━━━━━━━━━━━━━━━━━\n");
-    message.push_str(&format!("⏰ Report generated: {}\n", chrono::Local::now().format("%H:%M:%S")));
+    message.push_str(&format!("⏰ Raport wygenerowany: {}\n", chrono::Local::now().format("%H:%M:%S")));
     
     message
 }
@@ -162,6 +188,7 @@ pub struct DeviceReport {
     pub manufacturer_name: Option<String>,
     pub is_connectable: bool,
     pub services_count: usize,
+    pub first_seen: String,
     pub last_seen: String,
 }
 
@@ -240,28 +267,48 @@ fn get_devices_from_last_minutes(
             rssi,
             rssi as avg_rssi,
             manufacturer_name,
-            1 as is_connectable,
-            last_seen
+            first_seen,
+            last_seen,
+            (SELECT COUNT(*) FROM ble_services WHERE device_id = devices.id) as services_count
         FROM devices 
         WHERE last_seen > datetime('now', ?)
-        ORDER BY last_seen DESC, rssi DESC"
+        ORDER BY first_seen DESC, rssi DESC"
     )?;
     
     let devices = stmt.query_map(params![time_filter], |row| {
+        // Parse timestamps and format them nicely
+        let first_seen: String = row.get(5)?;
+        let last_seen: String = row.get(6)?;
+        
+        // Format timestamps to HH:MM:SS
+        let first_seen_formatted = parse_and_format_time(&first_seen);
+        let last_seen_formatted = parse_and_format_time(&last_seen);
+        
         Ok(DeviceReport {
             mac_address: row.get(0)?,
             device_name: row.get(1)?,
             current_rssi: row.get(2)?,
             avg_rssi: row.get(3)?,
             manufacturer_name: row.get(4)?,
-            is_connectable: row.get::<_, i32>(5)? != 0,
-            services_count: 0,
-            last_seen: row.get(6)?,
+            is_connectable: false,
+            services_count: row.get::<_, i32>(7).unwrap_or(0) as usize,
+            first_seen: first_seen_formatted,
+            last_seen: last_seen_formatted,
         })
     })?
     .collect::<Result<Vec<_>, _>>()?;
     
     Ok(devices)
+}
+
+/// Parse ISO 8601 timestamp and format to HH:MM:SS
+fn parse_and_format_time(timestamp: &str) -> String {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(timestamp) {
+        dt.with_timezone(&chrono::Local).format("%H:%M:%S").to_string()
+    } else {
+        // Fallback: try SQLite format (YYYY-MM-DD HH:MM:SS)
+        timestamp.split(' ').nth(1).unwrap_or(timestamp).to_string()
+    }
 }
 
 /// Update last report timestamp

@@ -9,10 +9,9 @@
 /// - Map PSM values to service types
 /// - Profile channel usage per device
 /// - Detect connection types by L2CAP PSM
-
-use log::{info, warn};
+use log::info;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
 
 /// L2CAP Protocol/Service Multiplexer (PSM)
 /// PSM is the L2CAP equivalent of TCP/UDP ports
@@ -199,11 +198,7 @@ impl L2CapAnalyzer {
     }
 
     /// Add an L2CAP channel for a device
-    pub fn add_channel(
-        &mut self,
-        mac_address: &str,
-        channel: L2CapChannel,
-    ) -> Result<(), String> {
+    pub fn add_channel(&mut self, mac_address: &str, channel: L2CapChannel) -> Result<(), String> {
         if let Some(profile) = self.devices.get_mut(mac_address) {
             profile.add_channel(channel);
             Ok(())
@@ -233,11 +228,7 @@ impl L2CapAnalyzer {
 
             for (psm, count) in &profile.psm_usage {
                 let psm_obj = L2CapPsm(*psm);
-                info!(
-                    "   {} - {} channel(s)",
-                    psm_obj.service_name(),
-                    count
-                );
+                info!("   {} - {} channel(s)", psm_obj.service_name(), count);
             }
         }
 
@@ -251,9 +242,7 @@ pub mod macos {
     use super::*;
 
     /// Get L2CAP channels using CoreBluetooth (macOS)
-    pub async fn extract_l2cap_channels(
-        mac_address: &str,
-    ) -> Result<Vec<L2CapChannel>, String> {
+    pub async fn extract_l2cap_channels(_mac_address: &str) -> Result<Vec<L2CapChannel>, String> {
         info!("🍎 Extracting L2CAP channels from macOS CoreBluetooth");
 
         // Note: Real implementation would use CoreBluetooth APIs
@@ -280,9 +269,7 @@ pub mod hci {
     use super::*;
 
     /// Get L2CAP channels using HCI commands
-    pub async fn extract_l2cap_channels(
-        mac_address: &str,
-    ) -> Result<Vec<L2CapChannel>, String> {
+    pub async fn extract_l2cap_channels(_mac_address: &str) -> Result<Vec<L2CapChannel>, String> {
         info!("🐧 Extracting L2CAP channels via HCI interface");
 
         // HCI Read Information command would be used here:
@@ -354,7 +341,10 @@ mod tests {
     #[test]
     fn test_l2cap_analyzer() {
         let mut analyzer = L2CapAnalyzer::new();
-        analyzer.register_device("AA:BB:CC:DD:EE:FF".to_string(), Some("Test Device".to_string()));
+        analyzer.register_device(
+            "AA:BB:CC:DD:EE:FF".to_string(),
+            Some("Test Device".to_string()),
+        );
 
         let channel = L2CapChannel {
             channel_id: 0x0040,

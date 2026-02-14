@@ -1,8 +1,7 @@
-use log::{debug, info, warn};
+use log::{debug, info};
 /// GATT Client - BLE Service and Characteristic Discovery
 /// Allows connecting to BLE devices and discovering their service structure
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
 /// GATT Service information
 #[derive(Debug, Clone, Serialize, Deserialize)]

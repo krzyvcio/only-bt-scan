@@ -34,7 +34,7 @@ impl ScannerWithTracking {
 
         for device in devices {
             // Convert BluetoothDevice to RawPacketModel
-            let mut packet = create_raw_packet_from_device(&device, packet_counter);
+            let packet = create_raw_packet_from_device(&device, packet_counter);
             packet_counter = packet_counter.wrapping_add(1);
 
             // Store for database persistence
@@ -157,7 +157,7 @@ fn create_raw_packet_from_device(device: &BluetoothDevice, packet_id: u64) -> Ra
     let advertising_data_len = advertising_data.len();
     let is_empty = advertising_data.is_empty();
 
-    let mut packet = RawPacketModel {
+    let packet = RawPacketModel {
         packet_id,
         mac_address: device.mac_address.clone(),
         timestamp,

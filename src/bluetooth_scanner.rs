@@ -125,7 +125,7 @@ impl BluetoothScanner {
             self.config.num_cycles
         );
         let mut all_devices = std::collections::HashMap::new();
-        let scan_start = std::time::SystemTime::now()
+        let _scan_start = std::time::SystemTime::now()
             .duration_since(std::time::SystemTime::UNIX_EPOCH)?
             .as_nanos() as i64;
 
@@ -390,7 +390,6 @@ impl BluetoothScanner {
         );
 
         // Collect results from all methods
-        let mut all_devices = Vec::new();
         let mut devices_map = std::collections::HashMap::new();
 
         // Add results from method 1 (btleplug)
@@ -429,7 +428,7 @@ impl BluetoothScanner {
 
         // Method 4 packet sniffing results would be merged here
 
-        all_devices = devices_map.into_values().collect();
+        let all_devices = devices_map.into_values().collect::<Vec<_>>();
 
         let elapsed = start_time.elapsed().as_millis();
         info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -562,6 +561,10 @@ impl BluetoothScanner {
                 is_rpa: device.is_rpa,
                 security_level: device.security_level.clone(),
                 pairing_method: device.pairing_method.clone(),
+                is_authenticated: false,
+                device_class: None,
+                service_classes: None,
+                device_type: None,
             };
 
             match db::insert_or_update_device(&scanned_device) {
@@ -726,7 +729,7 @@ impl BluetoothScanner {
     ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         info!("🔬 HCI DIRECT scanning - raw Bluetooth HCI access");
 
-        let mut devices = Vec::new();
+        let devices = Vec::new();
 
         // HCI scanning with Trouble library support (optional feature)
         #[cfg(feature = "trouble")]

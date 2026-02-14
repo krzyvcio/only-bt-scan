@@ -5,9 +5,7 @@
 /// - Connection/disconnection events
 /// - RSSI updates
 /// - Cross-platform implementation
-
-use crate::windows_bluetooth::windows_bt::DeviceEvent;
-use log::{info, debug, warn};
+use log::{debug, info, warn};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -77,10 +75,7 @@ pub enum PairingMethod {
 impl DeviceEventListener {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
-        Self {
-            tx,
-            rx: Some(rx),
-        }
+        Self { tx, rx: Some(rx) }
     }
 
     /// Get receiver for events
@@ -109,7 +104,7 @@ impl DeviceEventListener {
 
 /// Background task for Windows device events
 pub async fn listen_windows_device_events(
-    event_listener: Arc<DeviceEventListener>,
+    _event_listener: Arc<DeviceEventListener>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "windows")]
     {
@@ -129,9 +124,7 @@ pub async fn listen_windows_device_events(
 }
 
 /// Event logger - subscribes to device events and logs them
-pub async fn run_event_logger(
-    mut rx: mpsc::UnboundedReceiver<DeviceEventNotification>,
-) {
+pub async fn run_event_logger(mut rx: mpsc::UnboundedReceiver<DeviceEventNotification>) {
     while let Some(notification) = rx.recv().await {
         match &notification.event {
             BluetoothDeviceEvent::DeviceDiscovered {
@@ -153,12 +146,9 @@ pub async fn run_event_logger(
             BluetoothDeviceEvent::DeviceUpdated {
                 mac_address,
                 rssi,
-                name,
+                name: _,
             } => {
-                debug!(
-                    "📡 Device updated: {} RSSI: {} dBm",
-                    mac_address, rssi
-                );
+                debug!("📡 Device updated: {} RSSI: {} dBm", mac_address, rssi);
             }
             BluetoothDeviceEvent::DeviceRemoved { mac_address } => {
                 info!("📵 Device removed: {}", mac_address);
@@ -176,10 +166,7 @@ pub async fn run_event_logger(
                 mac_address,
                 reason,
             } => {
-                info!(
-                    "🔌 Device disconnected: {} ({})",
-                    mac_address, reason
-                );
+                info!("🔌 Device disconnected: {} ({})", mac_address, reason);
             }
             BluetoothDeviceEvent::PairingRequested {
                 mac_address,
@@ -188,9 +175,7 @@ pub async fn run_event_logger(
             } => {
                 info!(
                     "🔐 Pairing requested: {} ({:?}) via {:?}",
-                    mac_address,
-                    device_name,
-                    pairing_method
+                    mac_address, device_name, pairing_method
                 );
             }
             BluetoothDeviceEvent::PairingCompleted {

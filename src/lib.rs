@@ -12,12 +12,13 @@ mod config_params;
 mod core_bluetooth_integration;
 mod data_flow_estimator;
 mod data_models;
-mod db;
+pub mod db;
 mod db_frames;
 mod device_events;
 mod event_analyzer;
 mod gatt_client;
 mod hci_packet_parser;
+mod hci_realtime_capture;
 mod hci_scanner;
 mod html_report;
 mod interactive_ui;
@@ -44,7 +45,6 @@ mod tray_manager;
 use colored::Colorize;
 use crossterm::{cursor::MoveTo, execute};
 use std::env;
-use std::error::Error;
 use std::io::{stdout, Write};
 use std::time::Duration;
 
@@ -82,7 +82,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(3);
-    let scan_interval_mins = env::var("SCAN_INTERVAL_MINUTES")
+    let _scan_interval_mins = env::var("SCAN_INTERVAL_MINUTES")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(5);
@@ -142,16 +142,107 @@ pub async fn run() -> Result<(), anyhow::Error> {
     writeln!(stdout(), "✓ Raw frame storage initialized")?;
     drop(conn);
 
-    // Initialize Telegram notifications
-    if telegram_notifier::is_enabled() {
-        if let Err(e) = telegram_notifier::init_telegram_notifications() {
-            writeln!(
-                stdout(),
-                "{}",
-                format!("⚠️  Telegram DB init error: {}", e).yellow()
-            )?;
+    // ═══════════════════════════════════════════════════════════════
+    // LOAD INITIAL TELEMETRY FROM DATABASE
+    // ═══════════════════════════════════════════════════════════════
+    {
+        use std::collections::HashMap;
+        use crate::telemetry::{DeviceTelemetryQuick, LatencyStatsQuick, TelemetrySnapshot};
+        use chrono::Utc;
+
+        if let Ok(conn) = rusqlite::Connection::open("./bluetooth_scan.db") {
+            // Count packets per device
+            let mut device_packet_counts: HashMap<String, u64> = HashMap::new();
+            let mut device_rssi_values: HashMap<String, Vec<i8>> = HashMap::new();
+            let mut device_timestamps: HashMap<String, Vec<u64>> = HashMap::new();
+            let mut latest_timestamp_ms: u64 = 0; // Fallback
+
+            // Query all raw packets from last scan - USE TIMESTAMP_MS (milliseconds)
+            if let Ok(mut stmt) = conn.prepare(
+                "SELECT mac_address, rssi, timestamp_ms FROM ble_advertisement_frames ORDER BY id DESC LIMIT 5000"
+            ) {
+                if let Ok(mut rows) = stmt.query([]) {
+                    let mut is_first = true;
+                    while let Ok(Some(row)) = rows.next() {
+                        if let (Ok(mac), Ok(rssi), Ok(ts_ms)) = (
+                            row.get::<usize, String>(0),
+                            row.get::<usize, i8>(1),
+                            row.get::<usize, u64>(2)
+                        ) {
+                            // Capture latest timestamp from the most recent packet
+                            if is_first {
+                                latest_timestamp_ms = ts_ms;
+                                is_first = false;
+                            }
+                            
+                            *device_packet_counts.entry(mac.clone()).or_insert(0) += 1;
+                            device_rssi_values.entry(mac.clone()).or_insert_with(Vec::new).push(rssi);
+                            device_timestamps.entry(mac).or_insert_with(Vec::new).push(ts_ms);
+                        }
+                    }
+                }
+            }
+            
+            // Convert milliseconds to DateTime
+            let snapshot_timestamp = if latest_timestamp_ms > 0 {
+                chrono::DateTime::<Utc>::from_timestamp_millis(latest_timestamp_ms as i64)
+                    .unwrap_or_else(|| Utc::now())
+            } else {
+                Utc::now()
+            };
+
+            // Build telemetry snapshot
+            let mut devices_map: HashMap<String, DeviceTelemetryQuick> = HashMap::new();
+            for (mac, rssi_values) in &device_rssi_values {
+                if !rssi_values.is_empty() {
+                    let avg_rssi = rssi_values.iter().map(|&r| r as f64).sum::<f64>() / rssi_values.len() as f64;
+                    let packet_count = device_packet_counts.get(mac).copied().unwrap_or(0);
+                    
+                    // Calculate latency as difference between min/max timestamps
+                    let latency_ms = if let Some(timestamps) = device_timestamps.get(mac) {
+                        if let (Some(&min_ts), Some(&max_ts)) = (timestamps.iter().min(), timestamps.iter().max()) {
+                            max_ts.saturating_sub(min_ts)
+                        } else {
+                            0
+                        }
+                    } else {
+                        0
+                    };
+                    
+                    devices_map.insert(mac.clone(), DeviceTelemetryQuick {
+                        mac: mac.clone(),
+                        packet_count,
+                        avg_rssi,
+                        latencies: LatencyStatsQuick {
+                            min_ms: 0,
+                            max_ms: latency_ms,  // Total span = max - min
+                            avg_ms: 0.0,
+                        },
+                    });
+                }
+            }
+
+            // Sort top devices
+            let mut top_devices: Vec<(String, u64)> = device_packet_counts.iter()
+                .map(|(mac, count)| (mac.clone(), *count))
+                .collect();
+            top_devices.sort_by(|a, b| b.1.cmp(&a.1));
+            top_devices.truncate(20);
+
+            // Create and save snapshot (timestamp COMES FROM ACTUAL PACKET, not Utc::now())
+            let snapshot = TelemetrySnapshot {
+                timestamp: snapshot_timestamp,  // ← From packet data, not processing time
+                total_packets: device_packet_counts.values().sum(),
+                total_devices: devices_map.len(),
+                devices: devices_map,
+                top_devices,
+            };
+
+            telemetry::update_global_telemetry(snapshot);
+            log::info!("✅ Initial telemetry loaded from database");
         }
     }
+    // ═══════════════════════════════════════════════════════════════
 
     // Display adapter information
     let adapter = adapter_info::AdapterInfo::get_default_adapter();
@@ -198,6 +289,45 @@ pub async fn run() -> Result<(), anyhow::Error> {
             MoveTo(0, ui_renderer::get_device_list_start_line() - 5)
         )?;
         writeln!(stdout(), "{}", "ℹ️  Telegram notifications not configured (set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)".bright_yellow())?;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Spawn periodic telemetry persistence task (every 5 minutes)
+    // ═══════════════════════════════════════════════════════════════
+    tokio::spawn(async {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(300)).await; // 5 minutes
+            if let Err(e) = save_telemetry_snapshot().await {
+                log::warn!("Failed to save telemetry snapshot: {}", e);
+            }
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    // HCI REAL-TIME CAPTURE (Option B: WinDivert style intercept)
+    // Captures ALL Bluetooth traffic at HCI level with ~1ms precision
+    // ═══════════════════════════════════════════════════════════════
+    {
+        let (hci_tx, hci_rx) = tokio::sync::mpsc::unbounded_channel::<crate::data_models::RawPacketModel>();
+        let mut hci_sniffer = hci_realtime_capture::HciRealTimeSniffer::new();
+        
+        match hci_sniffer.start(hci_tx) {
+            Ok(_) => {
+                execute!(stdout(), MoveTo(0, ui_renderer::get_device_list_start_line() - 1))?;
+                writeln!(stdout(), "✓ HCI Real-time Capture enabled (packets at 1ms resolution)")?;
+                log::info!("HCI Real-time Sniffer started - capturing all BLE traffic");
+                
+                // Spawn HCI packet processing task
+                tokio::spawn(async {
+                    hci_realtime_capture::hci_capture_task(hci_rx).await;
+                });
+            }
+            Err(e) => {
+                execute!(stdout(), MoveTo(0, ui_renderer::get_device_list_start_line() - 1))?;
+                writeln!(stdout(), "⚠️  HCI Capture: {} (requires admin elevation)", e)?;
+                log::warn!("HCI Real-time Capture: {}", e);
+            }
+        }
     }
 
     // Start web server in background thread
@@ -274,8 +404,8 @@ pub async fn run() -> Result<(), anyhow::Error> {
     let mut unified_engine = UnifiedScanEngine::new(config.clone());
 
     // Start device event listener
-    let event_listener = unified_engine.get_event_listener();
-    let mut event_rx: Option<
+    let _event_listener = unified_engine.get_event_listener();
+    let _event_rx: Option<
         tokio::sync::mpsc::UnboundedReceiver<device_events::DeviceEventNotification>,
     > = None;
 
@@ -407,6 +537,91 @@ pub async fn run() -> Result<(), anyhow::Error> {
                     results.raw_packets.len()
                 );
 
+                // ═══════════════════════════════════════════════════════════════
+                // UPDATE GLOBAL TELEMETRY
+                // ═══════════════════════════════════════════════════════════════
+                {
+                    use std::collections::HashMap;
+                    use crate::telemetry::{DeviceTelemetryQuick, LatencyStatsQuick, TelemetrySnapshot};
+                    use chrono::Utc;
+
+                    let mut device_stats: HashMap<String, Vec<i8>> = HashMap::new();
+                    let mut device_packet_counts: HashMap<String, u64> = HashMap::new();
+                    let mut device_timestamps: HashMap<String, Vec<u64>> = HashMap::new();
+
+                    // Count packets, RSSI values, and timestamps per device
+                    for packet in &results.raw_packets {
+                        *device_packet_counts.entry(packet.mac_address.clone()).or_insert(0) += 1;
+                        device_stats.entry(packet.mac_address.clone())
+                            .or_insert_with(Vec::new)
+                            .push(packet.rssi);
+                        device_timestamps.entry(packet.mac_address.clone())
+                            .or_insert_with(Vec::new)
+                            .push(packet.timestamp_ms);
+                    }
+
+                    // Build device telemetry
+                    let mut devices_map: HashMap<String, DeviceTelemetryQuick> = HashMap::new();
+                    for (mac, rssi_values) in &device_stats {
+                        if !rssi_values.is_empty() {
+                            let avg_rssi = rssi_values.iter().map(|&r| r as f64).sum::<f64>() / rssi_values.len() as f64;
+                            let packet_count = device_packet_counts.get(mac).copied().unwrap_or(0);
+                            
+                            // Calculate latency as difference between min/max packet timestamps
+                            let latency_ms = if let Some(timestamps) = device_timestamps.get(mac) {
+                                if let (Some(&min_ts), Some(&max_ts)) = (timestamps.iter().min(), timestamps.iter().max()) {
+                                    max_ts.saturating_sub(min_ts)
+                                } else {
+                                    0
+                                }
+                            } else {
+                                0
+                            };
+                            
+                            devices_map.insert(mac.clone(), DeviceTelemetryQuick {
+                                mac: mac.clone(),
+                                packet_count,
+                                avg_rssi,
+                                latencies: LatencyStatsQuick {
+                                    min_ms: 0,
+                                    max_ms: latency_ms,  // Total latency span
+                                    avg_ms: 0.0,
+                                },
+                            });
+                        }
+                    }
+
+                    // Sort by packet count for top devices
+                    let mut top_devices: Vec<(String, u64)> = device_packet_counts.iter()
+                        .map(|(mac, count)| (mac.clone(), *count))
+                        .collect();
+                    top_devices.sort_by(|a, b| b.1.cmp(&a.1));
+                    top_devices.truncate(20);
+
+                    // Create snapshot - use the max timestamp from all packets
+                    let snapshot_timestamp = if let Some(max_ts) = results.raw_packets.iter()
+                        .map(|p| p.timestamp_ms)
+                        .max() {
+                        chrono::DateTime::<Utc>::from_timestamp_millis(max_ts as i64)
+                            .unwrap_or_else(|| Utc::now())
+                    } else {
+                        Utc::now()
+                    };
+
+                    let snapshot = TelemetrySnapshot {
+                        timestamp: snapshot_timestamp,  // Latest packet time from this scan
+                        total_packets: results.raw_packets.len() as u64,
+                        total_devices: devices.len(),
+                        devices: devices_map,
+                        top_devices,
+                    };
+
+                    // Update global
+                    crate::telemetry::update_global_telemetry(snapshot);
+                    log::info!("✅ Telemetry snapshot updated");
+                }
+                // ═══════════════════════════════════════════════════════════════
+
                 // Save devices to database
                 if let Err(e) = BluetoothScanner::new(config.clone())
                     .save_devices_to_db(devices)
@@ -524,5 +739,51 @@ pub async fn run() -> Result<(), anyhow::Error> {
     writeln!(stdout(), "")?;
     writeln!(stdout(), "{}", "👋 Do widzenia!".bright_green().bold())?;
     log::info!("Application terminated gracefully");
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TELEMETRY PERSISTENCE HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Save current telemetry snapshot to database (called every 5 minutes)
+async fn save_telemetry_snapshot() -> anyhow::Result<()> {
+    use chrono::Utc;
+
+    // Get current telemetry from global singleton
+    if let Some(snapshot) = telemetry::get_global_telemetry() {
+        // Save main snapshot
+        let snapshot_id = db::save_telemetry_snapshot(
+            snapshot.timestamp,
+            snapshot.total_packets as i32,
+            snapshot.total_devices as i32,
+        ).map_err(|e| anyhow::anyhow!("Failed to save snapshot: {}", e))?;
+
+        // Save per-device telemetry
+        for (mac, device_telemetry) in &snapshot.devices {
+            db::save_device_telemetry(
+                snapshot_id,
+                mac,
+                device_telemetry.packet_count,
+                device_telemetry.avg_rssi,
+                device_telemetry.latencies.min_ms as u64,
+                device_telemetry.latencies.max_ms as u64,
+            ).map_err(|e| anyhow::anyhow!("Failed to save device telemetry: {}", e))?;
+        }
+
+        log::info!(
+            "📊 Saved telemetry snapshot: {} packets, {} devices",
+            snapshot.total_packets,
+            snapshot.total_devices
+        );
+    }
+
+    // Cleanup old telemetry (older than 30 days)
+    if let Ok(deleted) = db::cleanup_old_telemetry(30) {
+        if deleted > 0 {
+            log::info!("🧹 Cleaned up {} old telemetry records", deleted);
+        }
+    }
+
     Ok(())
 }

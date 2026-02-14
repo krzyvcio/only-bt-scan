@@ -118,7 +118,7 @@ pub fn analyze_security_from_advertising(
 
 fn analyze_pairing_and_security(
     services: &[String],
-    service_data: &[(String, Vec<u8>)],
+    _service_data: &[(String, Vec<u8>)],
     is_connectable: bool,
 ) -> (PairingMethod, SecurityLevel) {
     let has_secure_services = services.iter().any(|s| {

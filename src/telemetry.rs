@@ -5,12 +5,11 @@
 /// - Latency analysis (inter-packet times)
 /// - Device statistics
 /// - Timeline events
+use crate::packet_tracker::{GlobalPacketStats, GlobalPacketTracker, PacketAddResult, PacketStats};
 
-use crate::packet_tracker::{GlobalPacketTracker, PacketStats, GlobalPacketStats, PacketAddResult};
-use crate::data_models::RawPacketModel;
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// LATENCY & TIMING ANALYSIS
@@ -19,7 +18,7 @@ use chrono::{DateTime, Utc};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LatencyAnalysis {
     pub device_mac: String,
-    pub inter_packet_latencies_ms: Vec<u64>,  // Time between consecutive packets
+    pub inter_packet_latencies_ms: Vec<u64>, // Time between consecutive packets
     pub min_latency_ms: u64,
     pub max_latency_ms: u64,
     pub avg_latency_ms: f64,
@@ -43,7 +42,7 @@ impl LatencyAnalysis {
             let min = *latencies.iter().min().unwrap_or(&0);
             let max = *latencies.iter().max().unwrap_or(&0);
             let avg = latencies.iter().sum::<u64>() as f64 / latencies.len() as f64;
-            
+
             let mut sorted = latencies.clone();
             sorted.sort();
             let median = sorted[sorted.len() / 2];
@@ -119,9 +118,7 @@ pub struct TelemetryCollector {
 
 impl TelemetryCollector {
     pub fn new() -> Self {
-        Self {
-            events: Vec::new(),
-        }
+        Self { events: Vec::new() }
     }
 
     /// Record packet addition result
@@ -188,10 +185,7 @@ impl TelemetryCollector {
     }
 
     /// Generate complete global telemetry
-    pub fn generate_global_telemetry(
-        &self,
-        tracker: &GlobalPacketTracker,
-    ) -> GlobalTelemetry {
+    pub fn generate_global_telemetry(&self, tracker: &GlobalPacketTracker) -> GlobalTelemetry {
         let global_stats = tracker.get_global_stats();
 
         // Device stats
@@ -247,7 +241,7 @@ impl TelemetryCollector {
         }
 
         let sequence_length = packet_ids.len();
-        
+
         Some(PacketSequenceTelemetry {
             export_timestamp: Utc::now(),
             device_mac: mac_address.to_string(),
@@ -271,6 +265,61 @@ pub fn device_telemetry_to_json(
     telemetry: &PacketSequenceTelemetry,
 ) -> Result<String, serde_json::Error> {
     serde_json::to_string_pretty(telemetry)
+}
+
+/// ═══════════════════════════════════════════════════════════════════════════════
+/// GLOBAL TELEMETRY SINGLETON
+/// ═══════════════════════════════════════════════════════════════════════════════
+
+use std::sync::{LazyLock, Mutex};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelemetrySnapshot {
+    pub timestamp: DateTime<Utc>,
+    pub total_packets: u64,
+    pub total_devices: usize,
+    pub devices: HashMap<String, DeviceTelemetryQuick>,
+    pub top_devices: Vec<(String, u64)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceTelemetryQuick {
+    pub mac: String,
+    pub packet_count: u64,
+    pub avg_rssi: f64,
+    pub latencies: LatencyStatsQuick,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LatencyStatsQuick {
+    pub min_ms: u64,
+    pub max_ms: u64,
+    pub avg_ms: f64,
+}
+
+pub static GLOBAL_TELEMETRY: LazyLock<Mutex<TelemetrySnapshot>> = LazyLock::new(|| {
+    Mutex::new(TelemetrySnapshot {
+        timestamp: Utc::now(),
+        total_packets: 0,
+        total_devices: 0,
+        devices: HashMap::new(),
+        top_devices: Vec::new(),
+    })
+});
+
+/// Update global telemetry snapshot
+pub fn update_global_telemetry(snapshot: TelemetrySnapshot) {
+    if let Ok(mut global) = GLOBAL_TELEMETRY.lock() {
+        *global = snapshot;
+    }
+}
+
+/// Get current global telemetry snapshot
+pub fn get_global_telemetry() -> Option<TelemetrySnapshot> {
+    GLOBAL_TELEMETRY
+        .lock()
+        .ok()
+        .map(|g| g.clone())
 }
 
 #[cfg(test)]

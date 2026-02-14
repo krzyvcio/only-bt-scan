@@ -7,8 +7,6 @@ pub use self::{
 #[cfg(target_os = "windows")]
 mod adapter {
     use super::models::LeAdvertisingReport;
-    use crate::data_models::RawPacketModel;
-    use chrono::Utc;
     use log::{debug, info, warn};
     use std::collections::HashMap;
     use std::time::Duration;
@@ -183,7 +181,7 @@ mod adapter {
 
                     if subevent_code == 0x02 {
                         let num_reports = event_packet[3] as usize;
-                        let mut offset = 4;
+                        let offset = 4;
 
                         for _ in 0..num_reports {
                             if offset + 9 > event_packet.len() {
