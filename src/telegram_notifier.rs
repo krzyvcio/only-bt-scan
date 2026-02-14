@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::sync::Mutex;
-use once_cell::sync::Lazy;
 use rusqlite::params;
+use chrono::{DateTime, Utc};
+use dotenv::dotenv;
 
-const NOTIFICATION_COOLDOWN_HOURS: i64 = 3;
+const PERIODIC_REPORT_INTERVAL_SECS: u64 = 300; // 5 minutes
+const DEVICES_HISTORY_WINDOW_SECS: i64 = 300;   // 5 minutes
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelegramConfig {
@@ -13,26 +14,20 @@ pub struct TelegramConfig {
     pub enabled: bool,
 }
 
-#[derive(Debug, Clone)]
-pub struct NewDeviceInfo {
-    pub mac_address: String,
-    pub device_name: Option<String>,
-    pub rssi: i8,
-    pub manufacturer_id: Option<u16>,
-    pub manufacturer_name: Option<String>,
-    pub first_seen: String,
-    pub last_seen: String,
-    pub is_connectable: bool,
-    pub services_count: usize,
-}
-
-static LAST_NOTIFIED_MAC: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
-
 pub fn get_config() -> TelegramConfig {
+    // Load .env file (safe to call multiple times)
+    dotenv().ok();
+    
     let bot_token = env::var("TELEGRAM_BOT_TOKEN").unwrap_or_default();
     let chat_id = env::var("TELEGRAM_CHAT_ID").unwrap_or_default();
     
     let enabled = !bot_token.is_empty() && !chat_id.is_empty();
+    
+    if enabled {
+        log::info!("✅ Telegram notifications loaded from .env");
+    } else {
+        log::warn!("⚠️  Telegram notifications not configured - set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env");
+    }
     
     TelegramConfig {
         bot_token,
@@ -49,52 +44,136 @@ pub fn init_telegram_notifications() -> Result<(), String> {
     let conn = rusqlite::Connection::open("bluetooth_scan.db")
         .map_err(|e| e.to_string())?;
     
+    // Table for tracking periodic reports (single row with last report time)
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS telegram_notifications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            mac_address TEXT NOT NULL,
-            notified_at DATETIME NOT NULL,
-            UNIQUE(mac_address)
+        "CREATE TABLE IF NOT EXISTS telegram_reports (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            last_report_time DATETIME,
+            report_count INTEGER DEFAULT 0
         )",
+        [],
+    ).map_err(|e| e.to_string())?;
+    
+    // Initialize if empty
+    conn.execute(
+        "INSERT OR IGNORE INTO telegram_reports (id, last_report_time, report_count)
+         VALUES (1, datetime('now', '-6 minutes'), 0)",
         [],
     ).map_err(|e| e.to_string())?;
     
     Ok(())
 }
 
-pub async fn send_new_device_notification(device: &NewDeviceInfo) -> Result<(), String> {
+pub async fn send_startup_notification(
+    adapter_mac: &str,
+    adapter_name: &str,
+) -> Result<(), String> {
     let config = get_config();
     
     if !config.enabled {
         return Ok(());
     }
     
-    let message = format_device_message(device);
+    let hostname = get_hostname();
+    let message = format_startup_message(&hostname, adapter_mac, adapter_name);
     
     send_telegram_message(&config.bot_token, &config.chat_id, &message).await
 }
 
-fn format_device_message(device: &NewDeviceInfo) -> String {
-    let name = device.device_name.as_deref().unwrap_or("Unknown");
-    let manufacturer = device.manufacturer_name.as_deref().unwrap_or("Unknown");
-    let connectable = if device.is_connectable { "Yes" } else { "No" };
-    
-    let mut message = String::new();
-    
-    message.push_str("🔵 <b>NEW DEVICE DETECTED</b>\n\n");
-    message.push_str(&format!("📱 <b>Name:</b> {}\n", name));
-    message.push_str(&format!("🔢 <b>MAC:</b> <code>{}</code>\n", device.mac_address));
-    message.push_str(&format!("📶 <b>RSSI:</b> {} dBm\n", device.rssi));
-    message.push_str(&format!("🏭 <b>Manufacturer:</b> {}\n", manufacturer));
-    message.push_str(&format!("🔗 <b>Connectable:</b> {}\n", connectable));
-    message.push_str(&format!("📅 <b>First Seen:</b> {}\n", device.first_seen));
-    message.push_str(&format!("🕐 <b>Last Seen:</b> {}\n", device.last_seen));
-    
-    if device.services_count > 0 {
-        message.push_str(&format!("🔌 <b>Services:</b> {} found\n", device.services_count));
+fn get_hostname() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var("COMPUTERNAME")
+            .or_else(|_| std::env::var("HOSTNAME"))
+            .unwrap_or_else(|_| "Unknown".to_string())
     }
     
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::env::var("HOSTNAME")
+            .unwrap_or_else(|_| {
+                hostname::get()
+                    .ok()
+                    .and_then(|s| s.into_string().ok())
+                    .unwrap_or_else(|| "Unknown".to_string())
+            })
+    }
+}
+
+fn format_startup_message(hostname: &str, adapter_mac: &str, adapter_name: &str) -> String {
+    let mut message = String::new();
+    
+    message.push_str("🚀 <b>BLUETOOTH SCAN STARTED</b>\n\n");
+    message.push_str(&format!("🖥️  <b>Computer:</b> <code>{}</code>\n", hostname));
+    message.push_str(&format!("📱 <b>Adapter:</b> {}\n", adapter_name));
+    message.push_str(&format!("🔗 <b>Adapter MAC:</b> <code>{}</code>\n", adapter_mac));
+    message.push_str(&format!("🕐 <b>Started at:</b> {}\n", chrono::Local::now().format("%H:%M:%S")));
+    message.push_str("\n✅ Scanning in progress...\n");
+    
     message
+}
+
+fn format_devices_report(devices: &[DeviceReport], duration_minutes: i64) -> String {
+    let mut message = String::new();
+    
+    message.push_str(&format!("📊 <b>BLE DEVICES REPORT</b>\n"));
+    message.push_str(&format!("🕐 Last {} minutes scan\n\n", duration_minutes));
+    
+    if devices.is_empty() {
+        message.push_str("❌ No devices detected\n");
+        return message;
+    }
+    
+    message.push_str(&format!("✅ Found <b>{}</b> device(s):\n\n", devices.len()));
+    
+    for (idx, device) in devices.iter().enumerate() {
+        let name = device.device_name.as_deref().unwrap_or("Unknown");
+        let manufacturer = device.manufacturer_name.as_deref().unwrap_or("Unknown");
+        
+        message.push_str(&format!("<b>{}. {}</b> ({})\n", idx + 1, name, manufacturer));
+        message.push_str(&format!("   📱 MAC: <code>{}</code>\n", device.mac_address));
+        message.push_str(&format!("   📶 RSSI: {} dBm | ", device.current_rssi));
+        message.push_str(&format!("Avg: {} dBm\n", device.avg_rssi));
+        message.push_str(&format!("   🕐 Latest: {}\n", device.last_seen));
+        
+        if device.is_connectable {
+            message.push_str("   🔗 <i>Connectable</i>\n");
+        }
+        
+        if device.services_count > 0 {
+            message.push_str(&format!("   🔌 Services: {}\n", device.services_count));
+        }
+        
+        message.push_str("\n");
+    }
+    
+    message.push_str("━━━━━━━━━━━━━━━━━━━━━\n");
+    message.push_str(&format!("⏰ Report generated: {}\n", chrono::Local::now().format("%H:%M:%S")));
+    
+    message
+}
+
+#[derive(Debug, Clone)]
+pub struct DeviceReport {
+    pub mac_address: String,
+    pub device_name: Option<String>,
+    pub current_rssi: i8,
+    pub avg_rssi: i8,
+    pub manufacturer_name: Option<String>,
+    pub is_connectable: bool,
+    pub services_count: usize,
+    pub last_seen: String,
+}
+
+pub async fn send_devices_report(devices: &[DeviceReport]) -> Result<(), String> {
+    let config = get_config();
+    
+    if !config.enabled {
+        return Ok(());
+    }
+    
+    let message = format_devices_report(devices, DEVICES_HISTORY_WINDOW_SECS / 60);
+    send_telegram_message(&config.bot_token, &config.chat_id, &message).await
 }
 
 async fn send_telegram_message(token: &str, chat_id: &str, message: &str) -> Result<(), String> {
@@ -127,101 +206,115 @@ async fn send_telegram_message(token: &str, chat_id: &str, message: &str) -> Res
     }
 }
 
-pub fn set_last_notified_mac(mac: &str) {
-    if let Ok(mut last) = LAST_NOTIFIED_MAC.lock() {
-        *last = Some(mac.to_string());
-    }
-}
-
-pub fn get_last_notified_mac() -> Option<String> {
-    LAST_NOTIFIED_MAC.lock().ok().and_then(|m| m.clone())
-}
-
-fn should_notify(mac_address: &str, conn: &rusqlite::Connection) -> bool {
-    let is_new: bool = conn
+/// Check if periodic report should be sent (every 5 minutes)
+fn should_send_report(conn: &rusqlite::Connection) -> Result<bool, rusqlite::Error> {
+    let last_report: String = conn
         .query_row(
-            "SELECT COUNT(*) = 0 FROM devices WHERE mac_address = ?",
-            [mac_address],
+            "SELECT last_report_time FROM telegram_reports WHERE id = 1",
+            [],
             |row| row.get(0),
         )
-        .unwrap_or(true);
+        .unwrap_or_else(|_| chrono::Local::now().to_rfc3339());
     
-    if is_new {
-        return true;
-    }
+    let last_report_time = DateTime::parse_from_rfc3339(&last_report)
+        .unwrap_or_else(|_| chrono::Local::now().with_timezone(&chrono::FixedOffset::east_opt(0).unwrap()))
+        .with_timezone(&Utc);
     
-    let last_notification: Option<String> = conn
-        .query_row(
-            "SELECT notified_at FROM telegram_notifications WHERE mac_address = ?",
-            [mac_address],
-            |row| row.get(0),
-        )
-        .ok();
+    let now = Utc::now();
+    let duration = now.signed_duration_since(last_report_time);
     
-    if let Some(last) = last_notification {
-        let hours_since: i64 = conn
-            .query_row(
-                "SELECT CAST((julianday('now') - julianday(?)) * 24 AS INTEGER)",
-                [&last],
-                |row| row.get(0),
-            )
-            .unwrap_or(999);
-        
-        return hours_since >= NOTIFICATION_COOLDOWN_HOURS;
-    }
-    
-    false
+    Ok(duration.num_seconds() >= PERIODIC_REPORT_INTERVAL_SECS as i64)
 }
 
-fn mark_notified(mac_address: &str, conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
+/// Fetch devices visible in last N minutes
+fn get_devices_from_last_minutes(
+    conn: &rusqlite::Connection,
+    minutes: i64,
+) -> Result<Vec<DeviceReport>, Box<dyn std::error::Error>> {
+    let time_filter = format!("-{} minutes", minutes);
+    
+    let mut stmt = conn.prepare(
+        "SELECT 
+            mac_address, 
+            device_name, 
+            rssi,
+            rssi as avg_rssi,
+            manufacturer_name,
+            1 as is_connectable,
+            last_seen
+        FROM devices 
+        WHERE last_seen > datetime('now', ?)
+        ORDER BY last_seen DESC, rssi DESC"
+    )?;
+    
+    let devices = stmt.query_map(params![time_filter], |row| {
+        Ok(DeviceReport {
+            mac_address: row.get(0)?,
+            device_name: row.get(1)?,
+            current_rssi: row.get(2)?,
+            avg_rssi: row.get(3)?,
+            manufacturer_name: row.get(4)?,
+            is_connectable: row.get::<_, i32>(5)? != 0,
+            services_count: 0,
+            last_seen: row.get(6)?,
+        })
+    })?
+    .collect::<Result<Vec<_>, _>>()?;
+    
+    Ok(devices)
+}
+
+/// Update last report timestamp
+fn update_last_report_time(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "INSERT OR REPLACE INTO telegram_notifications (mac_address, notified_at) VALUES (?, datetime('now'))",
-        params![mac_address],
+        "UPDATE telegram_reports 
+         SET last_report_time = datetime('now'),
+             report_count = report_count + 1
+         WHERE id = 1",
+        [],
     )?;
     Ok(())
 }
 
-pub async fn check_and_notify_new_devices(
-    devices: &[crate::bluetooth_scanner::BluetoothDevice],
-) -> Result<(), String> {
+/// Periodic telegram report task (runs every 5 minutes)
+pub async fn run_periodic_report_task() -> Result<(), String> {
     if !is_enabled() {
         return Ok(());
     }
     
+    loop {
+        tokio::time::sleep(tokio::time::Duration::from_secs(PERIODIC_REPORT_INTERVAL_SECS)).await;
+        
+        if let Err(e) = send_periodic_report().await {
+            log::warn!("Failed to send periodic Telegram report: {}", e);
+        }
+    }
+}
+
+/// Send periodic report of devices visible in last 5 minutes
+async fn send_periodic_report() -> Result<(), String> {
     let conn = rusqlite::Connection::open("bluetooth_scan.db")
         .map_err(|e| e.to_string())?;
     
-    for device in devices {
-        if should_notify(&device.mac_address, &conn) {
-            let first_seen = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-            let last_seen = first_seen.clone();
-            
-            let new_device = NewDeviceInfo {
-                mac_address: device.mac_address.clone(),
-                device_name: device.name.clone(),
-                rssi: device.rssi,
-                manufacturer_id: device.manufacturer_id,
-                manufacturer_name: device.manufacturer_name.clone(),
-                first_seen,
-                last_seen,
-                is_connectable: device.is_connectable,
-                services_count: device.services.len(),
-            };
-            
-            if let Err(e) = send_new_device_notification(&new_device).await {
-                log::warn!("Failed to send Telegram notification: {}", e);
-            } else {
-                if let Err(e) = mark_notified(&device.mac_address, &conn) {
-                    log::warn!("Failed to mark notified: {}", e);
-                }
-                set_last_notified_mac(&device.mac_address);
-                log::info!("Sent Telegram notification for device: {} (cooldown: {}h)", 
-                    device.mac_address, NOTIFICATION_COOLDOWN_HOURS);
-            }
-            
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-        }
+    // Check if enough time has passed
+    match should_send_report(&conn) {
+        Ok(true) => {},
+        Ok(false) => return Ok(()), // Too soon
+        Err(_) => return Ok(()), // DB error, skip this cycle
     }
+    
+    // Fetch devices from last 5 minutes
+    let devices = get_devices_from_last_minutes(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
+        .map_err(|e| e.to_string())?;
+    
+    // Send report
+    send_devices_report(&devices).await?;
+    
+    // Update timestamp
+    update_last_report_time(&conn)
+        .map_err(|e| e.to_string())?;
+    
+    log::info!("✅ Sent Telegram report with {} device(s)", devices.len());
     
     Ok(())
 }

@@ -1,0 +1,215 @@
+/// Native Bluetooth Scanner Integration
+///
+/// Adapts platform-specific Bluetooth APIs to unified interface
+/// Uses:
+/// - Windows: winbluetooth + Windows Bluetooth API
+/// - Linux: BlueZ + hci
+/// - macOS: CoreBluetooth (via btleplug)
+
+use crate::bluetooth_scanner::{BluetoothDevice, BluetoothScanner, ScanConfig};
+use crate::windows_bluetooth::windows_bt::{WindowsBluetoothManager, WindowsBluetoothCapabilities};
+use log::{info, debug, error};
+use std::time::Duration;
+
+/// Multi-platform Bluetooth scanner with native API support
+pub struct NativeBluetoothScanner {
+    config: ScanConfig,
+    #[cfg(target_os = "windows")]
+    windows_manager: WindowsBluetoothManager,
+}
+
+impl NativeBluetoothScanner {
+    pub fn new(config: ScanConfig) -> Self {
+        info!("🚀 Initializing Native Bluetooth Scanner");
+
+        #[cfg(target_os = "windows")]
+        {
+            let caps = WindowsBluetoothCapabilities::new();
+            info!("{}", caps.summary());
+        }
+
+        Self {
+            config,
+            #[cfg(target_os = "windows")]
+            windows_manager: WindowsBluetoothManager::new(),
+        }
+    }
+
+    /// Run native platform scan
+    pub async fn run_native_scan(&mut self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
+        #[cfg(target_os = "windows")]
+        {
+            return self.scan_windows().await;
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            return self.scan_linux().await;
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            return self.scan_macos().await;
+        }
+
+        #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+        {
+            Err("Native Bluetooth scanning not supported on this platform".into())
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    async fn scan_windows(&mut self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
+        info!("🪟 Starting Windows native Bluetooth scan");
+
+        // Try using winbluetooth API
+        let devices = self.windows_manager.enumerate_devices().await?;
+
+        if devices.is_empty() {
+            info!("ℹ️ No devices found via Windows native API, falling back to btleplug");
+        } else {
+            info!("✅ Found {} devices via Windows native API", devices.len());
+            return Ok(devices);
+        }
+
+        // Fallback to btleplug
+        self.scan_via_btleplug().await
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn scan_linux(&mut self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
+        info!("🐧 Starting Linux native Bluetooth scan (BlueZ)");
+
+        // Linux uses BlueZ via btleplug
+        self.scan_via_btleplug().await
+    }
+
+    #[cfg(target_os = "macos")]
+    async fn scan_macos(&mut self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
+        info!("🍎 Starting macOS native Bluetooth scan");
+
+        // macOS uses CoreBluetooth via btleplug
+        self.scan_via_btleplug().await
+    }
+
+    /// Fallback: Use btleplug for cross-platform scanning
+    async fn scan_via_btleplug(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
+        debug!("Using btleplug for cross-platform scanning");
+
+        let scanner = BluetoothScanner::new(self.config.clone());
+        scanner.run_scan().await
+    }
+
+    /// Get native capabilities for current platform
+    pub fn get_capabilities(&self) -> PlatformCapabilities {
+        #[cfg(target_os = "windows")]
+        {
+            let caps = WindowsBluetoothCapabilities::new();
+            return PlatformCapabilities {
+                platform: "Windows".to_string(),
+                supports_native_api: true,
+                supports_ble: caps.supports_ble,
+                supports_bredr: caps.supports_bredr,
+                supports_dual_mode: caps.supports_dual_mode,
+                supports_hci_raw: caps.supports_hci_raw,
+                supports_gatt: caps.supports_gatt,
+                supports_pairing: caps.supports_pairing,
+                api_name: "Windows Bluetooth API + winbluetooth".to_string(),
+            };
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            PlatformCapabilities {
+                platform: "Linux".to_string(),
+                supports_native_api: true,
+                supports_ble: true,
+                supports_bredr: true,
+                supports_dual_mode: true,
+                supports_hci_raw: true,
+                supports_gatt: true,
+                supports_pairing: true,
+                api_name: "BlueZ + hci-dev".to_string(),
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            PlatformCapabilities {
+                platform: "macOS".to_string(),
+                supports_native_api: true,
+                supports_ble: true,
+                supports_bredr: false,
+                supports_dual_mode: false,
+                supports_hci_raw: false,
+                supports_gatt: true,
+                supports_pairing: true,
+                api_name: "CoreBluetooth + IOBluetooth".to_string(),
+            }
+        }
+
+        #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+        {
+            PlatformCapabilities {
+                platform: "Unknown".to_string(),
+                supports_native_api: false,
+                supports_ble: false,
+                supports_bredr: false,
+                supports_dual_mode: false,
+                supports_hci_raw: false,
+                supports_gatt: false,
+                supports_pairing: false,
+                api_name: "None".to_string(),
+            }
+        }
+    }
+}
+
+/// Platform detection and capabilities
+#[derive(Debug, Clone)]
+pub struct PlatformCapabilities {
+    pub platform: String,
+    pub supports_native_api: bool,
+    pub supports_ble: bool,
+    pub supports_bredr: bool,
+    pub supports_dual_mode: bool,
+    pub supports_hci_raw: bool,
+    pub supports_gatt: bool,
+    pub supports_pairing: bool,
+    pub api_name: String,
+}
+
+impl std::fmt::Display for PlatformCapabilities {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "📱 {} Bluetooth Capabilities:\n  \
+             Native API: {}\n  API: {}\n  \
+             BLE: {}, BR/EDR: {}, Dual: {}\n  \
+             HCI Raw: {}, GATT: {}, Pairing: {}",
+            self.platform,
+            if self.supports_native_api { "✓" } else { "✗" },
+            self.api_name,
+            if self.supports_ble { "✓" } else { "✗" },
+            if self.supports_bredr { "✓" } else { "✗" },
+            if self.supports_dual_mode { "✓" } else { "✗" },
+            if self.supports_hci_raw { "✓" } else { "✗" },
+            if self.supports_gatt { "✓" } else { "✗" },
+            if self.supports_pairing { "✓" } else { "✗" },
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_platform_detection() {
+        let scanner = NativeBluetoothScanner::new(ScanConfig::default());
+        let caps = scanner.get_capabilities();
+
+        assert!(!caps.platform.is_empty());
+        println!("{}", caps);
+    }
+}

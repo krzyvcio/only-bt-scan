@@ -98,6 +98,7 @@ pub struct RawPacketModel {
     pub packet_id: u64,                 // Unique ID
     pub mac_address: String,            // Which device sent this
     pub timestamp: DateTime<Utc>,
+    pub timestamp_ms: u64,              // Milliseconds since epoch (for temporal analysis)
 
     // === Physical Layer ===
     pub phy: String,                    // "LE 1M", "LE 2M", "LE Coded"
@@ -305,11 +306,13 @@ impl DeviceModel {
 impl RawPacketModel {
     pub fn new(mac_address: String, timestamp: DateTime<Utc>, advertising_data: Vec<u8>) -> Self {
         let advertising_data_hex = hex::encode(&advertising_data);
+        let timestamp_ms = (timestamp.timestamp() as u64) * 1000 + (timestamp.timestamp_subsec_millis() as u64);
 
         Self {
             packet_id: 0,
             mac_address,
             timestamp,
+            timestamp_ms,
             phy: "LE 1M".to_string(),
             channel: 37,
             rssi: -70,

@@ -3,7 +3,11 @@
     "allow": [
       "mcp__acp__Bash",
       "mcp__acp__Edit",
-      "mcp__acp__Write"
+      "mcp__acp__Write",
+      "WebFetch(domain:www.rtings.com)",
+      "WebFetch(domain:www.bluetooth.com)",
+      "WebFetch(domain:en.wikipedia.org)",
+      "WebFetch(domain:www.cnx-software.com)"
     ]
   }
 }

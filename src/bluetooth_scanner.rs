@@ -87,6 +87,7 @@ impl Default for BluetoothDevice {
 }
 
 /// Scanner configuration
+#[derive(Debug, Clone)]
 pub struct ScanConfig {
     pub scan_duration: Duration,
     pub num_cycles: usize,

@@ -1,7 +1,19 @@
 mod adapter_info;
 mod android_ble_bridge;
+mod bluetooth_manager;
+mod config_params;
+mod data_flow_estimator;
+mod device_events;
+mod event_analyzer;
 mod mac_address_handler;
+mod native_scanner;
+mod packet_tracker;
 mod pcap_exporter;
+mod scanner_integration;
+mod telemetry;
+mod unified_scan;
+mod windows_bluetooth;
+mod windows_hci;
 mod hci_scanner;
 mod hci_packet_parser;
 mod advertising_parser;
@@ -35,6 +47,7 @@ use std::io::{stdout, Write};
 use std::time::Duration;
 
 use bluetooth_scanner::{BluetoothScanner, ScanConfig};
+use unified_scan::UnifiedScanEngine;
 use dotenv::dotenv;
 
 mod ui_renderer;
@@ -129,6 +142,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 format!("⚠️  Telegram DB init error: {}", e).yellow()
             )?;
         }
+        
+        // Send startup notification
+        if let Err(e) = telegram_notifier::send_startup_notification(&adapter.address, &adapter.name).await {
+            log::warn!("Failed to send startup notification: {}", e);
+        }
+        
+        // Spawn periodic Telegram report task
+        tokio::spawn(async {
+            if let Err(e) = telegram_notifier::run_periodic_report_task().await {
+                log::warn!("Telegram periodic task failed: {}", e);
+            }
+        });
+        
         execute!(
             stdout(),
             MoveTo(0, ui_renderer::get_device_list_start_line() - 5)
@@ -136,7 +162,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         writeln!(
             stdout(),
             "{}",
-            "✅ Telegram notifications enabled (3h cooldown)".bright_green()
+            "✅ Telegram periodic reports enabled (every 5 minutes)".bright_green()
         )?;
     } else {
         execute!(
@@ -198,14 +224,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         MoveTo(0, ui_renderer::get_device_list_start_line() - 3)
     )?; // Temporary Y coordinate
     writeln!(stdout(), "")?;
-    // Configure scanner
+    // Configure unified scan engine
     let config = ScanConfig {
         scan_duration: Duration::from_secs(scan_duration_secs),
         num_cycles: scan_cycles,
         use_ble: true,
         use_bredr: cfg!(target_os = "linux"),
     };
-    let scanner = BluetoothScanner::new(config);
+    let mut unified_engine = UnifiedScanEngine::new(config.clone());
+    
+    // Start device event listener
+    let event_listener = unified_engine.get_event_listener();
+    let mut event_rx: Option<tokio::sync::mpsc::UnboundedReceiver<device_events::DeviceEventNotification>> = None;
 
     // Shared devices state for interactive UI
     let mut _all_devices: Vec<bluetooth_scanner::BluetoothDevice> = Vec::new();
@@ -323,26 +353,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
         writeln!(stdout())?;
         stdout().flush()?;
 
-        match scanner.run_scan().await {
-            Ok(devices) => {
+        match unified_engine.run_scan().await {
+            Ok(results) => {
+                let devices = &results.devices;
+                
                 // Save to database
-                if let Err(e) = scanner.save_devices_to_db(&devices).await {
+                if let Err(e) = BluetoothScanner::new(config.clone()).save_devices_to_db(devices).await {
                     writeln!(stdout(), "{}", format!("⚠️  DB: {}", e).yellow())?;
                 }
 
-                // Send Telegram notification for new devices
-                if telegram_notifier::is_enabled() {
-                    if let Err(e) = telegram_notifier::check_and_notify_new_devices(&devices).await
-                    {
-                        writeln!(stdout(), "{}", format!("⚠️  Telegram: {}", e).yellow())?;
-                    }
-                }
-
-                // Show devices in simple clean table
+                // Show scan stats
                 writeln!(
                     stdout(),
                     "{}",
-                    format!("📱 Found: {} devices", devices.len()).bright_white()
+                    format!(
+                        "📱 Found: {} devices | Packets: {} | Time: {}ms",
+                        devices.len(),
+                        results.packet_sequence.len(),
+                        results.duration_ms
+                    )
+                    .bright_white()
                 )?;
                 writeln!(stdout(), "{}", "┌─────┬───────────────────────┬──────────────┬───────────┬────────────────────────┐".blue())?;
                 writeln!(stdout(), "{}", "│ #   │ Name                  │ MAC          │ RSSI     │ Manufacturer           │".blue())?;

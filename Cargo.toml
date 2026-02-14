@@ -68,16 +68,27 @@ regex = "1.0"
 crossterm = "0.27"
 clearscreen = "2.0"
 ctrlc = "3.4"
+hostname = "0.3"
+
+# BLE Peripheral (create BLE servers)
+ble-peripheral-rust = "0.2"
+
+# BTSnoop parser for analyzing Bluetooth logs
+btsnoop_parser = "1.0"
+
+# Meshtastic: Mesh networking protocol (LoRa + Bluetooth)
+meshtastic = { version = "0.1", features = ["bluetooth-le"] }
 
 # Bluetooth Classic (BR/EDR) - Linux only
 [target.'cfg(target_os = "linux")'.dependencies]
 bluer = { version = "0.16", features = ["full"] }
 nix = { version = "0.27", features = ["socket"] }
 
-# Windows-specific (Console hiding + System Tray)
+# Windows-specific (Console hiding + System Tray + Native Bluetooth)
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.54", features = ["Win32_Foundation", "Win32_System_Console", "Win32_UI_WindowsAndMessaging", "Win32_System_Com", "Win32_System_Ole"] }
 tray-icon = "0.1"
+winbluetooth = "0.1"
 
 # Optional features
 [features]
