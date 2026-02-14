@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::Mutex;
 use crate::hci_scanner::{HciScanner, HciScannerConfig, HciScanResult};
+use crate::pcap_exporter::{PcapExporter, HciPcapPacket, PcapExportStats};
 
 const MAX_RAW_PACKETS: usize = 500;
 const DEFAULT_PAGE_SIZE: usize = 50;
@@ -798,6 +799,50 @@ pub async fn get_l2cap_info(path: web::Path<String>) -> impl Responder {
     }
 }
 
+pub async fn export_pcap() -> impl Responder {
+    match PcapExporter::new("bluetooth_capture.pcap") {
+        Ok(mut exporter) => {
+            if let Err(e) = exporter.write_header() {
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Failed to write PCAP header: {}", e)
+                }));
+            }
+
+            // Simulate adding some HCI events to PCAP
+            let event1 = HciPcapPacket::event(0x05, &[0x00, 0x01, 0x02, 0x13]);
+            let event2 = HciPcapPacket::event(0x3E, &[0x02, 0x01, 0x7F, 0x01, 0x01]);
+            let acl1 = HciPcapPacket::acl_in(0x0001, &[0x01, 0x02, 0x03, 0x04]);
+
+            let packets = vec![event1, event2, acl1];
+            for packet in packets {
+                if let Err(e) = exporter.write_packet(&packet) {
+                    return HttpResponse::InternalServerError().json(serde_json::json!({
+                        "error": format!("Failed to write packet: {}", e)
+                    }));
+                }
+            }
+
+            if let Err(e) = exporter.flush() {
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Failed to flush file: {}", e)
+                }));
+            }
+
+            let stats = exporter.get_stats();
+            HttpResponse::Ok().json(serde_json::json!({
+                "status": "success",
+                "file": stats.file_path,
+                "packets": stats.packet_count,
+                "bytes": stats.total_bytes,
+                "message": "PCAP file created successfully - open with Wireshark"
+            }))
+        },
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": format!("Failed to create PCAP file: {}", e)
+        }))
+    }
+}
+
 pub async fn get_hci_scan() -> impl Responder {
     let mut scanner = HciScanner::default();
     
@@ -845,6 +890,7 @@ pub fn configure_services(cfg: &mut web::ServiceConfig) {
             .route("/devices/{mac}/history", web::get().to(get_device_history))
             .route("/devices/{mac}/l2cap", web::get().to(get_l2cap_info))
             .route("/hci-scan", web::get().to(get_hci_scan))
+            .route("/export-pcap", web::get().to(export_pcap))
             .route("/raw-packets", web::get().to(get_raw_packets))
             .route("/raw-packets/latest", web::get().to(get_latest_raw_packets))
             .route("/raw-packets/all", web::get().to(get_all_raw_packets))

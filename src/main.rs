@@ -1,4 +1,5 @@
 mod adapter_info;
+mod pcap_exporter;
 mod hci_scanner;
 mod hci_packet_parser;
 mod advertising_parser;
