@@ -5,6 +5,7 @@ mod ble_security;
 mod ble_uuids;
 mod bluetooth_features;
 mod bluetooth_scanner;
+mod data_models;
 mod db;
 mod db_frames;
 mod gatt_client;
