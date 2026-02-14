@@ -1,4 +1,5 @@
 mod adapter_info;
+mod android_ble_bridge;
 mod mac_address_handler;
 mod pcap_exporter;
 mod hci_scanner;
