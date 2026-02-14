@@ -79,7 +79,8 @@
                                 <th>Signal</th>
                                 <th>Name</th>
                                 <th>MAC Address</th>
-                                <th>Manufacturer</th>
+                                <th>Type</th>
+                                <th>Security</th>
                                 <th>Scans</th>
                                 <th>Last Seen</th>
                                 <th>History</th>
@@ -87,7 +88,7 @@
                         </thead>
                         <tbody id="devices-tbody">
                             <tr class="loading-row">
-                                <td colspan="7">
+                                <td colspan="8">
                                     <div class="loading-spinner">
                                         <div class="spinner"></div>
                                         <span>Loading devices...</span>
@@ -96,6 +97,11 @@
                             </tr>
                         </tbody>
                     </table>
+                </div>
+                <div class="pagination">
+                    <button class="pagination-btn" id="devices-prev-btn" onclick="goToDevicesPage(devicesPage - 1)">Prev</button>
+                    <span class="pagination-info" id="devices-page-info">Page 1 of 1</span>
+                    <button class="pagination-btn" id="devices-next-btn" onclick="goToDevicesPage(devicesPage + 1)">Next</button>
                 </div>
             </section>
 
@@ -130,6 +136,11 @@
                             <span>Waiting for packets...</span>
                         </div>
                     </div>
+                </div>
+                <div class="pagination">
+                    <button class="pagination-btn" id="packets-prev-btn" onclick="goToPacketsPage(packetsPage - 1)">Prev</button>
+                    <span class="pagination-info" id="packets-page-info">Page 1 of 1</span>
+                    <button class="pagination-btn" id="packets-next-btn" onclick="goToPacketsPage(packetsPage + 1)">Next</button>
                 </div>
             </section>
         </main>

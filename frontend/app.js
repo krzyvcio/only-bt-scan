@@ -8,6 +8,13 @@ let lastPacketId = 0;
 let isAutoScrollEnabled = true;
 let pollTimers = {};
 
+let devicesPage = 1;
+let packetsPage = 1;
+let devicesTotalPages = 1;
+let packetsTotalPages = 1;
+let devicesTotal = 0;
+let packetsTotal = 0;
+
 document.addEventListener('DOMContentLoaded', () => {
     initApp();
 });
@@ -85,11 +92,15 @@ async function loadData() {
 
 async function loadDevices() {
     try {
-        const response = await fetch(`${API_BASE}/devices`);
+        const response = await fetch(`${API_BASE}/devices?page=${devicesPage}&page_size=50`);
         if (!response.ok) throw new Error('Failed to fetch devices');
         
-        devices = await response.json();
+        const result = await response.json();
+        devices = result.data || result;
+        devicesTotalPages = result.total_pages || 1;
+        devicesTotal = result.total || 0;
         renderDevices(devices);
+        updateDevicesPagination();
     } catch (error) {
         console.error('Error loading devices:', error);
     }
@@ -97,10 +108,11 @@ async function loadDevices() {
 
 async function loadPackets() {
     try {
-        const response = await fetch(`${API_BASE}/raw-packets`);
+        const response = await fetch(`${API_BASE}/raw-packets?page=${packetsPage}&page_size=50`);
         if (!response.ok) throw new Error('Failed to fetch packets');
         
-        const newPackets = await response.json();
+        const result = await response.json();
+        const newPackets = result.data || result;
         
         if (newPackets.length > 0 && newPackets[0].id !== lastPacketId) {
             const oldLength = packets.length;
@@ -111,6 +123,9 @@ async function loadPackets() {
                 lastPacketId = packets[0]?.id || 0;
             }
         }
+        packetsTotalPages = result.total_pages || 1;
+        packetsTotal = result.total || 0;
+        updatePacketsPagination();
     } catch (error) {
         console.error('Error loading packets:', error);
     }
@@ -228,7 +243,7 @@ function renderDevices(deviceList) {
     if (!deviceList || deviceList.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7">
+                <td colspan="8">
                     <div class="empty-state">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
@@ -247,6 +262,9 @@ function renderDevices(deviceList) {
         const rssiClass = getRssiClass(device.rssi);
         const firstSeen = device.first_seen ? formatTimestamp(device.first_seen) : '-';
         const lastSeen = device.last_seen ? formatTimestamp(device.last_seen) : '-';
+        const macType = device.mac_type || '-';
+        const securityLevel = device.security_level || '-';
+        const isRpa = device.is_rpa ? '<span class="rpa-badge">RPA</span>' : '';
         
         return `
             <tr data-mac="${device.mac_address}">
@@ -265,9 +283,10 @@ function renderDevices(deviceList) {
                     <span class="mac-address">${device.mac_address}</span>
                 </td>
                 <td>
-                    <span class="manufacturer" title="${device.manufacturer_name || 'Unknown'}">
-                        ${device.manufacturer_name || '-'}
-                    </span>
+                    <span class="mac-type">${macType} ${isRpa}</span>
+                </td>
+                <td>
+                    <span class="security-badge ${device.security_level === 'Secure Connections' ? 'secure' : ''}">${securityLevel}</span>
                 </td>
                 <td>
                     <span class="detection-count">${device.number_of_scan || 1}</span>
@@ -328,6 +347,42 @@ function filterDevices(query) {
         );
     });
     renderDevices(filtered);
+}
+
+function updateDevicesPagination() {
+    const pageInfo = document.getElementById('devices-page-info');
+    if (pageInfo) {
+        pageInfo.textContent = `Page ${devicesPage} of ${devicesTotalPages} (${devicesTotal} devices)`;
+    }
+    const prevBtn = document.getElementById('devices-prev-btn');
+    const nextBtn = document.getElementById('devices-next-btn');
+    if (prevBtn) prevBtn.disabled = devicesPage <= 1;
+    if (nextBtn) nextBtn.disabled = devicesPage >= devicesTotalPages;
+}
+
+function updatePacketsPagination() {
+    const pageInfo = document.getElementById('packets-page-info');
+    if (pageInfo) {
+        pageInfo.textContent = `Page ${packetsPage} of ${packetsTotalPages} (${packetsTotal} packets)`;
+    }
+    const prevBtn = document.getElementById('packets-prev-btn');
+    const nextBtn = document.getElementById('packets-next-btn');
+    if (prevBtn) prevBtn.disabled = packetsPage <= 1;
+    if (nextBtn) nextBtn.disabled = packetsPage >= packetsTotalPages;
+}
+
+function goToDevicesPage(page) {
+    if (page >= 1 && page <= devicesTotalPages) {
+        devicesPage = page;
+        loadDevices();
+    }
+}
+
+function goToPacketsPage(page) {
+    if (page >= 1 && page <= packetsTotalPages) {
+        packetsPage = page;
+        loadPackets();
+    }
 }
 
 function getSignalClass(rssi) {

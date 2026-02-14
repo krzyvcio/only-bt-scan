@@ -9,6 +9,7 @@ use chrono::Utc;
 use crate::ble_uuids::get_manufacturer_name;
 use crate::db::{self, ScannedDevice};
 use crate::bluetooth_features::{BluetoothVersion, BluetoothFeature};
+use crate::ble_security;
 
 // BLE scanning imports
 use btleplug::api::{Central, Manager, Peripheral};
@@ -35,6 +36,11 @@ pub struct BluetoothDevice {
     pub detected_bt_version: Option<BluetoothVersion>,
     /// Supported features discovered from this device
     pub supported_features: Vec<BluetoothFeature>,
+    /// Security info
+    pub mac_type: Option<String>,
+    pub is_rpa: bool,
+    pub security_level: Option<String>,
+    pub pairing_method: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -72,6 +78,10 @@ impl Default for BluetoothDevice {
             response_time_ms: 0,
             detected_bt_version: None,
             supported_features: Vec::new(),
+            mac_type: None,
+            is_rpa: false,
+            security_level: None,
+            pairing_method: None,
         }
     }
 }
@@ -433,6 +443,10 @@ impl BluetoothScanner {
                 last_seen: Utc::now(),
                 manufacturer_id: device.manufacturer_id,
                 manufacturer_name: device.manufacturer_name.clone(),
+                mac_type: device.mac_type.clone(),
+                is_rpa: device.is_rpa,
+                security_level: device.security_level.clone(),
+                pairing_method: device.pairing_method.clone(),
             };
 
             match db::insert_or_update_device(&scanned_device) {
@@ -650,6 +664,15 @@ async fn convert_peripheral_to_device(
     // Services would be discovered via connection
     // For now, we get them from advertisement if available
     let services = Vec::new();
+    
+    // Analyze security
+    let service_uuids: Vec<String> = vec![];
+    let security_info = ble_security::analyze_security_from_advertising(
+        &mac,
+        &service_uuids,
+        &vec![],
+        true,
+    );
 
     Ok(BluetoothDevice {
         mac_address: mac,
@@ -665,6 +688,10 @@ async fn convert_peripheral_to_device(
         response_time_ms: 0,
         detected_bt_version: None,
         supported_features: vec![BluetoothFeature::BLE],
+        mac_type: Some(ble_security::get_mac_type_name(&security_info.mac_type).to_string()),
+        is_rpa: security_info.is_rpa,
+        security_level: Some(ble_security::get_security_name(&security_info.security_level).to_string()),
+        pairing_method: Some(ble_security::get_pairing_name(&security_info.pairing_method).to_string()),
     })
 }
 
@@ -722,6 +749,16 @@ async fn convert_peripheral_to_device_advanced(
     } else {
         debug!("Connection timeout for {}", mac);
     }
+    
+    // Analyze security
+    let service_uuids: Vec<String> = services.iter().map(|s: &ServiceInfo| s.uuid128.clone().unwrap_or_default()).collect::<Vec<String>>();
+    let service_data: Vec<(String, Vec<u8>)> = vec![];
+    let security_info = ble_security::analyze_security_from_advertising(
+        &mac,
+        &service_uuids,
+        &service_data,
+        true,
+    );
 
     Ok(BluetoothDevice {
         mac_address: mac,
@@ -737,6 +774,10 @@ async fn convert_peripheral_to_device_advanced(
         response_time_ms: 0,
         detected_bt_version: None,
         supported_features: vec![BluetoothFeature::BLE],
+        mac_type: Some(ble_security::get_mac_type_name(&security_info.mac_type).to_string()),
+        is_rpa: security_info.is_rpa,
+        security_level: Some(ble_security::get_security_name(&security_info.security_level).to_string()),
+        pairing_method: Some(ble_security::get_pairing_name(&security_info.pairing_method).to_string()),
     })
 }
 

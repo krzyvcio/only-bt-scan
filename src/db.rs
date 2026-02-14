@@ -12,6 +12,10 @@ pub struct ScannedDevice {
     pub last_seen: DateTime<Utc>,
     pub manufacturer_id: Option<u16>,
     pub manufacturer_name: Option<String>,
+    pub mac_type: Option<String>,
+    pub is_rpa: bool,
+    pub security_level: Option<String>,
+    pub pairing_method: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -39,17 +43,36 @@ pub fn init_database() -> SqliteResult<()> {
             manufacturer_name TEXT,
             device_type TEXT,
             number_of_scan INTEGER DEFAULT 1,
+            mac_type TEXT,
+            is_rpa INTEGER DEFAULT 0,
+            security_level TEXT,
+            pairing_method TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )",
         [],
     )?;
 
-    // Add column if not exists (for existing databases)
+    // Add columns if not exists (for existing databases)
     conn.execute(
         "ALTER TABLE devices ADD COLUMN number_of_scan INTEGER DEFAULT 1",
         [],
     )
     .ok();
+
+    conn.execute("ALTER TABLE devices ADD COLUMN mac_type TEXT", [])
+        .ok();
+
+    conn.execute(
+        "ALTER TABLE devices ADD COLUMN is_rpa INTEGER DEFAULT 0",
+        [],
+    )
+    .ok();
+
+    conn.execute("ALTER TABLE devices ADD COLUMN security_level TEXT", [])
+        .ok();
+
+    conn.execute("ALTER TABLE devices ADD COLUMN pairing_method TEXT", [])
+        .ok();
 
     // Create BLE services table
     conn.execute(
@@ -132,13 +155,26 @@ pub fn insert_or_update_device(device: &ScannedDevice) -> SqliteResult<i32> {
         // Get the ID of updated device
         let mut stmt = conn.prepare("SELECT id FROM devices WHERE mac_address = ?1")?;
         let device_id: i32 = stmt.query_row(params![&device.mac_address], |row| row.get(0))?;
+
+        // Update security info if provided
+        if let Some(ref mac_type) = device.mac_type {
+            if let Some(ref security) = device.security_level {
+                if let Some(ref pairing) = device.pairing_method {
+                    conn.execute(
+                        "UPDATE devices SET mac_type = ?1, is_rpa = ?2, security_level = ?3, pairing_method = ?4 WHERE id = ?5",
+                        params![mac_type, device.is_rpa as i32, security, pairing, device_id],
+                    ).ok();
+                }
+            }
+        }
+
         return Ok(device_id);
     }
 
     // If no update, insert new device
     conn.execute(
-        "INSERT INTO devices (mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name, number_of_scan)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1)",
+        "INSERT INTO devices (mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name, number_of_scan, mac_type, is_rpa, security_level, pairing_method)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, ?10, ?11)",
         params![
             &device.mac_address,
             &device.name,
@@ -147,6 +183,10 @@ pub fn insert_or_update_device(device: &ScannedDevice) -> SqliteResult<i32> {
             now,
             device.manufacturer_id,
             &device.manufacturer_name,
+            &device.mac_type,
+            device.is_rpa as i32,
+            &device.security_level,
+            &device.pairing_method,
         ],
     )?;
 
@@ -233,6 +273,10 @@ pub fn get_all_devices() -> SqliteResult<Vec<ScannedDevice>> {
             last_seen: row.get(4)?,
             manufacturer_id: row.get(5)?,
             manufacturer_name: row.get(6)?,
+            mac_type: None,
+            is_rpa: false,
+            security_level: None,
+            pairing_method: None,
         })
     })?;
 
@@ -258,6 +302,10 @@ pub fn get_device(mac_address: &str) -> SqliteResult<Option<ScannedDevice>> {
                 last_seen: row.get(4)?,
                 manufacturer_id: row.get(5)?,
                 manufacturer_name: row.get(6)?,
+                mac_type: None,
+                is_rpa: false,
+                security_level: None,
+                pairing_method: None,
             })
         })
         .optional()?;
@@ -307,6 +355,10 @@ pub fn get_recent_devices(minutes: u32) -> SqliteResult<Vec<ScannedDevice>> {
             last_seen: row.get(4)?,
             manufacturer_id: row.get(5)?,
             manufacturer_name: row.get(6)?,
+            mac_type: None,
+            is_rpa: false,
+            security_level: None,
+            pairing_method: None,
         })
     })?;
 
