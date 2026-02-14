@@ -1,0 +1,351 @@
+w pliku main zrób skanowanie bluetooth za pomocą dostępnego -> do wykrycia urządzenia (mogą być dwa adaptery bt to wybierzesz ten który zadziała     
+  pierwszy lub lepiej zadziała) -> po wykryciu urządzenia nie przerywając bieżących połączeń (np. moge słuchać muzyki) -> robie kilkukundowy skan a    
+  potem jeszcze jeden kilkusekundowy i tak do trzech razy skanuje i zapisuje wszystkie dane poprzez rust do bazy danych sqllite3. chce potem mieć        listę wszystkich urządzeń BT które zostały zeskanowane w pobliżu. ich adres MAC, siłe zasięgi, ilość w dBm, nazwe bramki BLE wykrywanie Bluetooth    
+  LowEnergy wykryuwanie producentów
+
+  Oto rozszerzenie Twojej funkcji o obsługę BLE Service UUID (głównie 16-bitowych, adopted przez Bluetooth SIG).
+W praktyce w BLE najczęściej spotykamy się z:
+
+16-bit UUID → adopted services (np. 0x1800, 0x180F)
+128-bit UUID → custom / vendor-specific (rzadziej w matchu statycznym)
+
+Podobnie jak przy manufacturer ID, możemy zrobić funkcję, która dla danego u16 (little-endian, jak w pakietach BLE) zwraca nazwę serwisu.
+Rustpub fn get_ble_service_name(uuid16: u16) -> Option<&'static str> {
+    match uuid16 {
+        // Najpopularniejsze / obowiązkowe
+        0x1800 => Some("Generic Access (GAP)"),
+        0x1801 => Some("Generic Attribute (GATT)"),
+        0x180A => Some("Device Information"),
+        0x180F => Some("Battery Service"),
+        0x1805 => Some("Current Time Service"),
+        0x1808 => Some("Glucose Service"),
+        0x1809 => Some("Health Thermometer"),
+        0x180D => Some("Heart Rate Service"),
+        0x1811 => Some("Alert Notification Service"),
+        0x1812 => Some("Human Interface Device (HID)"),
+        0x1814 => Some("Running Speed and Cadence"),
+        0x1816 => Some("Cycling Speed and Cadence"),
+        0x1818 => Some("Cycling Power"),
+        0x181A => Some("Environmental Sensing"),
+        0x181E => Some("Phone Alert Status Service"),
+        0x1820 => Some("Internet Protocol Support"),
+        0x1821 => Some("Indoor Positioning"),
+        0x1822 => Some("Pulse Oximeter Service"),
+        0x1823 => Some("HTTP Proxy"),
+        0x1824 => Some("Transport Discovery Service"),
+        0x1825 => Some("Object Transfer Service"),
+        0x1826 => Some("Fitness Machine"),
+        0x1827 => Some("Mesh Provisioning"),
+        0x1828 => Some("Mesh Proxy"),
+        0x1829 => Some("Reconnection Configuration"),
+        0x183A => Some("Insulin Delivery"),
+        0x183B => Some("Binary Sensor"),
+        0x183C => Some("Emergency Configuration"),
+        0x183E => Some("Physical Activity Monitor"),
+        0x1843 => Some("Audio Input Control"),
+        0x1844 => Some("Volume Control"),
+        0x1845 => Some("Volume Offset Control"),
+        0x1846 => Some("Coordinated Set Identification"),
+        0x1848 => Some("Device Time"),
+        0x1849 => Some("Media Control"),
+        0x184B => Some("Generic Media Control"),
+        0x184C => Some("Constant Tone Extension"),
+        0x184D => Some("Telephone Bearer"),
+        0x184F => Some("Broadcast Audio Scan"),
+        0x1850 => Some("Published Audio Capabilities"),
+        0x1853 => Some("Common Audio"),
+        0x1854 => Some("Hearing Access"),
+
+        // Inne często spotykane (np. w beaconach, wearables, IoT)
+        0x1802 => Some("Immediate Alert"),
+        0x1803 => Some("Link Loss"),
+        0x1804 => Some("Tx Power"),
+        0x1806 => Some("Reference Time Update"),
+        0x1807 => Some("Next DST Change"),
+        0x181C => Some("Body Composition"),
+        0x181D => Some("User Data"),
+        0x181F => Some("Weight Scale"),
+        0x184E => Some("Public Broadcast Announcement"),
+
+        // Nordic / popularne devkity / custom-ish
+        0xFEAA => Some("Eddystone / Google Nearby"),  // nieoficjalne, ale bardzo częste
+        0xFEA0 => Some("Google Fast Pair"),           // często w reklamie
+
+        _ => None,
+    }
+}
+Pełniejsza lista (najważniejsze 16-bit Service UUID – aktualne na 2026)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+UUID (hex)Nazwa serwisuTypowe zastosowanie0x1800Generic AccessObowiązkowy – device name, appearance0x1801Generic AttributeObowiązkowy – service changed0x180ADevice InformationModel, firmware, manufacturer, serial0x180FBattery ServicePoziom baterii0x180DHeart RatePulsometr0x181AEnvironmental SensingTemperatura, wilgotność, ciśnienie0x181EPhone Alert StatusStatus powiadomień telefonu0x1844Volume ControlLE Audio – regulacja głośności0x1849Media ControlSterowanie odtwarzaczem (play/pause/next)0x184FBroadcast Audio ScanLE Audio broadcast discovery0x1853Common AudioLE Audio – wspólne profile0x1809Health ThermometerTermometry medyczne0x1812HIDKlawiatury, myszy, gamepady BLE0x1826Fitness MachineRowery, bieżnie, ellipticals
+Jak obsłużyć 128-bit UUID?
+W praktyce większość custom usług ma 128-bit UUID. Najczęściej:
+
+albo porównujesz cały 128-bitowy ciąg bajtów
+albo wyciągasz tylko 16-bitową część i sprawdzasz czy pasuje do bazy (jeśli to adopted)
+
+Przykład w kodzie (dla rust + embassy / embedded):
+Rustuse uuid::Uuid; // albo własna 128-bit implementacja
+
+Najpopularniejsze vendor-specific 128-bit UUID (serwisy)
+
+
+Oto rozszerzenie Twojej funkcji o obsługę BLE Service UUID (głównie 16-bitowych, adopted przez Bluetooth SIG).
+W praktyce w BLE najczęściej spotykamy się z:
+
+16-bit UUID → adopted services (np. 0x1800, 0x180F)
+128-bit UUID → custom / vendor-specific (rzadziej w matchu statycznym)
+
+Podobnie jak przy manufacturer ID, możemy zrobić funkcję, która dla danego u16 (little-endian, jak w pakietach BLE) zwraca nazwę serwisu.
+Rustpub fn get_ble_service_name(uuid16: u16) -> Option<&'static str> {
+    match uuid16 {
+        // Najpopularniejsze / obowiązkowe
+        0x1800 => Some("Generic Access (GAP)"),
+        0x1801 => Some("Generic Attribute (GATT)"),
+        0x180A => Some("Device Information"),
+        0x180F => Some("Battery Service"),
+        0x1805 => Some("Current Time Service"),
+        0x1808 => Some("Glucose Service"),
+        0x1809 => Some("Health Thermometer"),
+        0x180D => Some("Heart Rate Service"),
+        0x1811 => Some("Alert Notification Service"),
+        0x1812 => Some("Human Interface Device (HID)"),
+        0x1814 => Some("Running Speed and Cadence"),
+        0x1816 => Some("Cycling Speed and Cadence"),
+        0x1818 => Some("Cycling Power"),
+        0x181A => Some("Environmental Sensing"),
+        0x181E => Some("Phone Alert Status Service"),
+        0x1820 => Some("Internet Protocol Support"),
+        0x1821 => Some("Indoor Positioning"),
+        0x1822 => Some("Pulse Oximeter Service"),
+        0x1823 => Some("HTTP Proxy"),
+        0x1824 => Some("Transport Discovery Service"),
+        0x1825 => Some("Object Transfer Service"),
+        0x1826 => Some("Fitness Machine"),
+        0x1827 => Some("Mesh Provisioning"),
+        0x1828 => Some("Mesh Proxy"),
+        0x1829 => Some("Reconnection Configuration"),
+        0x183A => Some("Insulin Delivery"),
+        0x183B => Some("Binary Sensor"),
+        0x183C => Some("Emergency Configuration"),
+        0x183E => Some("Physical Activity Monitor"),
+        0x1843 => Some("Audio Input Control"),
+        0x1844 => Some("Volume Control"),
+        0x1845 => Some("Volume Offset Control"),
+        0x1846 => Some("Coordinated Set Identification"),
+        0x1848 => Some("Device Time"),
+        0x1849 => Some("Media Control"),
+        0x184B => Some("Generic Media Control"),
+        0x184C => Some("Constant Tone Extension"),
+        0x184D => Some("Telephone Bearer"),
+        0x184F => Some("Broadcast Audio Scan"),
+        0x1850 => Some("Published Audio Capabilities"),
+        0x1853 => Some("Common Audio"),
+        0x1854 => Some("Hearing Access"),
+
+        // Inne często spotykane (np. w beaconach, wearables, IoT)
+        0x1802 => Some("Immediate Alert"),
+        0x1803 => Some("Link Loss"),
+        0x1804 => Some("Tx Power"),
+        0x1806 => Some("Reference Time Update"),
+        0x1807 => Some("Next DST Change"),
+        0x181C => Some("Body Composition"),
+        0x181D => Some("User Data"),
+        0x181F => Some("Weight Scale"),
+        0x184E => Some("Public Broadcast Announcement"),
+
+        // Nordic / popularne devkity / custom-ish
+        0xFEAA => Some("Eddystone / Google Nearby"),  // nieoficjalne, ale bardzo częste
+        0xFEA0 => Some("Google Fast Pair"),           // często w reklamie
+
+        _ => None,
+    }
+}
+Pełniejsza lista (najważniejsze 16-bit Service UUID – aktualne na 2026)
+
+
+
+
+UUID (hex)Nazwa serwisuTypowe zastosowanie0x1800Generic AccessObowiązkowy – device name, appearance0x1801Generic AttributeObowiązkowy – service changed0x180ADevice InformationModel, firmware, manufacturer, serial0x180FBattery ServicePoziom baterii0x180DHeart RatePulsometr0x181AEnvironmental SensingTemperatura, wilgotność, ciśnienie0x181EPhone Alert StatusStatus powiadomień telefonu0x1844Volume ControlLE Audio – regulacja głośności0x1849Media ControlSterowanie odtwarzaczem (play/pause/next)0x184FBroadcast Audio ScanLE Audio broadcast discovery0x1853Common AudioLE Audio – wspólne profile0x1809Health ThermometerTermometry medyczne0x1812HIDKlawiatury, myszy, gamepady BLE0x1826Fitness MachineRowery, bieżnie, ellipticals
+Jak obsłużyć 128-bit UUID?
+W praktyce większość custom usług ma 128-bit UUID. Najczęściej:
+
+albo porównujesz cały 128-bitowy ciąg bajtów
+albo wyciągasz tylko 16-bitową część i sprawdzasz czy pasuje do bazy (jeśli to adopted)
+
+Przykład w kodzie (dla rust + embassy / embedded):
+Rustuse uuid::Uuid; // albo własna 128-bit implementacja
+
+pub fn is_known_service(uuid: &[u8; 16]) -> Option<&'static str> {
+    // Najpierw sprawdź czy to adopted 16-bit (ostatnie 12 bajtów == base)
+    const BASE: [u8; 12] = [0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0x80, 0x5F, 0x9B, 0x34, 0xFB];
+    
+    if &uuid[2..] == &BASE {
+        let uuid16 = u16::from_le_bytes([uuid[0], uuid[1]]);
+        return get_ble_service_name(uuid16);
+    }
+
+    // Tutaj możesz dodać custom 128-bit (np. popularne vendor-specific)
+    // np. Xiaomi custom, Apple Continuity, Google Fast Pair itd.
+
+    None
+}
+Najpełniejsza i zawsze aktualna lista to:
+
+PDF → https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Assigned_Numbers/out/en/Assigned_Numbers.pdf
+(aktualizowany co kilka miesięcy – stan na styczeń/luty 2026)
+YAML / JSON → https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/
+Bardzo wygodna kopia → repo Nordic: https://github.com/NordicSemiconductor/bluetooth-numbers-database
+
+Chcesz wersję z characteristic UUID (0x2Axx
+
+
+
+ProducentUUID (Service)Typowe zastosowanie / NazwaKomentarz / Częstość występowaniaApple0000xxxx-0000-1000-8000-00805F9B34FB (część base)Continuity, AirDrop, Handoff, Find My, AirPlay, etc.Apple używa wielu wariacji, np. z różnymi xxxxApple (Find My)4C000215-E2C0-4B0C-98A4-C529E59D6D4FFind My network (offline tracking)Bardzo częste w iBeacon-like pakietachApple (AirPods)D0611E78-BBB4-4591-A5F8-4879101FEAE2AirPods pairing / proximityWidoczne przy otwieraniu etuiGoogle (Fast Pair)FE2C123B-8366-4814-8EB0-01DE32100BEAGoogle Fast Pair Model IDCharakterystyka modelu w advertisingGoogle (Fast Pair)FE2C123C-8366-4814-8EB0-01DE32100BEAAdditional Data (kluczowe dla pairing)Częste w Pixel Buds, nowych urządzeniachGoogle (Nearby)0000FEAA-0000-1000-8000-00805F9B34FB (Eddystone)Eddystone / Nearby ShareCzęsto reklamowane jako 16-bit FEAA + daneXiaomi (Mi Band)0000FEE0-0000-1000-8000-00805F9B34FBMi Band / Amazfit custom serviceBardzo popularne w Mi Band 4/5/6/7, Poco, RedmiXiaomi0000FEE1-0000-1000-8000-00805F9B34FBAuth / pairing / config characteristicCzęsto notify / writeSamsung0000FE95-0000-1000-8000-00805F9B34FBSamsung SmartTag / Galaxy Buds customSmartTag+, niektóre earbudsHuawei0000FD2D-0000-1000-8000-00805F9B34FBHuawei Share / Find My DeviceFreeBuds, Watch GT / Huawei bandFitbitADAB0000-6E7D-4601-BDA2-BFFAA68956BAFitbit custom service (różne warianty ADABxxxx)Charge, Versa, Sense – bardzo rozpoznawalneNordic (dev)6E400001-B5A3-F393-E0A9-E50E24DCCA9ENordic UART Service (NUS) – najpopularniejszy customUART over BLE – prawie każdy devkit / tutorialNordic (inne)00001523-1212-EFDE-1523-785FEABCD123DFU Nordic (Device Firmware Update)OTA update w nRF52/nRF53Espressif0000FFE0-0000-1000-8000-00805F9B34FBESP32/ESP8266 custom serial / HM-10 likeTysiące tanich modułów BLEMIDI (standard)03B80E5A-EDE8-4B33-A751-6CE34EC4C700MIDI over BLE serviceWszystkie kontrolery MIDI BLEMIDI (char)7772E5DB-3868-4112-A1A9-F2669D106BF3MIDI I/O characteristicWrite/Notify – bardzo popularne
+Jak to obsłużyć w Rust (rozszerzenie Twojej poprzedniej funkcji)
+Rustuse uuid::Uuid;
+
+pub fn get_known_128bit_service(uuid: &Uuid) -> Option<&'static str> {
+    let uuid_str = uuid.to_string().to_uppercase();
+
+    match uuid_str.as_str() {
+        // Nordic UART Service – najczęstszy custom na świecie
+        "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" => Some("Nordic UART Service (NUS)"),
+
+        // Google Fast Pair
+        "FE2C123B-8366-4814-8EB0-01DE32100BEA" => Some("Google Fast Pair Model ID"),
+        "FE2C123C-8366-4814-8EB0-01DE32100BEA" => Some("Google Fast Pair Additional Data"),
+
+        // Apple Find My / Proximity
+        "4C000215-E2C0-4B0C-98A4-C529E59D6D4F" => Some("Apple Find My / iBeacon-like"),
+
+        // Xiaomi / Mi Band / Amazfit
+        "0000FEE0-0000-1000-8000-00805F9B34FB" => Some("Xiaomi Mi Band / Amazfit Service"),
+        "0000FEE1-0000-1000-8000-00805F9B34FB" => Some("Xiaomi Auth / Config"),
+
+        // Espressif / HM-10 like
+        "0000FFE0-0000-1000-8000-00805F9B34FB" => Some("ESP32 Custom Serial (HM-10 style)"),
+
+        // MIDI over BLE
+        "03B80E5A-EDE8-4B33-A751-6CE34EC4C700" => Some("MIDI over BLE Service"),
+
+        // Fitbit
+        uuid if uuid_str.starts_with("ADAB") && uuid_str.ends_with("BFFAA68956BA") =>
+            Some("Fitbit Custom Service"),
+
+        // Inne – możesz dodać więcej
+        _ => None,
+    }
+}
+
+// Przykład użycia w skanowaniu (np. embassy lub btleplug / embedded)
+fn check_advertised_service(uuid_bytes: &[u8; 16]) {
+    if let Ok(uuid) = Uuid::from_slice(uuid_bytes) {
+        if let Some(name) = get_known_128bit_service(&uuid) {
+            println!("Znany vendor-specific service: {}", name);
+        } else {
+            println!("Custom/nieznany 128-bit UUID: {}", uuid);
+        }
+    }
+}
+Najlepsze źródła do aktualizacji listy (2026)
+
+Nordic bluetooth-numbers-database → https://github.com/NordicSemiconductor/bluetooth-numbers-database
+(zawiera YAML z wieloma vendor-specific)
+reelyActive BLE identifier reference → https://reelyactive.github.io/ble-identifier-reference.html
+Najpełniejsza i zawsze aktualna lista to:
+
+PDF → https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Assigned_Numbers/out/en/Assigned_Numbers.pdf
+(aktualizowany co kilka miesięcy – stan na styczeń/luty  uui2026)
+YAML / JSON → https://bitbucket.org/bluetooth-SIG/public/src/main/assigned_numbers/
+Bardzo wygodna kopia → repo Nordic: https://github.com/NordicSemiconductor/bluetooth-numbers-database
+
+PRZESZUKAJ LINKI W POSZUKIWANIUU NAJNOWSZYCH DANYCH (2026) I ZAKTUALIZUJ FUNKCJE W RAZIE POTRZEBY
+
+Całość listy urządzeń przejrzyście i zorganizowane w formie estetycznej (tyle ile pozwala telegram na modyfikacje tesktu:pogrubienie,kursywa, tytuł), z podziałem na kategorie (np. popularne, vendor-specific, itp.) oraz z informacją o typowym zastosowaniu każdego serwisu.
+Wszystko to zostanie wysłąneo do bazy danych SQLite3, a następnie wysłane na bota do telegram
+Program działa w interwalnych skanach Bluetooth, zbierając dane o urządzeniach i serwisach, a następnie prezentując je w przyjaznej formie na stronie internetowej oraz wysyłając powiadomienia do bota Telegram.
+Interwał wykoniania programu to 5 minut.
+Każdy adres unikalny bluetooth ma mieć w bazie date pierwszego wykrycia, piszemy kiedy wykryto. czy to dawno czy nie, czy wczoraj , czy pięć minit temu (coś jak javascript moment.js)
+ale date wykrycia zapisujemy 2024-06-01 12:00:00
+Dodatkowo, dla każdego urządzenia Bluetooth, które zostanie wykryte, zapisujemy jego adres MAC, siłę sygnału (RSSI) w dBm, nazwę (jeśli jest dostępna), typ urządzenia (np. bramka BLE, smartfon, itp.) oraz listę wykrytych serwisów Bluetooth Low Energy (BLE) wraz z ich UUID i nazwami (jeśli są znane). Wszystkie te dane są przechowywane w bazie danych SQLite3, a następnie prezentowane na stronie internetowej oraz wysyłane do bota Telegram w formie estetycznej i zorganizowanej.
+Baze se zaprojektuje tak, aby umożliwić łatwe przechowywanie i wyszukiwanie informacji o wykrytych urządzeniach Bluetooth, a także ich serwisach BLE. Baza będzie zawierać tabele dla urządzeń, serwisów oraz relacji między nimi, co pozwoli na efektywne zarządzanie danymi i szybkie generowanie raportów dla użytkowników.
+
