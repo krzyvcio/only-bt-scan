@@ -12,6 +12,7 @@ use chrono::Utc;
 pub struct ScannerWithTracking {
     pub packet_tracker: GlobalPacketTracker,
     pub telemetry_collector: TelemetryCollector,
+    pub last_scan_packets: Vec<RawPacketModel>,
 }
 
 impl ScannerWithTracking {
@@ -19,17 +20,24 @@ impl ScannerWithTracking {
         Self {
             packet_tracker: GlobalPacketTracker::new(),
             telemetry_collector: TelemetryCollector::new(),
+            last_scan_packets: Vec::new(),
         }
     }
 
     /// Process Bluetooth devices from scan and add to tracker
     pub fn process_scan_results(&mut self, devices: Vec<BluetoothDevice>) {
+        log::info!("🔄 Processing {} devices through packet tracker", devices.len());
         let mut packet_counter = self.packet_tracker.packet_count;
+        self.last_scan_packets.clear();
 
         for device in devices {
             // Convert BluetoothDevice to RawPacketModel
             let mut packet = create_raw_packet_from_device(&device, packet_counter);
             packet_counter = packet_counter.wrapping_add(1);
+
+            // Store for database persistence
+            self.last_scan_packets.push(packet.clone());
+            log::debug!("📦 Added packet to last_scan_packets - total: {}", self.last_scan_packets.len());
 
             // Add to global tracker
             let result = self.packet_tracker.add_packet(packet.clone());
@@ -54,6 +62,13 @@ impl ScannerWithTracking {
                 }
             }
         }
+        
+        log::info!("✅ Processing complete - {} packets in buffer", self.last_scan_packets.len());
+    }
+
+    /// Get raw packets from last scan (for database persistence)
+    pub fn get_last_scan_packets(&self) -> &[RawPacketModel] {
+        &self.last_scan_packets
     }
 
     /// Get global packet ordering
@@ -123,6 +138,18 @@ fn create_raw_packet_from_device(device: &BluetoothDevice, packet_id: u64) -> Ra
     let timestamp = Utc::now();
     let timestamp_ms = (device.last_detected_ns / 1_000_000) as u64;
 
+    let mut advertising_data = Vec::new();
+    if let Some((company_id, data)) = device.manufacturer_data.iter().next() {
+        let total_len = 1usize + 2usize + data.len();
+        if total_len <= u8::MAX as usize {
+            advertising_data.push(total_len as u8);
+            advertising_data.push(0xFF);
+            advertising_data.extend_from_slice(&company_id.to_le_bytes());
+            advertising_data.extend_from_slice(data);
+        }
+    }
+    let advertising_data_hex = hex::encode(&advertising_data);
+
     let mut packet = RawPacketModel {
         packet_id,
         mac_address: device.mac_address.clone(),
@@ -131,14 +158,15 @@ fn create_raw_packet_from_device(device: &BluetoothDevice, packet_id: u64) -> Ra
         phy: "LE 1M".to_string(),
         channel: 37, // Default advertising channel
         rssi: device.rssi,
-        packet_type: match device.device_type {
-            crate::bluetooth_scanner::DeviceType::DualMode => "ADV_IND".to_string(),
-            _ => "ADV_IND".to_string(),
+        packet_type: if device.is_connectable {
+            "ADV_IND".to_string()
+        } else {
+            "ADV_NONCONN_IND".to_string()
         },
         is_scan_response: false,
         is_extended: false,
-        advertising_data: Vec::new(),
-        advertising_data_hex: String::new(),
+        advertising_data,
+        advertising_data_hex,
         ad_structures: Vec::new(),
         flags: None,
         local_name: device.name.clone(),
@@ -148,16 +176,10 @@ fn create_raw_packet_from_device(device: &BluetoothDevice, packet_id: u64) -> Ra
             .iter()
             .filter_map(|s| s.uuid128.clone())
             .collect(),
-        manufacturer_data: {
-            let mut map = std::collections::HashMap::new();
-            if let Some(mfg_id) = device.manufacturer_id {
-                map.insert(mfg_id, Vec::new());
-            }
-            map
-        },
+        manufacturer_data: device.manufacturer_data.clone(),
         service_data: std::collections::HashMap::new(),
-        total_length: 0,
-        parsed_successfully: true,
+        total_length: advertising_data.len(),
+        parsed_successfully: !advertising_data.is_empty(),
     };
 
     packet

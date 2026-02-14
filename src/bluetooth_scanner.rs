@@ -2,6 +2,7 @@
 /// BLE: Cross-platform (Windows, macOS, Linux)
 /// BR/EDR: Linux only (via BlueZ)
 
+use std::collections::HashMap;
 use std::time::Duration;
 use log::{info, warn, error, debug};
 use chrono::Utc;
@@ -24,6 +25,7 @@ pub struct BluetoothDevice {
     pub device_type: DeviceType,
     pub manufacturer_id: Option<u16>,
     pub manufacturer_name: Option<String>,
+    pub manufacturer_data: HashMap<u16, Vec<u8>>,
     pub is_connectable: bool,
     pub services: Vec<ServiceInfo>,
     /// UTC timestamp when first detected (nanoseconds since epoch)
@@ -71,6 +73,7 @@ impl Default for BluetoothDevice {
             device_type: DeviceType::BleOnly,
             manufacturer_id: None,
             manufacturer_name: None,
+            manufacturer_data: HashMap::new(),
             is_connectable: true,
             services: Vec::new(),
             first_detected_ns: now,
@@ -728,7 +731,9 @@ async fn convert_peripheral_to_device(
     let mut manufacturer_id: u16 = 0;
     let mut manufacturer_name: Option<String> = None;
 
-    for (id, _data) in properties.manufacturer_data.iter() {
+    let manufacturer_data = properties.manufacturer_data.clone();
+
+    for (id, _data) in manufacturer_data.iter() {
         manufacturer_id = *id;
         if let Some(name) = get_manufacturer_name(*id) {
             manufacturer_name = Some(name.to_string());
@@ -756,7 +761,8 @@ async fn convert_peripheral_to_device(
         device_type: DeviceType::BleOnly,
         manufacturer_id: if manufacturer_id > 0 { Some(manufacturer_id) } else { None },
         manufacturer_name,
-        is_connectable: true,
+        manufacturer_data,
+        is_connectable: properties.is_connectable.unwrap_or(true),
         services,
         first_detected_ns: now,
         last_detected_ns: now,
@@ -789,7 +795,9 @@ async fn convert_peripheral_to_device_advanced(
     let mut manufacturer_id: u16 = 0;
     let mut manufacturer_name: Option<String> = None;
 
-    for (id, _data) in properties.manufacturer_data.iter() {
+    let manufacturer_data = properties.manufacturer_data.clone();
+
+    for (id, _data) in manufacturer_data.iter() {
         manufacturer_id = *id;
         if let Some(name) = get_manufacturer_name(*id) {
             manufacturer_name = Some(name.to_string());
@@ -842,6 +850,7 @@ async fn convert_peripheral_to_device_advanced(
         device_type: DeviceType::BleOnly,
         manufacturer_id: if manufacturer_id > 0 { Some(manufacturer_id) } else { None },
         manufacturer_name,
+        manufacturer_data,
         is_connectable: true,
         services,
         first_detected_ns: now,

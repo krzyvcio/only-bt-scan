@@ -538,3 +538,316 @@ GET /api/packet-sequence/{mac}
 | **RPA Deduplication** | ⏳ TODO | 250 | 0% |
 | **Web Frontend** | ⏳ TODO | 700 | 0% |
 | **Total (Done)** | ✅ | 3570 | 95% |
+
+---
+
+## 🔴 FAZA 8: CRITICAL BUGS & UNIMPLEMENTED FEATURES (NEWLY DISCOVERED)
+
+### 1. **COMPILATION ERRORS** 🚨 BLOCKING
+**Files:** `src/main.rs`, `src/logger.rs`, `src/ui_renderer.rs`
+
+**Issues:**
+- [ ] main.rs type mismatch: `Result<(), Box<dyn Error>>` vs `anyhow::Error` mismatch
+  - Error at line 505: return type incompatibility
+  - Fix: Change return type to `anyhow::Error` or use unified error handling
+- [ ] Database connection error handling in Ctrl+C handler (line 314)
+  - Fix: Proper Result type handling in closure
+- [ ] ui_renderer::clear_content_area return type mismatch
+  - Needs `anyhow::Error` instead of `Box<dyn Error>`
+- [ ] Logger function calls inconsistent (log:: vs logger::)
+  - Fix: Standardize to logger:: module functions
+
+**Estimated fix time:** 30-45 minutes
+
+---
+
+### 2. **UNUSED/UNIMPLEMENTED OPTIONAL DEPENDENCIES** ⚠️ HIGH
+**Files:** `Cargo.toml`, entire project
+
+**Dependencies added but NOT implemented:**
+- [ ] `trouble` (HCI support) - no `use trouble` anywhere in codebase
+- [ ] `android-ble` (Android BLE) - no `use android_ble` anywhere  
+- [ ] `btsnoop-extcap` (PCAP export) - mentioned only in comments
+- [ ] `bluest` (cross-platform BLE) - no usage found
+- [ ] `hci` crate - declared as dependency but never imported
+
+**Action items:**
+- [ ] Remove from Cargo.toml if not needed, OR
+- [ ] Implement actual usage in respective modules
+- [ ] Create feature flags to make them optional
+
+**Estimated effort:** 2-4 hours per feature if implementing, 30 min if removing
+
+---
+
+### 3. **PLACEHOLDER IMPLEMENTATIONS** 🟡 MEDIUM-HIGH
+**Files:** Multiple core modules
+
+| Module | Function | Issue | Fix Required |
+|--------|----------|-------|--------------|
+| `bluey_integration.rs` | `scan_bluey_impl()` | Returns `Ok(Vec::new())` | Full Bluey integration |
+| `bluey_integration.rs` | `discover_gatt_impl()` | Hardcoded empty Vec | GATT discovery via Bluey |
+| `gatt_client.rs` | `discover_services()` | Comment says "simulate" | Real service discovery |
+| `hci_sniffer_example.rs` | `HciSocket::open()` | fd = -1 placeholder | Real socket implementation |
+| `hci_sniffer_example.rs` | `HciSocket::read_event()` | Returns Ok(None) | Event reading logic |
+| `bluetooth_scanner.rs` | `scan_bredr()` | Returns `Ok(Vec::new())` with warn | BR/EDR implementation |
+| `l2cap_analyzer.rs` | `extract_l2cap_channels()` (macOS) | Returns `Ok(Vec::new())` | macOS L2CAP extraction |
+| `l2cap_analyzer.rs` | `extract_l2cap_channels()` (HCI) | Returns `Ok(Vec::new())` | HCI L2CAP extraction |
+| `tray_manager.rs` | `get_app_icon()` | Returns `Vec::new()` | Real icon asset |
+| `core_bluetooth_integration.rs` | `scan_macos()` | Returns `Ok(Vec::new())` | CoreBluetooth integration |
+| `core_bluetooth_integration.rs` | `scan_ios()` | Returns `Ok(Vec::new())` | iOS integration |
+
+**Estimated effort:** 20-30 hours total (varies by module)
+
+---
+
+### 4. **MISSING WEB API ENDPOINTS** 🟡 MEDIUM-HIGH
+**File:** `src/web_server.rs`
+
+**Endpoints mentioned in TASKS.md but NOT implemented:**
+- [ ] `GET /api/telemetry` - Should return TelemetryCollector data
+  - Response should include: device packet counts, avg RSSI, latencies, anomalies
+  - Requires: Access to GlobalTelemetry singleton
+  - Lines needed: ~40 lines
+  
+- [ ] `GET /api/data-flow` - Should return DataFlowEstimator results
+  - Response should include: protocol detection, throughput, connection state, reliability
+  - Requires: Access to GlobalDataFlowEstimator singleton
+  - Lines needed: ~40 lines
+  
+- [ ] `GET /api/packet-sequence/{mac}` - Should return packet timeline
+  - Response should include: packet IDs, timestamps, RSSI values, sequence patterns
+  - Requires: Query GlobalPacketTracker by MAC address
+  - Lines needed: ~50 lines
+  
+- [ ] `GET /api/rpa-history` - Should return RPA rotation history (after deduplication)
+  - Response should include: device groups, MAC rotation timeline, fingerprints
+  - Requires: device_fingerprinting module (not yet created)
+  - Lines needed: ~60 lines (after fingerprinting module done)
+
+**Estimated effort:** 4-6 hours
+
+---
+
+### 5. **MISSING FRONTEND TABS & UI COMPONENTS** 🟡 MEDIUM-HIGH
+**Files:** `frontend/index.html`, `frontend/app.js`, `frontend/styles.css`
+
+**Missing tabs (mentioned in TASKS.md):**
+- [ ] **Telemetry Tab** - Packet metrics, latencies, anomaly alerts
+  - HTML: ~50 lines
+  - JS: ~80 lines  
+  - CSS: ~40 lines
+  
+- [ ] **Data Flow Tab** - Protocol badges, throughput, reliability gauge
+  - HTML: ~60 lines
+  - JS: ~100 lines
+  - CSS: ~50 lines
+  
+- [ ] **Packet Sequence Tab** - Timeline graph (RSSI vs time), packet list
+  - HTML: ~70 lines
+  - JS: ~150 lines (chart rendering)
+  - CSS: ~60 lines
+  
+- [ ] **RPA History Tab** - Device grouping, MAC rotation timeline
+  - HTML: ~60 lines
+  - JS: ~100 lines
+  - CSS: ~40 lines
+
+**Missing chart library:**
+- [ ] No chart.js/d3.js integration for RSSI timeline
+- [ ] Need: Simple SVG chart or Chart.js dependency
+
+**Estimated effort:** 10-12 hours (including chart setup)
+
+---
+
+### 6. **INCOMPLETE FEATURE IMPLEMENTATIONS** 🟡 MEDIUM
+**Files:** Multiple
+
+| Feature | Issue | Status |
+|---------|-------|--------|
+| Extended Advertising (BT 5.0+) | Parsing not implemented | advertising_parser.rs - TODO comment |
+| Scan Response Data | Second part of advertising not parsed | advertising_parser.rs |
+| LE Supported Features | TODO: Parse individual feature bits | advertising_parser.rs:341 |
+| Linux BlueZ Native API | native_scanner.rs uses only btleplug fallback | Should use bluer crate |
+| Windows HCI Raw API | windows_hci.rs complete but warnings | Fix unused imports & variables |
+
+**Estimated effort:** 6-8 hours
+
+---
+
+### 7. **MISSING DATABASE SCHEMA UPDATES** 🟡 MEDIUM
+**Files:** `src/db.rs`, `src/db_frames.rs`
+
+**Missing tables/migrations:**
+- [ ] `rpa_rotation_history` table (for RPA deduplication feature)
+  - Columns: device_id, old_mac, new_mac, rotation_timestamp, fingerprint_hash
+  - Lines: ~30 lines in db::init_database()
+  
+- [ ] `device_fingerprints` table (for device deduplication)
+  - Columns: device_id, manufacturer_id, service_uuids_hash, tx_power, name_hash
+  - Lines: ~25 lines in db::init_database()
+  
+- [ ] `telemetry_snapshots` table (optional, for persistence)
+  - Columns: device_id, timestamp, avg_rssi, packet_count, anomaly_flags
+  - Lines: ~25 lines in db::init_database()
+
+**Estimated effort:** 2-3 hours
+
+---
+
+### 8. **MISSING ERROR HANDLING & STABILITY FEATURES** 🟡 MEDIUM
+**Files:** Multiple
+
+- [ ] **Graceful shutdown** - Ctrl+C handler has type mismatch issues
+  - Current: Line 279-336 has bracket/error handling problems
+  - Fix: Proper async shutdown coordination
+  
+- [ ] **Database connection pooling** - Each request opens new connection
+  - Current: Every endpoint opens fresh connection
+  - Fix: Use `rusqlite::Connection` or connection pool crate
+  - Effort: 4-6 hours
+  
+- [ ] **API Rate limiting** - No protection against abuse
+  - Missing: actix-middleware for rate limiting
+  - Effort: 2-3 hours
+  
+- [ ] **CORS configuration** - May block frontend requests
+  - Missing: actix-cors middleware setup
+  - Effort: 1-2 hours
+  
+- [ ] **Health check endpoint** - For monitoring
+  - Missing: `GET /health` endpoint
+  - Effort: 30 minutes
+  
+- [ ] **Graceful error responses** - Some endpoints may panic
+  - Fix: Add proper Result handling everywhere
+  - Effort: 2-3 hours
+
+**Total estimated effort:** 12-15 hours
+
+---
+
+### 9. **MISSING LOGGING & OBSERVABILITY** 🟡 MEDIUM
+**Files:** `src/logger.rs`, all modules
+
+- [ ] **Structured logging (JSON)** - Current logs are unstructured text
+  - Implementation: ~100 lines in logger.rs
+  - Effort: 3-4 hours
+  
+- [ ] **Log rotation** - No rotation configured
+  - Implementation: Use rotating_file_appender
+  - Effort: 2-3 hours
+  
+- [ ] **Metrics/Prometheus endpoint** - No observability
+  - Missing: `GET /metrics` endpoint with prometheus format
+  - Effort: 4-5 hours
+  
+- [ ] **Debug logging cleanup** - Too many debug statements currently
+  - Action: Review and clean up verbose logging
+  - Effort: 1-2 hours
+
+**Total estimated effort:** 10-14 hours
+
+---
+
+### 10. **MISSING CONFIGURATION MANAGEMENT** 🟢 MEDIUM
+**Files:** `src/config_params.rs`, project root
+
+- [ ] **Config file validation** - .env variables not validated
+  - Missing: Schema validation for config values
+  - Effort: 2-3 hours
+  
+- [ ] **Default config file** - No config.toml/yaml template
+  - Create: `config.example.toml` with all options documented
+  - Effort: 1-2 hours
+  
+- [ ] **Environment-specific configs** (dev/prod/test)
+  - Implement: Load different configs based on APP_ENV
+  - Effort: 2-3 hours
+  
+- [ ] **Config documentation** - Users don't know all available options
+  - Create: Detailed CONFIG.md
+  - Effort: 1-2 hours
+
+**Total estimated effort:** 6-10 hours
+
+---
+
+### 11. **UNUSED IMPORTS & WARNINGS** 🟢 LOW
+**Current warnings:** 36 compiler warnings
+
+**Cleanup needed:**
+- [ ] Remove unused imports in 20+ files
+- [ ] Fix mutable variable warnings (use `_` prefix if intentional)
+- [ ] Fix unused variable warnings
+- [ ] Remove dead code
+
+**Estimated effort:** 1-2 hours
+
+---
+
+### 12. **MISSING UNIT TESTS** 🟢 LOW-MEDIUM
+**Current state:** No lib target, only bin
+
+- [ ] Create `src/lib.rs` to expose modules for testing
+- [ ] Add unit tests for:
+  - [ ] advertising_parser.rs (AD type parsing)
+  - [ ] data_flow_estimator.rs (protocol detection logic)
+  - [ ] mac_address_handler.rs (MAC parsing)
+  - [ ] link_layer.rs (channel analysis)
+  - [ ] ble_security.rs (encryption detection)
+
+**Estimated effort:** 8-12 hours
+
+---
+
+## 📋 REVISED IMPLEMENTATION CHECKLIST
+
+### 🔴 BLOCKING (Must fix before any progress)
+- [ ] Fix compilation errors in main.rs (30-45 min)
+- [ ] Fix logger type mismatches (15-30 min)
+- [ ] Fix ui_renderer return type (10-15 min)
+
+### 🔴 CRITICAL (High priority, major impact)
+- [ ] Remove unused dependencies or implement them (2-4 hours)
+- [ ] Implement placeholder functions in core modules (20-30 hours)
+- [ ] Add missing Web API endpoints (4-6 hours)
+- [ ] Create device_fingerprinting.rs module (new file, ~250 lines)
+
+### 🟡 HIGH (Important for functionality)
+- [ ] Add frontend tabs (Telemetry, Data Flow, Packet Sequence) (10-12 hours)
+- [ ] Complete Extended Advertising parsing (3-4 hours)
+- [ ] Linux BlueZ native integration (4-6 hours)
+- [ ] Database schema updates (2-3 hours)
+- [ ] Error handling & stability (12-15 hours)
+
+### 🟢 MEDIUM (Nice to have, improves quality)
+- [ ] Logging & observability (10-14 hours)
+- [ ] Configuration management (6-10 hours)
+- [ ] Unit tests setup (8-12 hours)
+- [ ] Clean up warnings (1-2 hours)
+
+---
+
+## 📊 REVISED PROGRESS ESTIMATE
+
+| Category | Status | Hours | Impact |
+|----------|--------|-------|--------|
+| Compilation Errors | 🔴 TODO | 1 | Critical |
+| Unused Dependencies | 🔴 TODO | 2-4 | High |
+| Placeholder Functions | 🔴 TODO | 20-30 | Critical |
+| Web API Endpoints | 🟡 TODO | 4-6 | High |
+| Frontend UI Tabs | 🟡 TODO | 10-12 | High |
+| Database Schema | 🟡 TODO | 2-3 | Medium |
+| Error Handling | 🟡 TODO | 12-15 | Medium |
+| Logging & Observability | 🟢 TODO | 10-14 | Low-Med |
+| Config Management | 🟢 TODO | 6-10 | Low-Med |
+| Unit Tests | 🟢 TODO | 8-12 | Low |
+| **Total estimated work** | | **75-120** hours | **V0.4.0+** |
+
+**Recommendation:** 
+- **Immediate (next 2-3 days):** Fix blocking compilation errors + implement critical features
+- **Week 1:** Remove unused deps, fix placeholder functions
+- **Week 2:** Frontend & Web API implementation
+- **Week 3+:** Polish, testing, observability

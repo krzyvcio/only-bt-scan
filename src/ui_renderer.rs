@@ -64,10 +64,16 @@ pub fn get_device_list_start_line() -> u16 {
 
 /// Clears only the content area (from device list start to end of screen).
 /// Use this instead of full redraw so the header stays fixed and there's no scroll.
-pub fn clear_content_area() -> Result<(), Box<dyn std::error::Error>> {
+pub fn clear_content_area() -> Result<(), anyhow::Error> {
+    log::debug!("Clearing content area starting from line {}", get_device_list_start_line());
     let mut stdout = stdout();
     let start = get_device_list_start_line();
-    execute!(stdout, MoveTo(0, start), Clear(ClearType::FromCursorDown))?;
+    execute!(stdout, MoveTo(0, start), Clear(ClearType::FromCursorDown))
+        .map_err(|e| {
+            log::error!("Failed to clear content area: {}", e);
+            anyhow::anyhow!("Terminal clear error: {}", e)
+        })?;
+    log::debug!("Content area cleared successfully");
     Ok(())
 }
 
