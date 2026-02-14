@@ -1,4 +1,5 @@
 mod adapter_info;
+mod mac_address_handler;
 mod pcap_exporter;
 mod hci_scanner;
 mod hci_packet_parser;

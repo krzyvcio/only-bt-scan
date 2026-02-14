@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use std::sync::Mutex;
 use crate::hci_scanner::{HciScanner, HciScannerConfig, HciScanResult};
 use crate::pcap_exporter::{PcapExporter, HciPcapPacket, PcapExportStats};
+use crate::mac_address_handler::{MacAddress, MacAddressFilter};
 
 const MAX_RAW_PACKETS: usize = 500;
 const DEFAULT_PAGE_SIZE: usize = 50;
@@ -843,6 +844,31 @@ pub async fn export_pcap() -> impl Responder {
     }
 }
 
+pub async fn get_mac_info(path: web::Path<String>) -> impl Responder {
+    let mac_str = path.into_inner();
+    
+    match MacAddress::from_string(&mac_str) {
+        Ok(mac) => {
+            HttpResponse::Ok().json(serde_json::json!({
+                "mac_address": mac.as_str(),
+                "is_unicast": mac.is_unicast(),
+                "is_multicast": mac.is_multicast(),
+                "is_locally_administered": mac.is_locally_administered(),
+                "is_universally_administered": mac.is_universally_administered(),
+                "is_rpa": mac.is_rpa(),
+                "is_static_random": mac.is_static_random(),
+                "is_nrpa": mac.is_nrpa(),
+                "manufacturer_id": format!("{:02X}:{:02X}:{:02X}", mac.as_bytes()[0], mac.as_bytes()[1], mac.as_bytes()[2]),
+                "device_id": format!("{:02X}:{:02X}:{:02X}", mac.as_bytes()[3], mac.as_bytes()[4], mac.as_bytes()[5]),
+                "address_type": if mac.is_rpa() { "RPA (Resolvable Private)" } else if mac.is_static_random() { "Static Random" } else if mac.is_locally_administered() { "Locally Administered" } else { "Public" }
+            }))
+        },
+        Err(e) => HttpResponse::BadRequest().json(serde_json::json!({
+            "error": format!("Invalid MAC address: {}", e)
+        }))
+    }
+}
+
 pub async fn get_hci_scan() -> impl Responder {
     let mut scanner = HciScanner::default();
     
@@ -889,6 +915,7 @@ pub fn configure_services(cfg: &mut web::ServiceConfig) {
             .route("/devices/{mac}", web::get().to(get_device_detail))
             .route("/devices/{mac}/history", web::get().to(get_device_history))
             .route("/devices/{mac}/l2cap", web::get().to(get_l2cap_info))
+            .route("/mac/{mac}", web::get().to(get_mac_info))
             .route("/hci-scan", web::get().to(get_hci_scan))
             .route("/export-pcap", web::get().to(export_pcap))
             .route("/raw-packets", web::get().to(get_raw_packets))

@@ -16,6 +16,7 @@ bluest = { version = "0.6", optional = true }
 trouble = { version = "0.0.0", optional = true }
 hci = { version = "0.1", optional = true }  # Raw HCI packet parsing
 btsnoop-extcap = { version = "0.1", optional = true }  # PCAP/Wireshark export
+mac_conditions = { version = "1.0" }  # MAC address parsing and filtering
 
 # Database
 rusqlite = { version = "0.30", features = ["bundled", "chrono"] }
