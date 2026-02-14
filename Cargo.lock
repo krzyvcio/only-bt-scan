@@ -353,12 +353,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-task"
-version = "4.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b75356056920673b02621b35afd0f7dda9306d03c79a30f5c56c44cf256e3de"
-
-[[package]]
 name = "async-trait"
 version = "0.1.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -619,15 +613,6 @@ dependencies = [
  "uuid 1.21.0",
  "windows 0.61.3",
  "windows-future",
-]
-
-[[package]]
-name = "btuuid"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5f48f1e9b0aad0a4f05d17bdeae0fa20ff798e272a03a6940ca27ad9c5a6ae7"
-dependencies = [
- "uuid 1.21.0",
 ]
 
 [[package]]
@@ -919,19 +904,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "corebluetooth"
+name = "core_bluetooth"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f11b2bc7ddd9fe56c588b9732e2249fe80d2b0404c1dde66bd7e96bf5ec67eeb"
+checksum = "5ccf11a49b52d6d25bd01cba7a5cfcda17166d1a5667f4e2e65fc165e8200059"
 dependencies = [
- "btuuid",
- "dispatch-executor",
- "dispatch2",
- "objc2 0.6.3",
- "objc2-core-bluetooth 0.3.2",
- "objc2-core-foundation",
- "objc2-foundation 0.3.2",
- "uuid 1.21.0",
+ "enumflags2",
+ "lazy_static",
+ "log",
+ "objc",
+ "static_assertions",
 ]
 
 [[package]]
@@ -1244,17 +1226,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dispatch-executor"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1b6a1f63cc6ab2cfa5b5a6ea4d73a3bd5823c9108fa9ed13036a45dc325734e"
-dependencies = [
- "async-task",
- "dispatch2",
- "objc2 0.6.3",
-]
-
-[[package]]
 name = "dispatch2"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1312,6 +1283,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "enumflags2"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83c8d82922337cd23a15f88b70d8e4ef5f11da38dd7cdb55e84dd5de99695da0"
+dependencies = [
+ "enumflags2_derive",
+]
+
+[[package]]
+name = "enumflags2_derive"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "946ee94e3dbf58fdd324f9ce245c7b238d46a66f00e86a020b71996349e46cce"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -2888,9 +2879,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
 dependencies = [
  "bitflags 2.11.0",
- "block2 0.6.2",
  "dispatch2",
- "libc",
  "objc2 0.6.3",
 ]
 
@@ -2960,7 +2949,7 @@ dependencies = [
  "chrono",
  "clearscreen",
  "colored 2.2.0",
- "corebluetooth",
+ "core_bluetooth",
  "crossterm",
  "ctrlc",
  "dotenv",

@@ -2,6 +2,7 @@ mod adapter_info;
 mod advertising_parser;
 mod background;
 mod bluey_integration;
+mod core_bluetooth_integration;
 mod ble_security;
 mod ble_uuids;
 mod bluetooth_features;

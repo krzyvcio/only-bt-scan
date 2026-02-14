@@ -758,6 +758,45 @@ pub async fn get_latest_raw_packets(state: web::Data<AppState>) -> impl Responde
     }
 }
 
+pub async fn get_l2cap_info(path: web::Path<String>) -> impl Responder {
+    let mac_address = path.into_inner();
+
+    match rusqlite::Connection::open("bluetooth_scan.db") {
+        Ok(conn) => {
+            // Get device_id first
+            let device_id: Option<i32> = conn.query_row(
+                "SELECT id FROM devices WHERE mac_address = ?",
+                [&mac_address],
+                |row| row.get(0),
+            ).optional().unwrap_or(None);
+
+            match device_id {
+                Some(_id) => {
+                    // Return a placeholder L2CAP profile with the correct structure
+                    let profile = crate::l2cap_analyzer::L2CapDeviceProfile {
+                        mac_address: mac_address.clone(),
+                        device_name: None,
+                        channels: vec![],
+                        psm_usage: std::collections::HashMap::new(),
+                        total_tx_bytes: 0,
+                        total_rx_bytes: 0,
+                        supports_ble: true,
+                        supports_bredr: false,
+                        supports_eatt: false,
+                    };
+                    HttpResponse::Ok().json(profile)
+                },
+                None => HttpResponse::NotFound().json(serde_json::json!({
+                    "error": "Device not found"
+                })),
+            }
+        },
+        Err(_) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": "Database error"
+        })),
+    }
+}
+
 pub async fn index() -> impl Responder {
     let html = include_str!("../frontend/index.html");
     HttpResponse::Ok()
@@ -785,6 +824,7 @@ pub fn configure_services(cfg: &mut web::ServiceConfig) {
             .route("/devices", web::get().to(get_devices))
             .route("/devices/{mac}", web::get().to(get_device_detail))
             .route("/devices/{mac}/history", web::get().to(get_device_history))
+            .route("/devices/{mac}/l2cap", web::get().to(get_l2cap_info))
             .route("/raw-packets", web::get().to(get_raw_packets))
             .route("/raw-packets/latest", web::get().to(get_latest_raw_packets))
             .route("/raw-packets/all", web::get().to(get_all_raw_packets))

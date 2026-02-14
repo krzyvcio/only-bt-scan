@@ -9,7 +9,7 @@ btleplug = "0.11"
 bluey = { git = "https://github.com/rib/bluey.git", optional = true }
 
 # L2CAP channel extraction (Apple CoreBluetooth + cross-platform)
-corebluetooth = { version = "0.1", optional = true }
+core_bluetooth = { version = "0.1", optional = true }
 bluest = { version = "0.6", optional = true }
 
 # Advanced HCI control
@@ -80,4 +80,4 @@ tray-icon = "0.1"
 default = []
 trouble = ["dep:trouble"]
 bluey = ["dep:bluey"]
-l2cap = ["dep:corebluetooth", "dep:bluest"]
+l2cap = ["dep:core_bluetooth", "dep:bluest"]
