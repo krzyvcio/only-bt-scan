@@ -157,3 +157,65 @@
 - [ ] Real-time RSSI charts i analiza trendu
 - [ ] Extended Advertising (BT 5.0+) support
 - [ ] Mesh network detection
+
+---
+
+## 🔵 4-METODY SKANOWANIA RÓWNOCZESNEGO ✅ ZAKOŃCZONE
+
+### Implementacja `concurrent_scan_all_methods()`
+Nowa metoda w `BluetoothScanner` umożliwia równoczesne skanowanie czterema metodami:
+
+**Metoda 1: btleplug (Cross-platform BLE)**
+- Działa na: Windows, macOS, Linux
+- Funkcje: Standard BLE device discovery
+- Zaletę: Uniwersalny, zawarty w btleplug
+
+**Metoda 2: BR-EDR Classic (Linux)**
+- Działa na: Linux (via bluer)
+- Funkcje: Bluetooth Classic scanning
+- Zaleta: Pełna obsługa BR-EDR
+
+**Metoda 3: Advanced HCI (Raw commands)**
+- Działa na: Linux (raw HCI socket)
+- Funkcje: Direct HCI command execution
+- Zaleta: Pełna kontrola nad scanem
+
+**Metoda 4: Raw socket sniffing**
+- Działa na: Linux (requires CAP_NET_RAW)
+- Funkcje: Low-level packet capture
+- Zaleta: Widzi wszystkie pakiety
+
+### Cechy implementacji:
+- ✅ Wszystkie 4 metody uruchamiają się **jednocześnie** (tokio::join!)
+- ✅ Automatyczne scalanie i deduplikacja wyników
+- ✅ Obsługa błędów - jeśli jedna metoda zawiedzie, inne działają
+- ✅ Timeout i control flow dla każdej metody
+- ✅ Detailed logging każdej metody
+- ✅ HashMap do szybkiego scalenia wyników
+
+### Użycie:
+```rust
+let scanner = BluetoothScanner::new(config);
+let devices = scanner.concurrent_scan_all_methods().await?;
+```
+
+### Output przykład:
+```
+🔄 Starting 4-method concurrent BLE/BR-EDR scan
+   Method 1: btleplug (Cross-platform BLE)
+   Method 2: BR-EDR Classic (Linux only)
+   Method 3: Advanced HCI (Raw commands)
+   Method 4: Raw socket sniffing
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Method 1: 45 BLE devices found
+✅ Method 2: 12 BR-EDR devices found
+⏭️  Method 3: Not available
+✅ Concurrent scan completed in 32500ms
+   📊 Total: 52 unique devices found
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### Zlożoność czasowa:
+- **Sekwencyjnie**: ~97.5s (3 cykle × 30s + overhead)
+- **Równocześnie**: ~32.5s (max(30s, 30s, 5s + logic) = ~32.5s)
+- **Przyspieszenie**: **3x szybciej!**
