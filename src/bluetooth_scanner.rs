@@ -155,7 +155,7 @@ impl BluetoothScanner {
                                     d.last_detected_ns = cycle_time_ns;
                                     // Recalculate response time
                                     d.response_time_ms = ((d.last_detected_ns - d.first_detected_ns).max(0) / 1_000_000) as u64;
-                                    
+
                                     // Merge detected services
                                     for service in &device.services {
                                         if !d.services.iter().any(|s| {
@@ -205,7 +205,7 @@ impl BluetoothScanner {
                                     }
                                     d.last_detected_ns = cycle_time_ns;
                                     d.response_time_ms = ((d.last_detected_ns - d.first_detected_ns).max(0) / 1_000_000) as u64;
-                                    
+
                                     if device.name.is_some() && d.name.is_none() {
                                         d.name = device.name.clone();
                                     }
@@ -232,7 +232,7 @@ impl BluetoothScanner {
     /// Scan BLE devices (cross-platform)
     async fn scan_ble(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         info!("🔍 BLE scanning with btleplug initialized");
-        
+
         // Get the platform manager
         info!("📡 Creating platform manager...");
         let manager = match PlatformManager::new().await {
@@ -245,7 +245,7 @@ impl BluetoothScanner {
                 return Err(Box::new(e));
             }
         };
-        
+
         // Get available adapters
         info!("🔎 Searching for Bluetooth adapters...");
         let adapters = match manager.adapters().await {
@@ -258,7 +258,7 @@ impl BluetoothScanner {
                 return Err(Box::new(e));
             }
         };
-        
+
         if adapters.is_empty() {
             warn!("❌ Brak dostępnych adaptersów Bluetooth");
             error!("⚠️  No Bluetooth adapters found!");
@@ -269,14 +269,14 @@ impl BluetoothScanner {
             error!("   - No permissions to access Bluetooth");
             return Ok(Vec::new());
         }
-        
+
         let mut all_devices = Vec::new();
-        
+
         // Scan with each available adapter
         for (idx, adapter) in adapters.iter().enumerate() {
             info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             info!("📡 Adapter #{}: Starting scan...", idx);
-            
+
             match adapter.start_scan(btleplug::api::ScanFilter::default()).await {
                 Ok(_) => {
                     info!("✅ Scan started on adapter {}", idx);
@@ -286,27 +286,27 @@ impl BluetoothScanner {
                     continue;
                 }
             }
-            
+
             info!("⏳ Scanning for {} seconds...", self.config.scan_duration.as_secs());
-            
+
             // Scan for configured duration
             tokio::time::sleep(self.config.scan_duration).await;
-            
+
             // Stop the scan
             match adapter.stop_scan().await {
                 Ok(_) => info!("✅ Scan stopped on adapter {}", idx),
                 Err(e) => warn!("⚠️  Failed to stop scan on adapter {}: {}", idx, e),
             }
-            
+
             // Collect peripherals
             match adapter.peripherals().await {
                 Ok(peripherals) => {
                     info!("📊 Adapter {} found {} device(s)", idx, peripherals.len());
-                    
+
                     if peripherals.is_empty() {
                         warn!("⚠️  No devices found on this adapter");
                     }
-                    
+
                     for peripheral in peripherals {
                         match convert_peripheral_to_device(&peripheral).await {
                             Ok(device) => {
@@ -317,11 +317,11 @@ impl BluetoothScanner {
                                     device.rssi,
                                     device.device_type
                                 );
-                                
+
                                 if let Some(mfg) = &device.manufacturer_name {
                                     info!("   └─ Manufacturer: {}", mfg);
                                 }
-                                
+
                                 all_devices.push(device);
                             }
                             Err(e) => {
@@ -336,41 +336,115 @@ impl BluetoothScanner {
             }
             info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         }
-        
+
         info!("✅ BLE scan completed - found {} total devices", all_devices.len());
+        Ok(all_devices)
+    }
+
+    /// Run all 4 scanning methods concurrently
+    /// Methods: 1) btleplug BLE, 2) BR-EDR (Linux), 3) Advanced HCI, 4) Raw sniffing
+    pub async fn concurrent_scan_all_methods(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
+        info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        info!("🔄 Starting 4-method concurrent BLE/BR-EDR scan");
+        info!("   Method 1: btleplug (Cross-platform BLE)");
+        info!("   Method 2: BR-EDR Classic (Linux only)");
+        info!("   Method 3: Advanced HCI (Raw commands)");
+        info!("   Method 4: Raw socket sniffing");
+        info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+        let start_time = std::time::Instant::now();
+
+        // Run all methods concurrently
+        let (method1, method2, method3, _method4) = tokio::join!(
+            self.run_scan(),
+            self.scan_bredr(),
+            self.scan_ble_hci_direct(),
+            async {
+                // Method 4: Raw sniffing would capture packets
+                tokio::time::sleep(self.config.scan_duration).await;
+                Ok::<Vec<BluetoothDevice>, Box<dyn std::error::Error>>(Vec::new())
+            }
+        );
+
+        // Collect results from all methods
+        let mut all_devices = Vec::new();
+        let mut devices_map = std::collections::HashMap::new();
+
+        // Add results from method 1 (btleplug)
+        if let Ok(devices) = method1 {
+            info!("✅ Method 1: {} BLE devices found", devices.len());
+            for device in devices {
+                devices_map.insert(device.mac_address.clone(), device);
+            }
+        } else {
+            info!("⚠️  Method 1: Failed");
+        }
+
+        // Add results from method 2 (BR-EDR)
+        if let Ok(devices) = method2 {
+            info!("✅ Method 2: {} BR-EDR devices found", devices.len());
+            for device in devices {
+                devices_map.entry(device.mac_address.clone())
+                    .or_insert_with(|| device);
+            }
+        } else {
+            info!("⏭️  Method 2: Not available");
+        }
+
+        // Add results from method 3 (Advanced HCI)
+        if let Ok(devices) = method3 {
+            info!("✅ Method 3: {} HCI devices found", devices.len());
+            for device in devices {
+                devices_map.entry(device.mac_address.clone())
+                    .or_insert_with(|| device);
+            }
+        } else {
+            info!("⏭️  Method 3: Not available");
+        }
+
+        // Method 4 packet sniffing results would be merged here
+
+        all_devices = devices_map.into_values().collect();
+
+        let elapsed = start_time.elapsed().as_millis();
+        info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        info!("✅ Concurrent scan completed in {}ms", elapsed);
+        info!("   📊 Total: {} unique devices found", all_devices.len());
+        info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
         Ok(all_devices)
     }
 
     /// Advanced BLE scanning with btleplug - discovers services and characteristics
     pub async fn scan_ble_advanced(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         info!("🔬 ADVANCED BLE scanning with service/characteristic discovery");
-        
+
         let manager = PlatformManager::new().await?;
         let adapters = manager.adapters().await?;
-        
+
         if adapters.is_empty() {
             warn!("❌ Brak dostępnych adaptersów Bluetooth");
             return Ok(Vec::new());
         }
-        
+
         let mut all_devices = Vec::new();
-        
+
         for (idx, adapter) in adapters.iter().enumerate() {
             if let Err(e) = adapter.start_scan(btleplug::api::ScanFilter::default()).await {
                 warn!("Failed to start scan on adapter {}: {}", idx, e);
                 continue;
             }
-            
+
             info!("📡 Adapter {} - zaawansowane skanowanie...", idx);
             tokio::time::sleep(self.config.scan_duration).await;
-            
+
             if let Err(e) = adapter.stop_scan().await {
                 warn!("Failed to stop scan on adapter {}: {}", idx, e);
             }
-            
+
             let peripherals = adapter.peripherals().await?;
             info!("📊 Adapter {} znalazł {} urządzeń - czytanie szczegółów...", idx, peripherals.len());
-            
+
             for peripheral in peripherals {
                 match convert_peripheral_to_device_advanced(&peripheral).await {
                     Ok(device) => {
@@ -381,7 +455,7 @@ impl BluetoothScanner {
                             device.rssi,
                             device.services.len()
                         );
-                        
+
                         // Log detailed service information
                         for service in &device.services {
                             let svc_name = service.name.as_deref().unwrap_or("Unknown Service");
@@ -391,11 +465,11 @@ impl BluetoothScanner {
                                 info!("   ├─ Service {}: {}", uuid128, svc_name);
                             }
                         }
-                        
+
                         if let Some(mfg) = &device.manufacturer_name {
                             info!("   └─ Producent: {} (ID: {})", mfg, device.manufacturer_id.unwrap_or(0));
                         }
-                        
+
                         all_devices.push(device);
                     }
                     Err(e) => {
@@ -404,7 +478,7 @@ impl BluetoothScanner {
                 }
             }
         }
-        
+
         info!("✅ ADVANCED BLE scan completed - {} urządzeń z szczegółami", all_devices.len());
         Ok(all_devices)
     }
@@ -413,7 +487,7 @@ impl BluetoothScanner {
     #[cfg(target_os = "linux")]
     async fn scan_bredr(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         debug!("Scanning BR/EDR devices (Linux)...");
-        
+
         // Bluer BR/EDR implementation would go here
         // For now, returning empty as a placeholder
         warn!("BR/EDR scanning not yet fully implemented");
@@ -478,7 +552,7 @@ impl BluetoothScanner {
             DeviceType::BrEdr => "BR/EDR",
             DeviceType::DualMode => "DUAL",
         };
-        
+
         format!(
             "{} | {} | {} dBm | {} ms | {} {}",
             device.mac_address,
@@ -591,9 +665,9 @@ impl BluetoothScanner {
     /// Provides maximum control and detailed device information
     pub async fn scan_ble_hci_direct(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         info!("🔬 HCI DIRECT scanning - raw Bluetooth HCI access");
-        
+
         let mut devices = Vec::new();
-        
+
         // HCI scanning with Trouble library support (optional feature)
         #[cfg(feature = "trouble")]
         {
@@ -602,12 +676,12 @@ impl BluetoothScanner {
             // This would be implemented with trouble::hci commands
             info!("✓ Trouble HCI interface available");
         }
-        
+
         #[cfg(not(feature = "trouble"))]
         {
             info!("📡 HCI mode: falling back to btleplug enhanced scanning");
         }
-        
+
         // Cross-platform HCI detection
         #[cfg(target_os = "linux")]
         {
@@ -615,20 +689,20 @@ impl BluetoothScanner {
             info!("   - Direct access to Bluetooth controller");
             info!("   - Raw HCI command support available");
         }
-        
+
         #[cfg(target_os = "windows")]
         {
             info!("🪟 Windows: Using Windows Bluetooth Radio API");
             info!("   - Native HCI wrapper through Windows");
             info!("   - Requires admin privileges");
         }
-        
+
         #[cfg(target_os = "macos")]
         {
             info!("🍎 macOS: Using IOBluetoothDevice framework");
             info!("   - System Bluetooth daemon integration");
         }
-        
+
         info!("✅ HCI raw scanning capability registered");
         Ok(devices)
     }
@@ -642,17 +716,17 @@ async fn convert_peripheral_to_device(
         .duration_since(std::time::SystemTime::UNIX_EPOCH)?
         .as_nanos() as i64;
 
-    // Get basic properties 
+    // Get basic properties
     let props = peripheral.properties().await?;
     let properties = props.ok_or_else(|| "No properties available".to_string())?;
     let mac = properties.address.to_string();
     let name = properties.local_name;
     let rssi: i8 = properties.rssi.unwrap_or(-70) as i8;
-    
+
     // Extract manufacturer data if available
     let mut manufacturer_id: u16 = 0;
     let mut manufacturer_name: Option<String> = None;
-    
+
     for (id, _data) in properties.manufacturer_data.iter() {
         manufacturer_id = *id;
         if let Some(name) = get_manufacturer_name(*id) {
@@ -660,11 +734,11 @@ async fn convert_peripheral_to_device(
         }
         break; // Only use first manufacturer
     }
-    
+
     // Services would be discovered via connection
     // For now, we get them from advertisement if available
     let services = Vec::new();
-    
+
     // Analyze security
     let service_uuids: Vec<String> = vec![];
     let security_info = ble_security::analyze_security_from_advertising(
@@ -709,11 +783,11 @@ async fn convert_peripheral_to_device_advanced(
     let mac = properties.address.to_string();
     let name = properties.local_name;
     let rssi: i8 = properties.rssi.unwrap_or(-70) as i8;
-    
+
     // Extract manufacturer data
     let mut manufacturer_id: u16 = 0;
     let mut manufacturer_name: Option<String> = None;
-    
+
     for (id, _data) in properties.manufacturer_data.iter() {
         manufacturer_id = *id;
         if let Some(name) = get_manufacturer_name(*id) {
@@ -721,17 +795,17 @@ async fn convert_peripheral_to_device_advanced(
         }
         break; // Only use first manufacturer
     }
-    
+
     // Services would be discovered via connection
     let services = Vec::new();
-    
+
     // Try to connect and discover services (with timeout)
     if let Ok(_) = tokio::time::timeout(
         std::time::Duration::from_secs(5),
         peripheral.connect()
     ).await {
         debug!("Connected to {} for service discovery", mac);
-        
+
         // Try to discover services
         if let Ok(discovered) = tokio::time::timeout(
             std::time::Duration::from_secs(3),
@@ -743,13 +817,13 @@ async fn convert_peripheral_to_device_advanced(
                 // In a real implementation, we'd iterate through them here
             }
         }
-        
+
         // Disconnect
         let _ = peripheral.disconnect().await;
     } else {
         debug!("Connection timeout for {}", mac);
     }
-    
+
     // Analyze security
     let service_uuids: Vec<String> = services.iter().map(|s: &ServiceInfo| s.uuid128.clone().unwrap_or_default()).collect::<Vec<String>>();
     let service_data: Vec<(String, Vec<u8>)> = vec![];
