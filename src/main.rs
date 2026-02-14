@@ -1,4 +1,6 @@
 mod adapter_info;
+mod hci_scanner;
+mod hci_packet_parser;
 mod advertising_parser;
 mod background;
 mod bluey_integration;

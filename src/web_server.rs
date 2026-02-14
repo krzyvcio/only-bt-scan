@@ -3,6 +3,7 @@ use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::Mutex;
+use crate::hci_scanner::{HciScanner, HciScannerConfig, HciScanResult};
 
 const MAX_RAW_PACKETS: usize = 500;
 const DEFAULT_PAGE_SIZE: usize = 50;
@@ -797,6 +798,24 @@ pub async fn get_l2cap_info(path: web::Path<String>) -> impl Responder {
     }
 }
 
+pub async fn get_hci_scan() -> impl Responder {
+    let mut scanner = HciScanner::default();
+    
+    // Simulate HCI events for demo
+    scanner.simulate_hci_event(0x05, &[0x00, 0x01, 0x02, 0x13]);
+    scanner.simulate_hci_event(0x3E, &[0x02, 0x01, 0x7F, 0x01, 0x01]);
+    
+    // Simulate L2CAP packets
+    let att_packet = vec![0x04, 0x00, 0x1F, 0x00, 0x01, 0x02, 0x03, 0x04];
+    let _ = scanner.simulate_l2cap_packet(&att_packet, Some("AA:BB:CC:DD:EE:FF".to_string()));
+    
+    let smp_packet = vec![0x06, 0x00, 0x23, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
+    let _ = scanner.simulate_l2cap_packet(&smp_packet, Some("AA:BB:CC:DD:EE:FF".to_string()));
+    
+    let result = scanner.get_results();
+    HttpResponse::Ok().json(result)
+}
+
 pub async fn index() -> impl Responder {
     let html = include_str!("../frontend/index.html");
     HttpResponse::Ok()
@@ -825,6 +844,7 @@ pub fn configure_services(cfg: &mut web::ServiceConfig) {
             .route("/devices/{mac}", web::get().to(get_device_detail))
             .route("/devices/{mac}/history", web::get().to(get_device_history))
             .route("/devices/{mac}/l2cap", web::get().to(get_l2cap_info))
+            .route("/hci-scan", web::get().to(get_hci_scan))
             .route("/raw-packets", web::get().to(get_raw_packets))
             .route("/raw-packets/latest", web::get().to(get_latest_raw_packets))
             .route("/raw-packets/all", web::get().to(get_all_raw_packets))
