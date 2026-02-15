@@ -1,7 +1,10 @@
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Result as SqliteResult};
+use std::fs;
+use std::path::Path;
 
 const DB_PATH: &str = "bluetooth_scan.db";
+const DB_BACKUP_PATH: &str = "bluetooth_scan.bak";
 
 #[derive(Debug, Clone)]
 pub struct ScannedDevice {
@@ -22,8 +25,60 @@ pub struct BleService {
     pub name: Option<String>,
 }
 
+/// Check if database is corrupted and can be opened
+fn is_database_valid(path: &str) -> bool {
+    match Connection::open(path) {
+        Ok(conn) => {
+            // Try to execute a simple query to verify database integrity
+            match conn.execute("SELECT 1", []) {
+                Ok(_) => true,
+                Err(_) => false,
+            }
+        }
+        Err(_) => false,
+    }
+}
+
+/// Backup corrupted database and create new one
+fn handle_corrupted_database() -> Result<(), String> {
+    if Path::new(DB_PATH).exists() {
+        // Backup corrupted database
+        match fs::rename(DB_PATH, DB_BACKUP_PATH) {
+            Ok(_) => {
+                log::warn!(
+                    "❌ Database was corrupted! Backed up to: {}",
+                    DB_BACKUP_PATH
+                );
+            }
+            Err(e) => {
+                return Err(format!("Failed to backup corrupted database: {}", e));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Check if backup file exists (database was corrupted and backed up)
+pub fn backup_exists() -> bool {
+    Path::new(DB_BACKUP_PATH).exists()
+}
+
+/// Get backup file path
+pub fn get_backup_path() -> &'static str {
+    DB_BACKUP_PATH
+}
+
 /// Initialize the database with required tables
 pub fn init_database() -> SqliteResult<()> {
+    // Check if existing database is valid
+    if Path::new(DB_PATH).exists() && !is_database_valid(DB_PATH) {
+        // Database is corrupted - handle it
+        if let Err(e) = handle_corrupted_database() {
+            log::error!("{}", e);
+            return Err(rusqlite::Error::InvalidParameterName(e));
+        }
+    }
+
     let conn = Connection::open(DB_PATH)?;
 
     // Create devices table
@@ -115,7 +170,7 @@ pub fn insert_or_update_device(device: &ScannedDevice) -> SqliteResult<i32> {
 
     // Try to update first (increment scan count)
     let updated = conn.execute(
-        "UPDATE devices 
+        "UPDATE devices
          SET rssi = ?1, last_seen = ?2, device_name = ?3, manufacturer_id = ?4, manufacturer_name = ?5, number_of_scan = number_of_scan + 1
          WHERE mac_address = ?6",
         params![
