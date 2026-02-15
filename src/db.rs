@@ -27,7 +27,9 @@ pub fn get_parsed_advertisement_with_timing(
     if let Ok(conn) = Connection::open(DB_PATH) {
         // Get last 2 frames for this device to calculate interval
         if let Ok(mut stmt) = conn.prepare(
-            "SELECT advertising_data, timestamp FROM ble_advertisement_frames
+            "SELECT advertising_data,
+                    COALESCE(timestamp_ms, CAST(strftime('%s', timestamp) AS INTEGER) * 1000)
+             FROM ble_advertisement_frames
              WHERE mac_address = ?
              ORDER BY timestamp DESC
              LIMIT 2"
@@ -36,7 +38,7 @@ pub fn get_parsed_advertisement_with_timing(
             if let Ok(rows) = stmt.query_map([mac_address], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    row.get::<_, i64>(1)?,  // timestamp in milliseconds
+                    row.get::<_, i64>(1)?,
                 ))
             }) {
                 for row in rows {
@@ -203,26 +205,9 @@ fn parse_flags(flags: u8) -> Option<String> {
     }
 }
 
-/// Get manufacturer name by ID
+/// Get manufacturer name by ID (uses dynamic company_ids module)
 fn get_manufacturer_name(mfg_id: u16) -> String {
-    match mfg_id {
-        0x004C => "Apple".to_string(),
-        0x0006 => "Microsoft".to_string(),
-        0x00E0 => "Google".to_string(),
-        0x00D0 => "Qualcomm".to_string(),
-        0x0075 => "Samsung".to_string(),
-        0x004F => "Cisco".to_string(),
-        0x0059 => "Nordic Semiconductor".to_string(),
-        0x0089 => "Intel".to_string(),
-        0x025E => "Broadcom".to_string(),
-        0x0197 => "Motorola".to_string(),
-        0x00A9 => "Eastman Kodak".to_string(),
-        0x018D => "MediaTek".to_string(),
-        0x0268 => "Huawei".to_string(),
-        0x014D => "Xiaomi".to_string(),
-        0x01D5 => "Amazon".to_string(),
-        _ => format!("0x{:04x}", mfg_id),
-    }
+    crate::company_ids::get_company_name(mfg_id)
 }
 
 /// Parse Device Class (0x005a420c format) to Service Classes and Device Type

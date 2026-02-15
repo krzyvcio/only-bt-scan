@@ -218,12 +218,27 @@
         </div>
     </div>
 
+    <!-- Packet Details Modal -->
+    <div class="modal" id="packet-details-modal">
+        <div class="modal-content modal-wide">
+            <div class="modal-header">
+                <h3>🔍 Szczegóły Pakietu BLE</h3>
+                <button class="modal-close" id="close-packet-modal">&times;</button>
+            </div>
+            <div class="modal-body" id="packet-modal-body">
+                Loading...
+            </div>
+        </div>
+    </div>
+
     <div class="toast-container" id="toast-container"></div>
 
     <!-- jQuery (required for DataTables) -->
     <script src="https://code.jquery.com/jquery-3.7.0.slim.min.js"></script>
     <!-- DataTables JS -->
     <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+    <!-- Moment.js with Polish locale -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment-with-locales.min.js"></script>
     
     <script src="/app.js"></script>
 </body>

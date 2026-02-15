@@ -231,8 +231,7 @@ impl BluetoothScanner {
 
             // Wait between cycles
             if cycle < self.config.num_cycles {
-                info!("Waiting {} seconds between cycles...", 5);
-                tokio::time::sleep(Duration::from_secs(5)).await;
+                info!("Aggressive mode: no wait between cycles");
             }
         }
 

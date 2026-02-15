@@ -28,18 +28,19 @@ mod adapter {
             }
         }
 
-        pub fn open(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        pub fn open(&mut self) -> Result<(), String> {
             info!("📡 Opening Windows HCI adapter: {}", self.adapter_id);
 
-            let available_ports = serialport::available_ports()?;
+            let available_ports = serialport::available_ports()
+                .map_err(|e| format!("Failed to list ports: {}", e))?;
             if available_ports.is_empty() {
-                return Err("No serial ports found.".into());
+                return Err("No serial ports found.".to_string());
             }
 
             for port_info in available_ports {
                 info!("Attempting to open port: {}", port_info.port_name);
                 match serialport::new(&port_info.port_name, 115200)
-                    .timeout(Duration::from_millis(10))
+                    .timeout(std::time::Duration::from_millis(10))
                     .open()
                 {
                     Ok(port) => {
@@ -55,10 +56,10 @@ mod adapter {
                 }
             }
 
-            Err("Could not open any serial port for HCI.".into())
+            Err("Could not open any serial port for HCI.".to_string())
         }
 
-        pub fn close(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        pub fn close(&mut self) -> Result<(), String> {
             info!("🔌 Closing HCI adapter");
             self.is_open = false;
             Ok(())
@@ -68,9 +69,9 @@ mod adapter {
             &mut self,
             opcode: u16,
             parameters: &[u8],
-        ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        ) -> Result<Vec<u8>, String> {
             if !self.is_open || self.port.is_none() {
-                return Err("HCI adapter not open".into());
+                return Err("HCI adapter not open".to_string());
             }
 
             debug!(
@@ -91,21 +92,23 @@ mod adapter {
             debug!("HCI command packet: {:02X?}", command);
 
             if let Some(port) = self.port.as_mut() {
-                port.write_all(&command)?;
+                port.write_all(&command)
+                    .map_err(|e| format!("Failed to write command: {}", e))?;
             }
 
             Ok(vec![])
         }
 
-        pub fn receive_hci_event(&mut self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        pub fn receive_hci_event(&mut self) -> Result<Vec<u8>, String> {
             if !self.is_open || self.port.is_none() {
-                return Err("HCI adapter not open".into());
+                return Err("HCI adapter not open".to_string());
             }
 
             let port = self.port.as_mut().unwrap();
 
             let mut header = [0u8; 2];
-            port.read_exact(&mut header)?;
+            port.read_exact(&mut header)
+                .map_err(|e| format!("Failed to read header: {}", e))?;
 
             let param_len = header[1] as usize;
 
@@ -114,7 +117,8 @@ mod adapter {
 
             if param_len > 0 {
                 let mut params = vec![0u8; param_len];
-                port.read_exact(&mut params)?;
+                port.read_exact(&mut params)
+                    .map_err(|e| format!("Failed to read params: {}", e))?;
                 event_packet.extend_from_slice(&params);
             }
 
@@ -123,7 +127,7 @@ mod adapter {
             Ok(event_packet)
         }
 
-        pub fn enable_le_advertising_scan(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        pub fn enable_le_advertising_scan(&mut self) -> Result<(), String> {
             info!("🔍 Enabling LE advertising data scan");
 
             let scan_type = 0x01;
@@ -156,7 +160,7 @@ mod adapter {
             }
         }
 
-        pub async fn start_scan(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        pub async fn start_scan(&mut self) -> Result<(), String> {
             self.adapter.open()?;
             self.adapter.enable_le_advertising_scan()?;
             info!("✅ Windows HCI scanning started");
@@ -166,7 +170,7 @@ mod adapter {
 
         pub async fn receive_advertisement(
             &mut self,
-        ) -> Result<Option<LeAdvertisingReport>, Box<dyn std::error::Error>> {
+        ) -> Result<Option<LeAdvertisingReport>, String> {
             loop {
                 let event_packet = self.adapter.receive_hci_event()?;
 
@@ -223,7 +227,7 @@ mod adapter {
             }
         }
 
-        pub async fn stop_scan(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        pub async fn stop_scan(&mut self) -> Result<(), String> {
             self.adapter.close()?;
             info!("✅ Windows HCI scanning stopped");
 

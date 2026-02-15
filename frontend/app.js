@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initApp() {
+    moment.locale('pl');
     setupEventListeners();
     loadData();
     startPolling();
@@ -87,6 +88,21 @@ function setupEventListeners() {
             document.getElementById('device-history-modal').classList.remove('active');
         });
     }
+
+    // Packet modal close
+    const closePacketModal = document.getElementById('close-packet-modal');
+    if (closePacketModal) {
+        closePacketModal.addEventListener('click', () => {
+            document.getElementById('packet-details-modal').classList.remove('active');
+        });
+    }
+
+    // Close modals on background click
+    window.addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal')) {
+            e.target.classList.remove('active');
+        }
+    });
 }
 
 function startPolling() {
@@ -94,11 +110,22 @@ function startPolling() {
     pollTimers.packets = setInterval(loadPackets, PACKET_POLL_INTERVAL);
     pollTimers.stats = setInterval(loadStats, POLL_INTERVAL);
     pollTimers.telemetry = setInterval(loadTelemetry, POLL_INTERVAL);
+    pollTimers.timestamps = setInterval(refreshTimestamps, 60000); // Refresh relative times every minute
 }
 
 function stopPolling() {
     Object.values(pollTimers).forEach(timer => clearInterval(timer));
     pollTimers = {};
+}
+
+function refreshTimestamps() {
+    // Re-render current data to update relative timestamps
+    if (devices.length > 0) {
+        renderDevices(devices);
+    }
+    if (packets.length > 0) {
+        renderPackets();
+    }
 }
 
 async function loadData() {
@@ -410,7 +437,7 @@ function renderPackets() {
     countEl.textContent = `${packets.length} packets`;
 
     const html = packets.map((packet, index) => `
-        <div class="packet-row ${index === 0 ? 'new' : ''}">
+        <div class="packet-row ${index === 0 ? 'new' : ''}" onclick="showPacketDetails(${index})" style="cursor: pointer;" title="Kliknij aby zobaczyć szczegóły">
             <span class="packet-time">${formatPacketTime(packet.timestamp)}</span>
             <span class="packet-mac">${packet.mac_address ? packet.mac_address.substring(0, 17) : '-'}</span>
             <span class="packet-rssi">${packet.rssi}</span>
@@ -505,20 +532,15 @@ function getSignalBars(rssi) {
 function formatTimestamp(timestamp) {
     if (!timestamp) return '-';
     try {
+        const m = moment(timestamp);
         const date = new Date(timestamp);
-        const now = new Date();
-        const diff = now - date;
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
         
-        if (diff < 60000) return 'Just now';
-        if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-        if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-        
-        return date.toLocaleDateString('pl-PL', { 
-            month: 'short', 
-            day: 'numeric',
-            hour: '2-digit', 
-            minute: '2-digit'
-        });
+        return `${day}.${month}.${year} ${hours}:${minutes} (${m.fromNow()})`;
     } catch {
         return '-';
     }
@@ -527,13 +549,16 @@ function formatTimestamp(timestamp) {
 function formatPacketTime(timestamp) {
     if (!timestamp) return '-';
     try {
+        const m = moment(timestamp);
         const date = new Date(timestamp);
-        return date.toLocaleTimeString('pl-PL', { 
-            hour: '2-digit', 
-            minute: '2-digit', 
-            second: '2-digit',
-            hour12: false
-        });
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        
+        return `${day}.${month}.${year} ${hours}:${minutes}:${seconds} (${m.fromNow()})`;
     } catch {
         return '-';
     }
@@ -653,4 +678,373 @@ async function showDeviceHistory(mac) {
         console.error('Error loading device history:', error);
         showToast('error', 'Failed to load device history');
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PACKET DETAILS MODAL & ADVERTISING DATA PARSER
+// ═══════════════════════════════════════════════════════════════════
+
+function showPacketDetails(index) {
+    if (!packets || !packets[index]) return;
+    
+    const packet = packets[index];
+    const modal = document.getElementById('packet-details-modal');
+    const modalBody = document.getElementById('packet-modal-body');
+    
+    const parsed = parseAdvertisingData(packet.advertising_data || '');
+    
+    modalBody.innerHTML = `
+        <div class="packet-detail-section">
+            <h4>📋 Informacje o pakiecie</h4>
+            <div class="packet-info-grid">
+                <div class="info-item">
+                    <span class="info-label">MAC Address:</span>
+                    <code class="info-value">${packet.mac_address}</code>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">RSSI:</span>
+                    <span class="info-value">${packet.rssi} dBm</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Timestamp:</span>
+                    <span class="info-value">${formatPacketTime(packet.timestamp)}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">PHY:</span>
+                    <span class="info-value">${packet.phy || '-'}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Channel:</span>
+                    <span class="info-value">${packet.channel || '-'}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Type:</span>
+                    <span class="info-value">${packet.frame_type || '-'}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="packet-detail-section">
+            <h4>🔍 Surowe dane (HEX)</h4>
+            <div class="hex-raw">
+                <code>${packet.advertising_data || 'Brak danych'}</code>
+            </div>
+        </div>
+
+        <div class="packet-detail-section">
+            <h4>🧩 Analiza bajt po bajcie</h4>
+            <div class="hex-breakdown">
+                ${parsed.structures.map(s => `
+                    <div class="ad-structure">
+                        <div class="ad-header">
+                            <span class="ad-type-badge" style="background-color: ${getAdTypeColor(s.type)};">
+                                0x${s.type.toString(16).padStart(2, '0').toUpperCase()}
+                            </span>
+                            <span class="ad-type-name">${s.typeName}</span>
+                            <span class="ad-length">Length: ${s.length} bytes</span>
+                        </div>
+                        <div class="ad-bytes">
+                            <span class="byte byte-length" title="Length">${s.lengthHex}</span>
+                            <span class="byte byte-type" title="Type (${s.typeName})">${s.typeHex}</span>
+                            ${s.dataBytes.map((b, i) => `
+                                <span class="byte byte-data" title="Data[${i}]: 0x${b}">${b}</span>
+                            `).join('')}
+                        </div>
+                        <div class="ad-description">
+                            ${s.description}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+
+        <div class="packet-detail-section">
+            <h4>📊 Zrozumiałe dane</h4>
+            <div class="parsed-data">
+                ${parsed.summary.length > 0 ? parsed.summary.map(item => `
+                    <div class="parsed-item">
+                        <span class="parsed-label">${item.label}:</span>
+                        <span class="parsed-value">${item.value}</span>
+                    </div>
+                `).join('') : '<p class="empty-msg">Brak sparsowanych danych</p>'}
+            </div>
+        </div>
+
+        <div class="packet-detail-section">
+            <h4>📖 Legenda typów AD</h4>
+            <div class="ad-legend">
+                <div class="legend-item">
+                    <span class="legend-badge" style="background-color: #FFD700;">0x01</span>
+                    <span>Flags</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-badge" style="background-color: #FF6B6B;">0xFF</span>
+                    <span>Manufacturer Data</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-badge" style="background-color: #4ECDC4;">0x09</span>
+                    <span>Complete Local Name</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-badge" style="background-color: #95E1D3;">0x08</span>
+                    <span>Shortened Local Name</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-badge" style="background-color: #A8E6CF;">0x0A</span>
+                    <span>TX Power Level</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-badge" style="background-color: #F38181;">0x16</span>
+                    <span>Service Data 16-bit</span>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    modal.classList.add('active');
+}
+
+function parseAdvertisingData(hexString) {
+    if (!hexString || hexString === '-') {
+        return { structures: [], summary: [] };
+    }
+
+    const result = {
+        structures: [],
+        summary: []
+    };
+
+    // Convert hex string to bytes
+    const bytes = [];
+    const cleaned = hexString.replace(/[^0-9A-Fa-f]/g, '');
+    for (let i = 0; i < cleaned.length; i += 2) {
+        if (i + 1 < cleaned.length) {
+            bytes.push(parseInt(cleaned.substr(i, 2), 16));
+        }
+    }
+
+    if (bytes.length === 0) return result;
+
+    // Parse AD structures
+    let pos = 0;
+    while (pos < bytes.length) {
+        const length = bytes[pos];
+        if (length === 0 || pos + length + 1 > bytes.length) break;
+
+        const type = bytes[pos + 1];
+        const dataStart = pos + 2;
+        const dataEnd = pos + 1 + length;
+        const data = bytes.slice(dataStart, dataEnd);
+
+        const structure = {
+            lengthHex: bytes[pos].toString(16).padStart(2, '0').toUpperCase(),
+            typeHex: type.toString(16).padStart(2, '0').toUpperCase(),
+            length: length,
+            type: type,
+            typeName: getAdTypeName(type),
+            dataBytes: data.map(b => b.toString(16).padStart(2, '0').toUpperCase()),
+            description: parseAdType(type, data, result.summary)
+        };
+
+        result.structures.push(structure);
+        pos += length + 1;
+    }
+
+    return result;
+}
+
+function getAdTypeName(type) {
+    const names = {
+        0x01: 'Flags',
+        0x02: 'Incomplete List of 16-bit Service UUIDs',
+        0x03: 'Complete List of 16-bit Service UUIDs',
+        0x04: 'Incomplete List of 32-bit Service UUIDs',
+        0x05: 'Complete List of 32-bit Service UUIDs',
+        0x06: 'Incomplete List of 128-bit Service UUIDs',
+        0x07: 'Complete List of 128-bit Service UUIDs',
+        0x08: 'Shortened Local Name',
+        0x09: 'Complete Local Name',
+        0x0A: 'TX Power Level',
+        0x14: 'List of 16-bit Service Solicitation UUIDs',
+        0x15: 'List of 128-bit Service Solicitation UUIDs',
+        0x16: 'Service Data - 16-bit UUID',
+        0x19: 'Appearance',
+        0x1A: 'Advertising Interval',
+        0x20: 'Service Data - 32-bit UUID',
+        0x21: 'Service Data - 128-bit UUID',
+        0xFF: 'Manufacturer Specific Data'
+    };
+    return names[type] || `Unknown Type (0x${type.toString(16).padStart(2, '0')})`;
+}
+
+function parseAdType(type, data, summary) {
+    let description = '';
+
+    switch (type) {
+        case 0x01: // Flags
+            if (data.length > 0) {
+                const flags = data[0];
+                const flagNames = [];
+                if (flags & 0x01) flagNames.push('LE Limited Discoverable');
+                if (flags & 0x02) flagNames.push('LE General Discoverable');
+                if (flags & 0x04) flagNames.push('BR/EDR Not Supported');
+                if (flags & 0x08) flagNames.push('Simultaneous LE + BR/EDR (Controller)');
+                if (flags & 0x10) flagNames.push('Simultaneous LE + BR/EDR (Host)');
+                description = flagNames.length > 0 ? flagNames.join(', ') : 'No flags set';
+                summary.push({ label: '🚩 Flags', value: description });
+            }
+            break;
+
+        case 0x08: // Shortened Local Name
+        case 0x09: // Complete Local Name
+            try {
+                const name = String.fromCharCode(...data);
+                description = `Device Name: "${name}"`;
+                summary.push({ label: '📛 Nazwa urządzenia', value: name });
+            } catch {
+                description = 'Invalid name data';
+            }
+            break;
+
+        case 0x0A: // TX Power Level
+            if (data.length > 0) {
+                const power = data[0] > 127 ? data[0] - 256 : data[0]; // signed byte
+                description = `TX Power: ${power} dBm`;
+                summary.push({ label: '📡 TX Power', value: `${power} dBm` });
+            }
+            break;
+
+        case 0xFF: // Manufacturer Specific Data
+            if (data.length >= 2) {
+                const companyId = data[0] | (data[1] << 8); // Little-endian
+                const companyName = getCompanyName(companyId);
+                const mfgData = data.slice(2).map(b => b.toString(16).padStart(2, '0')).join(' ').toUpperCase();
+                description = `Company: ${companyName} (0x${companyId.toString(16).padStart(4, '0')})<br/>Data: ${mfgData || 'None'}`;
+                summary.push({ label: '🏭 Producent', value: companyName });
+                
+                // Special parsing for known manufacturers
+                if (companyId === 0x004C && data.length >= 4) {
+                    // Apple iBeacon / AirTag etc
+                    const appleType = data[2];
+                    if (appleType === 0x02 && data.length >= 25) {
+                        description += '<br/>🍎 <strong>Apple iBeacon</strong>';
+                        summary.push({ label: '📱 Typ', value: 'Apple iBeacon' });
+                    } else if (appleType === 0x12) {
+                        description += '<br/>🍎 <strong>Find My (AirTag)</strong>';
+                        summary.push({ label: '📱 Typ', value: 'Apple Find My' });
+                    }
+                } else if (companyId === 0x0006) {
+                    description += '<br/>🪟 <strong>Microsoft Device</strong>';
+                }
+            }
+            break;
+
+        case 0x03: // Complete List of 16-bit Service UUIDs
+        case 0x02: // Incomplete List of 16-bit Service UUIDs
+            if (data.length >= 2) {
+                const uuids = [];
+                for (let i = 0; i < data.length; i += 2) {
+                    if (i + 1 < data.length) {
+                        const uuid = data[i] | (data[i + 1] << 8); // Little-endian
+                        uuids.push(`0x${uuid.toString(16).padStart(4, '0')}`);
+                    }
+                }
+                description = `Service UUIDs: ${uuids.join(', ')}`;
+                summary.push({ label: '🔌 Serwisy', value: uuids.join(', ') });
+            }
+            break;
+
+        case 0x16: // Service Data - 16-bit UUID
+            if (data.length >= 2) {
+                const serviceUuid = data[0] | (data[1] << 8);
+                const serviceData = data.slice(2).map(b => b.toString(16).padStart(2, '0')).join(' ').toUpperCase();
+                description = `Service UUID: 0x${serviceUuid.toString(16).padStart(4, '0')}<br/>Data: ${serviceData}`;
+                summary.push({ label: '🔌 Service Data', value: `UUID: 0x${serviceUuid.toString(16).padStart(4, '0')}` });
+            }
+            break;
+
+        case 0x19: // Appearance
+            if (data.length >= 2) {
+                const appearance = data[0] | (data[1] << 8);
+                const appearanceName = getAppearanceName(appearance);
+                description = `Appearance: ${appearanceName} (0x${appearance.toString(16).padStart(4, '0')})`;
+                summary.push({ label: '👀 Wygląd', value: appearanceName });
+            }
+            break;
+
+        default:
+            description = `Raw data: ${data.map(b => b.toString(16).padStart(2, '0')).join(' ').toUpperCase()}`;
+    }
+
+    return description;
+}
+
+function getAdTypeColor(type) {
+    const colors = {
+        0x01: '#FFD700', // Flags - Gold
+        0xFF: '#FF6B6B', // Manufacturer - Red
+        0x09: '#4ECDC4', // Complete Name - Cyan
+        0x08: '#95E1D3', // Shortened Name - Light cyan
+        0x0A: '#A8E6CF', // TX Power - Green
+        0x16: '#F38181', // Service Data - Pink
+        0x03: '#AA96DA', // Services - Purple
+        0x02: '#AA96DA', // Services - Purple
+        0x19: '#FCBAD3'  // Appearance - Light pink
+    };
+    return colors[type] || '#95A5A6'; // Default gray
+}
+
+function getCompanyName(companyId) {
+    const companies = {
+        0x004C: 'Apple, Inc.',
+        0x0006: 'Microsoft',
+        0x00E0: 'Google',
+        0x0075: 'Samsung Electronics Co. Ltd.',
+        0x0059: 'Nordic Semiconductor ASA',
+        0x0157: 'Samsung Electronics Co. Ltd.',
+        0x01D5: 'Amazon.com Services LLC',
+        0x038F: 'Shenzhen Jingxun Software',
+        0x0268: 'Huawei Technologies Co., Ltd.',
+        0x014D: 'Xiaomi Inc.',
+        0x0089: 'Intel Corp.',
+        0x025E: 'Broadcom',
+        0x01A9: 'Realtek Semiconductor Corp.'
+    };
+    return companies[companyId] || `Unknown (0x${companyId.toString(16).padStart(4, '0')})`;
+}
+
+function getAppearanceName(appearance) {
+    const appearances = {
+        0: 'Unknown',
+        64: 'Generic Phone',
+        128: 'Generic Computer',
+        192: 'Generic Watch',
+        193: 'Watch: Sports Watch',
+        256: 'Generic Clock',
+        320: 'Generic Display',
+        384: 'Generic Remote Control',
+        448: 'Generic Eye-glasses',
+        512: 'Generic Tag',
+        576: 'Generic Keyring',
+        640: 'Generic Media Player',
+        704: 'Generic Barcode Scanner',
+        768: 'Generic Thermometer',
+        832: 'Generic Heart rate Sensor',
+        833: 'Heart Rate Sensor: Heart Rate Belt',
+        896: 'Generic Blood Pressure',
+        960: 'Generic HID',
+        961: 'Keyboard',
+        962: 'Mouse',
+        963: 'Joystick',
+        964: 'Gamepad',
+        1024: 'Generic Glucose Meter',
+        1088: 'Generic Running Walking Sensor',
+        1152: 'Generic Cycling',
+        1216: 'Generic Pulse Oximeter',
+        1280: 'Generic Weight Scale',
+        1344: 'Generic Outdoor Sports Activity',
+        3136: 'Generic Light Fixtures',
+        3200: 'Generic Fan'
+    };
+    return appearances[appearance] || `Unknown (${appearance})`;
 }

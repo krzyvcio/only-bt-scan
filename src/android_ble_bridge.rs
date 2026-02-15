@@ -38,6 +38,8 @@ pub struct AndroidBleDevice {
     pub name: Option<String>,
     pub rssi: i8,
     pub tx_power: Option<i8>,
+    pub flags: Option<u8>,
+    pub appearance: Option<u16>,
     pub bonded: bool,
     pub device_type: String,
     pub advertised_services: Vec<String>,
@@ -117,6 +119,10 @@ impl AndroidBleScanner {
 
     pub fn get_devices(&self) -> Vec<AndroidBleDevice> {
         self.devices.values().cloned().collect()
+    }
+
+    pub fn scan_duration_ms(&self) -> u32 {
+        self.config.scan_duration_ms
     }
 
     pub fn connect_device(&mut self, address: &str) -> Result<(), String> {

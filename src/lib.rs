@@ -8,11 +8,14 @@ mod bluetooth_features;
 mod bluetooth_manager;
 mod bluetooth_scanner;
 mod bluey_integration;
+mod company_id_reference;
+mod company_ids;
 mod config_params;
 mod core_bluetooth_integration;
 mod data_flow_estimator;
 mod data_models;
 pub mod db;
+pub mod device_tracker;
 mod db_frames;
 mod device_events;
 mod event_analyzer;
@@ -24,8 +27,11 @@ mod html_report;
 mod interactive_ui;
 mod l2cap_analyzer;
 mod link_layer;
+mod logger;
 mod mac_address_handler;
+mod multi_method_scanner;
 mod native_scanner;
+mod packet_analyzer_terminal;
 mod packet_tracker;
 mod pcap_exporter;
 mod raw_packet_integration;
@@ -38,6 +44,7 @@ mod unified_scan;
 mod vendor_protocols;
 mod windows_bluetooth;
 pub mod windows_hci;
+mod windows_unified_ble;
 
 #[cfg(target_os = "windows")]
 mod tray_manager;
@@ -59,14 +66,8 @@ pub async fn run() -> Result<(), anyhow::Error> {
     // Load .env file
     dotenv().ok();
 
-    // Initialize file logger
-    // logger::init_logger is not available
-    log::info!("Application starting...");
-    log::info!("Starting Bluetooth Scanner application");
-
-    // Initialize logging
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    log::info!("Environment logger initialized");
+    // Initialize logging (only warnings and errors)
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
 
     // Draw initial static header
     if let Err(e) = ui_renderer::draw_static_header() {
@@ -141,6 +142,24 @@ pub async fn run() -> Result<(), anyhow::Error> {
     )?; // Temporary Y coordinate
     writeln!(stdout(), "✓ Raw frame storage initialized")?;
     drop(conn);
+
+    // Initialize company IDs (Bluetooth manufacturers)
+    company_ids::init_company_ids();
+    execute!(
+        stdout(),
+        MoveTo(0, ui_renderer::get_device_list_start_line() - 6)
+    )?;
+    if let Some((count, _)) = company_ids::get_cache_stats() {
+        writeln!(stdout(), "✓ Loaded {} Bluetooth manufacturers", count)?;
+    }
+
+    // Start background task to update company IDs if needed
+    tokio::spawn(async {
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        if let Err(e) = company_ids::check_and_update_cache().await {
+            log::warn!("Failed to update company IDs: {}", e);
+        }
+    });
 
     // ═══════════════════════════════════════════════════════════════
     // LOAD INITIAL TELEMETRY FROM DATABASE
@@ -621,6 +640,45 @@ pub async fn run() -> Result<(), anyhow::Error> {
                     log::info!("✅ Telemetry snapshot updated");
                 }
                 // ═══════════════════════════════════════════════════════════════
+                // EMIT NEW DEVICE ALERTS WITH PACKET ANALYSIS
+                // ═══════════════════════════════════════════════════════════════
+                {
+                    // Find which MACs are NEW (not in DB yet)
+                    let mut new_macs = Vec::new();
+                    for device in devices {
+                        match db::get_device(&device.mac_address) {
+                            Ok(Some(_)) => {}, // Device exists, skip
+                            Ok(None) => new_macs.push(device.mac_address.clone()),
+                            Err(e) => log::warn!("Could not check if MAC is new: {}", e),
+                        }
+                    }
+
+                    // For each packet from a new device, show analysis
+                    if !new_macs.is_empty() {
+                        writeln!(stdout())?;
+                        writeln!(stdout(), "{}", "═══════════════════════════════════════════════════════".bright_cyan())?;
+                        writeln!(stdout(), "{}", "🆕 NEW DEVICES DETECTED".bright_green().bold())?;
+                        writeln!(stdout(), "{}", "═══════════════════════════════════════════════════════".bright_cyan())?;
+                        
+                        for packet in &results.raw_packets {
+                            if new_macs.contains(&packet.mac_address) {
+                                // Show one analysis per MAC (first packet)
+                                if results.raw_packets.iter()
+                                    .filter(|p| p.mac_address == packet.mac_address)
+                                    .next()
+                                    .map(|p| p.packet_id == packet.packet_id)
+                                    .unwrap_or(false)
+                                {
+                                    let formatted = crate::packet_analyzer_terminal::format_packet_for_terminal(packet);
+                                    writeln!(stdout(), "{}", formatted)?;
+                                }
+                            }
+                        }
+                        writeln!(stdout(), "{}", "═══════════════════════════════════════════════════════".bright_cyan())?;
+                        writeln!(stdout())?;
+                    }
+                }
+                // ═══════════════════════════════════════════════════════════════
 
                 // Save devices to database
                 if let Err(e) = BluetoothScanner::new(config.clone())
@@ -662,27 +720,38 @@ pub async fn run() -> Result<(), anyhow::Error> {
                     )
                     .bright_white()
                 )?;
-                writeln!(stdout(), "{}", "┌─────┬───────────────────────┬──────────────┬───────────┬────────────────────────┐".blue())?;
-                writeln!(stdout(), "{}", "│ #   │ Name                  │ MAC          │ RSSI     │ Manufacturer           │".blue())?;
-                writeln!(stdout(), "{}", "├─────┼───────────────────────┼──────────────┼───────────┼────────────────────────┤".blue())?;
+                writeln!(stdout(), "{}", "┌─────┬──────────────────┬──────────────┬───────────┬──────────────┬──────────────┬───────┐".blue())?;
+                writeln!(stdout(), "{}", "│ #   │ Name             │ MAC          │ RSSI     │ First Seen   │ Last Seen    │ Resp.T│".blue())?;
+                writeln!(stdout(), "{}", "├─────┼──────────────────┼──────────────┼───────────┼──────────────┼──────────────┼───────┤".blue())?;
 
                 for (i, device) in devices.iter().take(15).enumerate() {
                     let name = device.name.as_deref().unwrap_or("Unknown");
-                    let mfg = device.manufacturer_name.as_deref().unwrap_or("-");
-                    let name_trunc = if name.len() > 19 { &name[..19] } else { name };
-                    let mfg_trunc = if mfg.len() > 20 { &mfg[..20] } else { mfg };
+                    let name_trunc = if name.len() > 16 { &name[..16] } else { name };
+                    
+                    // Convert nanosecond timestamps to DateTime for formatting
+                    let first_seen = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(device.first_detected_ns / 1_000_000)
+                        .unwrap_or_else(|| chrono::Utc::now());
+                    let last_seen = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(device.last_detected_ns / 1_000_000)
+                        .unwrap_or_else(|| chrono::Utc::now());
+                    
+                    let first_seen_str = first_seen.format("%H:%M:%S").to_string();
+                    let last_seen_str = last_seen.format("%H:%M:%S").to_string();
+                    let resp_time_ms = device.response_time_ms;
+                    
                     writeln!(
                         stdout(),
-                        "│ {:3} │ {:19} │ {:12} │ {:5} dBm │ {:20} │",
+                        "│ {:3} │ {:16} │ {:12} │ {:5} dBm │ {:<12} │ {:<12} │ {:5}ms │",
                         i + 1,
                         name_trunc,
                         device.mac_address,
                         device.rssi,
-                        mfg_trunc
+                        first_seen_str,
+                        last_seen_str,
+                        resp_time_ms
                     )?;
                 }
 
-                writeln!(stdout(), "{}", "└─────┴───────────────────────┴──────────────┴───────────┴────────────────────────┘".blue())?;
+                writeln!(stdout(), "{}", "└─────┴──────────────────┴──────────────┴───────────┴──────────────┴──────────────┴───────┘".blue())?;
 
                 if devices.len() > 15 {
                     writeln!(

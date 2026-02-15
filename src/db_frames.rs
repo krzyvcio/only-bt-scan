@@ -23,11 +23,26 @@ pub fn init_frame_storage(conn: &Connection) -> SqliteResult<()> {
             channel INTEGER NOT NULL,
             frame_type TEXT NOT NULL,
             timestamp DATETIME NOT NULL,
+            timestamp_ms INTEGER,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(device_id) REFERENCES devices(id)
         )",
         [],
     )?;
+
+    conn.execute(
+        "ALTER TABLE ble_advertisement_frames ADD COLUMN timestamp_ms INTEGER",
+        [],
+    )
+    .ok();
+
+    conn.execute(
+        "UPDATE ble_advertisement_frames
+         SET timestamp_ms = CAST(strftime('%s', timestamp) AS INTEGER) * 1000
+         WHERE timestamp_ms IS NULL OR timestamp_ms = 0",
+        [],
+    )
+    .ok();
 
     // Create index for fast queries
     conn.execute(
@@ -79,11 +94,12 @@ pub fn insert_frame(
     let phy_str = format!("{}", frame.phy);
     let frame_type_str = format!("{}", frame.frame_type);
     let advertising_data_hex = hex::encode(&frame.advertising_data);
+    let timestamp_ms = frame.timestamp.timestamp_millis();
 
     conn.execute(
         "INSERT INTO ble_advertisement_frames
-         (device_id, mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+         (device_id, mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp, timestamp_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params![
             device_id,
             &frame.mac_address,
@@ -93,6 +109,7 @@ pub fn insert_frame(
             frame.channel,
             frame_type_str,
             frame.timestamp,
+            timestamp_ms,
         ],
     )?;
 
@@ -107,14 +124,15 @@ pub fn insert_frames_batch(
 ) -> SqliteResult<()> {
     let mut stmt = conn.prepare(
         "INSERT INTO ble_advertisement_frames
-         (device_id, mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+         (device_id, mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp, timestamp_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )?;
 
     for frame in frames {
         let phy_str = format!("{}", frame.phy);
         let frame_type_str = format!("{}", frame.frame_type);
         let advertising_data_hex = hex::encode(&frame.advertising_data);
+        let timestamp_ms = frame.timestamp.timestamp_millis();
 
         stmt.execute(params![
             device_id,
@@ -125,6 +143,7 @@ pub fn insert_frames_batch(
             frame.channel,
             frame_type_str,
             frame.timestamp,
+            timestamp_ms,
         ])?;
     }
 

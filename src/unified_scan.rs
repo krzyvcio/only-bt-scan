@@ -52,19 +52,13 @@ impl UnifiedScanEngine {
 
     /// Run integrated scan operation
     pub async fn run_scan(&mut self) -> Result<ScanEngineResults, Box<dyn std::error::Error>> {
-        eprintln!("[DEBUG] run_scan() START");
         info!("🔄 Starting unified scan cycle");
 
         let start_time = std::time::Instant::now();
 
         // Phase 1: Run native platform scanner
         info!("📡 Phase 1: Native platform scanning");
-        eprintln!("[DEBUG] About to call run_native_scan()");
         let native_devices = self.native_scanner.run_native_scan().await?;
-        eprintln!(
-            "[DEBUG] run_native_scan() returned {} devices",
-            native_devices.len()
-        );
         info!(
             "✅ Phase 1 complete: {} devices found",
             native_devices.len()
@@ -72,13 +66,8 @@ impl UnifiedScanEngine {
 
         // Phase 2: Process devices through packet tracker
         info!("📊 Phase 2: Packet ordering and deduplication");
-        eprintln!(
-            "[DEBUG] About to call process_scan_results() with {} devices",
-            native_devices.len()
-        );
         self.tracker_system
             .process_scan_results(native_devices.clone());
-        eprintln!("[DEBUG] process_scan_results() completed");
 
         // Phase 3: Emit events for newly discovered devices
         info!("🎧 Phase 3: Device event emission");

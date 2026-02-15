@@ -1052,6 +1052,44 @@ pub async fn get_telemetry() -> impl Responder {
     }
 }
 
+/// Get company IDs cache statistics
+pub async fn get_company_ids_stats() -> impl Responder {
+    if let Some((count, last_updated)) = crate::company_ids::get_cache_stats() {
+        HttpResponse::Ok().json(serde_json::json!({
+            "count": count,
+            "last_updated": last_updated,
+            "cache_file": "company_ids_cache.json"
+        }))
+    } else {
+        HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": "Company IDs cache not available"
+        }))
+    }
+}
+
+/// Trigger manual update of company IDs from Bluetooth SIG
+pub async fn update_company_ids() -> impl Responder {
+    log::info!("📡 Manual company IDs update requested via API");
+    
+    match crate::company_ids::update_from_bluetooth_sig().await {
+        Ok(count) => {
+            log::info!("✅ Updated {} company IDs", count);
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "message": format!("Successfully updated {} company IDs from Bluetooth SIG", count),
+                "count": count
+            }))
+        },
+        Err(e) => {
+            log::error!("❌ Failed to update company IDs: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "success": false,
+                "error": format!("Failed to update: {}", e)
+            }))
+        }
+    }
+}
+
 pub fn configure_services(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api")
@@ -1067,7 +1105,9 @@ pub fn configure_services(cfg: &mut web::ServiceConfig) {
             .route("/raw-packets/all", web::get().to(get_all_raw_packets))
             .route("/scan-history", web::get().to(get_scan_history))
             .route("/telemetry", web::get().to(get_telemetry))
-            .route("/stats", web::get().to(get_stats)),
+            .route("/stats", web::get().to(get_stats))
+            .route("/company-ids/stats", web::get().to(get_company_ids_stats))
+            .route("/company-ids/update", web::post().to(update_company_ids)),
     )
     .route("/", web::get().to(index))
     .route("/styles.css", web::get().to(static_css))
