@@ -5,7 +5,6 @@ use log::{info, warn};
 /// Usage:
 /// - Left click tray icon: Restore/Minimize window
 /// - Right click context menu: Exit or other options
-
 #[cfg(target_os = "windows")]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

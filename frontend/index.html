@@ -200,6 +200,46 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <div class="rssi-telemetry-container">
+                        <h3>📶 RSSI Trend & Motion Detection</h3>
+                        <div class="rssi-telemetry-stats">
+                            <div class="stat-card">
+                                <span class="stat-label">Tracked Devices</span>
+                                <span class="stat-value" id="rssi-tracked-devices">0</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Approaching</span>
+                                <span class="stat-value" id="rssi-approaching" style="color: #4ade80;">0</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Leaving</span>
+                                <span class="stat-value" id="rssi-leaving" style="color: #f87171;">0</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Stable</span>
+                                <span class="stat-value" id="rssi-stable" style="color: #60a5fa;">0</span>
+                            </div>
+                        </div>
+                        <table class="telemetry-table">
+                            <thead>
+                                <tr>
+                                    <th>MAC</th>
+                                    <th>RSSI</th>
+                                    <th>Trend</th>
+                                    <th>Motion</th>
+                                    <th>Slope</th>
+                                    <th>Variance</th>
+                                    <th>Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rssi-telemetry-tbody">
+                                <tr>
+                                    <td colspan="7" class="loading-msg">Loading RSSI telemetry...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
         </main>
@@ -207,13 +247,50 @@
 
     <!-- Device History Modal -->
     <div class="modal" id="device-history-modal">
-        <div class="modal-content">
+        <div class="modal-content modal-wide">
             <div class="modal-header">
-                <h3>Device History</h3>
+                <h3 id="modal-device-name">Device History</h3>
                 <button class="modal-close" id="close-modal">&times;</button>
             </div>
-            <div class="modal-body" id="modal-body">
-                Loading...
+            <div class="modal-tabs">
+                <button class="modal-tab-btn active" onclick="switchTab('info-tab')">📋 Info</button>
+                <button class="modal-tab-btn" onclick="switchTab('rssi-tab')">📈 RSSI Trend</button>
+            </div>
+            <div class="modal-body">
+                <!-- Info Tab -->
+                <div id="info-tab" class="modal-tab-content active">
+                    <div id="modal-body">Loading...</div>
+                </div>
+                
+                <!-- RSSI Trend Tab -->
+                <div id="rssi-tab" class="modal-tab-content">
+                    <div class="rssi-container">
+                        <div id="rssi-chart" style="width: 100%; height: 400px; background: #0a0e27 url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><defs><pattern id=%22grid%22 width=%22100%22 height=%22100%22 patternUnits=%22userSpaceOnUse%22><path d=%22M 100 0 L 0 0 0 100%22 fill=%22none%22 stroke=%22%231a2332%22 stroke-width=%220.5%22/></pattern></defs><rect width=%22100%22 height=%22100%22 fill=%22%230a0e27%22/><rect width=%22100%22 height=%22100%22 fill=%22url(%23grid)%22/></svg>'); border-radius: 8px; position: relative; margin-bottom: 20px;">
+                            <div class="loading-spinner">
+                                <div class="spinner"></div>
+                                <span>Loading RSSI trend data...</span>
+                            </div>
+                        </div>
+                        <div class="rssi-stats" id="rssi-stats">
+                            <div class="stat-card">
+                                <span class="stat-label">Signal Strength (Avg)</span>
+                                <span class="stat-value" id="rssi-avg">-- dBm</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Trend</span>
+                                <span class="stat-value" id="rssi-trend">--</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Measurements</span>
+                                <span class="stat-value" id="rssi-count">0</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Quality Distribution</span>
+                                <div id="quality-bars" style="margin-top: 10px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

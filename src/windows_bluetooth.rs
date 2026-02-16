@@ -5,7 +5,6 @@
 /// - Device enumeration via registry/WMI
 /// - Device pairing/connection management
 /// - Basic RSSI monitoring
-
 #[cfg(target_os = "windows")]
 pub mod windows_bt {
     use crate::bluetooth_scanner::{BluetoothDevice, DeviceType, ServiceInfo};

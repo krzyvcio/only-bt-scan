@@ -3,10 +3,9 @@
 /// Similar to Wireshark Npcap - intercepts at HCI level
 use crate::data_models::RawPacketModel;
 use chrono::Utc;
-use log::{error, info, warn};
+use log::{info, warn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::SystemTime;
 use tokio::sync::mpsc;
 
 /// HCI packet types
@@ -123,11 +122,11 @@ impl HciRealTimeSniffer {
                 break;
             }
 
-            let event_type = data[pos];
-            let address_type = data[pos + 1];
+            let _event_type = data[pos];
+            let _address_type = data[pos + 1];
             let mac_address = Self::parse_mac(&data[pos + 2..pos + 8]);
             let data_length = data[pos + 8] as usize;
-            let rssi = data[pos + 9 + data_length] as i8;
+            let _rssi = data[pos + 9 + data_length] as i8;
 
             pos += 10;
 

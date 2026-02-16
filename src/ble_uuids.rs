@@ -3,7 +3,6 @@
 /// Sources:
 /// - https://github.com/NordicSemiconductor/bluetooth-numbers-database
 /// - https://www.bluetooth.com/specifications/assigned-numbers/
-
 /// Get the name of a 16-bit GATT Service UUID
 pub fn get_ble_service_name(uuid16: u16) -> Option<&'static str> {
     match uuid16 {

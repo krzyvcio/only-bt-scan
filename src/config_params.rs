@@ -1,11 +1,9 @@
 /// Configuration Parameters - Hardcoded values for signal analysis
 ///
 /// These parameters control RSSI filtering, temporal analysis, and packet deduplication
-
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// RSSI Configuration
 /// ═══════════════════════════════════════════════════════════════════════════════
-
 /// Minimum RSSI threshold (dBm) - packets below this are filtered out
 /// Range: -100 to -20 dBm (more negative = weaker signal)
 /// Default: -75 dBm (recommended for most Bluetooth scanning)
@@ -22,11 +20,9 @@ pub const RSSI_VARIANCE_LIMIT: f64 = 15.0;
 /// Signal loss detection: if device not seen for N milliseconds
 /// (Only relevant for multi-packet monitoring)
 pub const SIGNAL_LOSS_TIMEOUT_MS: u64 = 5000; // 5 seconds
-
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// Temporal/Timestamp Configuration
 /// ═══════════════════════════════════════════════════════════════════════════════
-
 /// Packet deduplication window in milliseconds
 /// If 2+ packets from same device arrive within this window,
 /// keep only the strongest signal (highest RSSI)
@@ -39,11 +35,9 @@ pub const MIN_PACKET_INTERVAL_MS: u64 = 50;
 /// Timestamp resolution preference
 /// Some analyzers may need microsecond precision
 pub const TIMESTAMP_PRECISION_MS: bool = true; // Use milliseconds, not microseconds
-
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// Filter Helpers
 /// ═══════════════════════════════════════════════════════════════════════════════
-
 /// Check if RSSI value passes the minimum threshold
 #[inline]
 pub fn should_accept_rssi(rssi: i8) -> bool {
@@ -72,11 +66,9 @@ pub fn rssi_to_signal_quality(rssi: i8) -> u8 {
 pub fn is_signal_stable(variance: f64) -> bool {
     variance < RSSI_VARIANCE_LIMIT
 }
-
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// Time Analysis Helpers
 /// ═══════════════════════════════════════════════════════════════════════════════
-
 /// Check if two timestamps are within deduplication window
 pub fn is_duplicate_packet(timestamp_ms_1: u64, timestamp_ms_2: u64) -> bool {
     let diff = if timestamp_ms_1 > timestamp_ms_2 {

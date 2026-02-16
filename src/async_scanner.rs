@@ -7,14 +7,13 @@
 //! - Non-blocking design
 
 use chrono::Utc;
-use log::{error, info, warn};
+use log::{info, warn};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{broadcast, mpsc, watch};
-use tokio::time;
+use tokio::sync::{mpsc, watch};
 
-use crate::adapter_manager::{Adapter, AdapterSelection};
+use crate::adapter_manager::AdapterSelection;
 
 /// Maximum channel capacity - controls memory usage
 const DEFAULT_CHANNEL_CAPACITY: usize = 10000;

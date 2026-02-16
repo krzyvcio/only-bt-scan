@@ -5,8 +5,140 @@
 /// - Event patterns and correlations
 /// - Device behavior over time
 /// - Anomalies and signal degradation
+///
+/// # How it works:
+/// 1. Events are collected from ScannerWithTracking during BLE scanning
+/// 2. Each packet received creates a TimelineEvent with RSSI, timestamp, MAC
+/// 3. analyze_device_behavior() splits events into thirds and compares avg RSSI
+///    - If last third RSSI > first third + 5dBm → Improving (device approaching)
+///    - If last third RSSI < first third - 5dBm → Degrading (device moving away)
+///    - Otherwise → Stable
+/// 4. detect_anomalies() finds gaps > 2.5x avg interval and RSSI drops > 20dBm
+/// 5. find_correlations() finds devices with events within 100ms of each other
 use crate::telemetry::{EventType, TimelineEvent};
 use serde::{Deserialize, Serialize};
+
+/// Global singleton storing all timeline events from BLE scanning
+/// Uses LazyLock + Mutex for thread-safe access across async tasks
+static EVENT_ANALYZER: std::sync::LazyLock<std::sync::Mutex<EventAnalyzerState>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(EventAnalyzerState::new()));
+
+/// Internal state holding collected events with size limit (10k events max)
+pub struct EventAnalyzerState {
+    events: Vec<TimelineEvent>,
+    max_events: usize,
+}
+
+impl EventAnalyzerState {
+    pub fn new() -> Self {
+        Self {
+            events: Vec::new(),
+            max_events: 10000,
+        }
+    }
+
+    /// Adds new events to the timeline, removes oldest if over limit
+    pub fn add_events(&mut self, new_events: Vec<TimelineEvent>) {
+        self.events.extend(new_events);
+        if self.events.len() > self.max_events {
+            let excess = self.events.len() - self.max_events;
+            self.events.drain(0..excess);
+        }
+    }
+
+    pub fn get_events(&self) -> &[TimelineEvent] {
+        &self.events
+    }
+
+    pub fn clear(&mut self) {
+        self.events.clear();
+    }
+
+    /// Analyzes behavior for specific device MAC
+    pub fn analyze_device(&self, mac: &str) -> Option<DeviceBehavior> {
+        let analyzer = EventAnalyzer::new(self.events.clone());
+        analyzer.analyze_device_pattern(mac)
+    }
+
+    /// Detects anomalies for specific device
+    pub fn detect_device_anomalies(&self, mac: &str) -> Vec<EventAnomaly> {
+        let analyzer = EventAnalyzer::new(self.events.clone());
+        analyzer.detect_anomalies(mac)
+    }
+
+    /// Finds temporal correlations between ALL devices
+    pub fn find_all_correlations(&self) -> Vec<TemporalCorrelation> {
+        let analyzer = EventAnalyzer::new(self.events.clone());
+        analyzer.find_correlations()
+    }
+}
+
+/// Adds new timeline events to the global analyzer
+/// Called from ScannerWithTracking when packets are accepted
+/// # Arguments
+/// * `events` - Vector of TimelineEvent (usually 1 event per accepted packet)
+pub fn add_timeline_events(events: Vec<TimelineEvent>) {
+    if let Ok(mut state) = EVENT_ANALYZER.lock() {
+        state.add_events(events);
+    }
+}
+
+/// Analyzes device behavior pattern including RSSI trend
+/// # Returns
+/// Some(DeviceBehavior) with:
+/// - `rssi_trend`: Improving/Degrading/Stable/Volatile
+/// - `pattern_type`: Regular/Bursty/Random
+/// - `stability_score`: 0-100 based on RSSI variance
+/// # Algorithm
+/// Splits device events into 3 time windows, compares average RSSI:
+/// - Improving: last window avg > first window avg + 5 dBm
+/// - Degrading: last window avg < first window avg - 5 dBm
+/// - Stable: difference within ±5 dBm
+/// - Volatile: variance > 15.0
+pub fn analyze_device_behavior(mac: &str) -> Option<DeviceBehavior> {
+    EVENT_ANALYZER
+        .lock()
+        .ok()
+        .and_then(|s| s.analyze_device(mac))
+}
+
+/// Detects anomalies in device event stream:
+/// 1. Gap in transmission: interval > 2.5x average interval
+/// 2. RSSI dropout: sudden signal drop > 20 dBm
+/// # Returns
+/// Vector of EventAnomaly with timestamp, type, severity (0-1), description
+pub fn detect_anomalies(mac: &str) -> Vec<EventAnomaly> {
+    EVENT_ANALYZER
+        .lock()
+        .ok()
+        .map(|s| s.detect_device_anomalies(mac))
+        .unwrap_or_default()
+}
+
+/// Finds pairs of devices with correlated event timing
+/// # Algorithm
+/// For each device pair, counts events within 100ms of each other
+/// Returns correlation strength: None/Weak/Moderate/Strong/VeryStrong
+/// Useful for finding devices that are used together or near each other
+pub fn find_correlations() -> Vec<TemporalCorrelation> {
+    EVENT_ANALYZER
+        .lock()
+        .ok()
+        .map(|s| s.find_all_correlations())
+        .unwrap_or_default()
+}
+
+/// Returns total number of events in the timeline
+pub fn get_event_count() -> usize {
+    EVENT_ANALYZER.lock().map(|s| s.events.len()).unwrap_or(0)
+}
+
+/// Clears all events from the analyzer (useful for starting fresh scan)
+pub fn clear_events() {
+    if let Ok(mut state) = EVENT_ANALYZER.lock() {
+        state.clear();
+    }
+}
 
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// EVENT PATTERNS
@@ -99,7 +231,6 @@ pub enum AnomalyType {
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// EVENT ANALYZER
 /// ═══════════════════════════════════════════════════════════════════════════════
-
 pub struct EventAnalyzer {
     events: Vec<TimelineEvent>,
 }

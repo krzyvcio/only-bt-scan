@@ -1182,6 +1182,353 @@ pub async fn get_telemetry() -> impl Responder {
     }
 }
 
+#[derive(Serialize)]
+pub struct RssiTelemetryResponse {
+    pub timestamp: String,
+    pub devices: Vec<RssiDeviceTelemetry>,
+}
+
+#[derive(Serialize)]
+pub struct RssiDeviceTelemetry {
+    pub mac: String,
+    pub rssi: f64,
+    pub trend: String,
+    pub motion: String,
+    pub slope: f64,
+    pub variance: f64,
+    pub sample_count: usize,
+    pub confidence: f64,
+}
+
+fn calculate_confidence(state: &crate::rssi_analyzer::DeviceState) -> f64 {
+    let sample_factor = (state.sample_count as f64 / 20.0).min(1.0);
+    let variance_factor = 1.0 - (state.variance / 20.0).min(1.0) * 0.5 ;
+    (sample_factor * variance_factor).max(0.0)
+}
+
+pub async fn get_rssi_telemetry() -> impl Responder {
+    let manager = crate::get_rssi_manager();
+    let states = manager.get_all_states();
+    
+    let devices: Vec<RssiDeviceTelemetry> = states
+        .into_iter()
+        .map(|(mac, state)| {
+            let confidence = calculate_confidence(&state);
+            RssiDeviceTelemetry {
+                mac,
+                rssi: state.rssi,
+                trend: state.trend.to_string(),
+                motion: state.motion.to_string(),
+                slope: state.slope,
+                variance: state.variance,
+                sample_count: state.sample_count,
+                confidence,
+            }
+        })
+        .collect();
+    
+    HttpResponse::Ok().json(RssiTelemetryResponse {
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        devices,
+    })
+}
+
+pub async fn get_device_rssi_telemetry(path: web::Path<String>) -> impl Responder {
+    let raw_mac = path.into_inner();
+    let mac = match validate_mac_address(&raw_mac) {
+        Ok(m) => m,
+        Err(e) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": e
+            }));
+        }
+    };
+    
+    let manager = crate::get_rssi_manager();
+    match manager.get_device_state(&mac) {
+        Some(state) => {
+            let confidence = calculate_confidence(&state);
+            HttpResponse::Ok().json(RssiDeviceTelemetry {
+                mac: mac.clone(),
+                rssi: state.rssi,
+                trend: state.trend.to_string(),
+                motion: state.motion.to_string(),
+                slope: state.slope,
+                variance: state.variance,
+                sample_count: state.sample_count,
+                confidence,
+            })
+        }
+        None => HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Device not found in telemetry"
+        })),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct TrendParams {
+    pub hours: Option<u32>,
+}
+
+#[derive(Deserialize)]
+pub struct RawRssiParams {
+    pub limit: Option<u32>,
+}
+
+/// Get RSSI trend for a specific device
+/// Query params: ?hours=5 (default 24 hours)
+pub async fn get_device_rssi_trend(
+    path: web::Path<String>,
+    query: web::Query<TrendParams>,
+) -> impl Responder {
+    let raw_mac = path.into_inner();
+    let mac = match validate_mac_address(&raw_mac) {
+        Ok(m) => m,
+        Err(e) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": e
+            }))
+        }
+    };
+
+    let hours = query.hours.unwrap_or(24);
+
+    match crate::db::get_device_rssi_trend_pooled(&mac, hours) {
+        Ok(trend_points) => {
+            if trend_points.is_empty() {
+                return HttpResponse::NotFound().json(serde_json::json!({
+                    "error": "No telemetry data found for this device",
+                    "device_mac": mac,
+                    "hours": hours
+                }));
+            }
+
+            let first_seen = trend_points.first().map(|p| p.timestamp);
+            let last_seen = trend_points.last().map(|p| p.timestamp);
+            let min_rssi = trend_points
+                .iter()
+                .map(|p| p.avg_rssi as i32)
+                .min()
+                .unwrap_or(0);
+            let max_rssi = trend_points
+                .iter()
+                .map(|p| p.avg_rssi as i32)
+                .max()
+                .unwrap_or(0);
+            let avg_rssi = trend_points.iter().map(|p| p.avg_rssi).sum::<f64>()
+                / trend_points.len() as f64;
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "device_mac": mac,
+                "period_hours": hours,
+                "data_points": trend_points.len(),
+                "first_detected": first_seen,
+                "last_detected": last_seen,
+                "rssi_stats": {
+                    "min": min_rssi,
+                    "max": max_rssi,
+                    "avg": format!("{:.2}", avg_rssi)
+                },
+                "trend": trend_points
+            }))
+        }
+        Err(e) => {
+            log::error!("Failed to get RSSI trend: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to retrieve trend data",
+                "details": e.to_string()
+            }))
+        }
+    }
+}
+
+/// Get raw RSSI measurements from advertisement frames (last 100 by default)
+/// Query params: ?limit=100 (default)
+/// Returns actual signal strength readings with trend analysis
+pub async fn get_raw_rssi(
+    path: web::Path<String>,
+    query: web::Query<RawRssiParams>,
+) -> impl Responder {
+    let raw_mac = path.into_inner();
+    let mac = match validate_mac_address(&raw_mac) {
+        Ok(m) => m,
+        Err(e) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": e
+            }))
+        }
+    };
+
+    let limit = query.limit.unwrap_or(100).min(500); // Cap at 500 measurements
+
+    match crate::db::get_raw_rssi_measurements_pooled(&mac, limit) {
+        Ok(measurements) => {
+            if measurements.is_empty() {
+                return HttpResponse::NotFound().json(serde_json::json!({
+                    "error": "No raw RSSI measurements found for this device",
+                    "device_mac": mac,
+                    "limit": limit
+                }));
+            }
+
+            // Calculate trend: first vs last measurement
+            let first_rssi = measurements.first().map(|m| m.rssi).unwrap_or(0);
+            let last_rssi = measurements.last().map(|m| m.rssi).unwrap_or(0);
+            let rssi_delta = last_rssi - first_rssi;
+            let trend = if rssi_delta > 5 {
+                "getting_closer" // RSSI increasing (less negative = closer)
+            } else if rssi_delta < -5 {
+                "getting_farther" // RSSI decreasing (more negative = farther)
+            } else {
+                "stable"
+            };
+
+            // Calculate statistics
+            let rssi_values: Vec<i32> = measurements.iter().map(|m| m.rssi).collect();
+            let min_rssi = rssi_values.iter().min().copied().unwrap_or(0);
+            let max_rssi = rssi_values.iter().max().copied().unwrap_or(0);
+            let avg_rssi = rssi_values.iter().sum::<i32>() as f64 / rssi_values.len() as f64;
+
+            // Calculate signal quality distribution
+            let excellent = measurements.iter().filter(|m| m.rssi >= -50).count();
+            let good = measurements.iter().filter(|m| m.rssi >= -60 && m.rssi < -50).count();
+            let fair = measurements.iter().filter(|m| m.rssi >= -70 && m.rssi < -60).count();
+            let poor = measurements.iter().filter(|m| m.rssi >= -85 && m.rssi < -70).count();
+            let very_poor = measurements.iter().filter(|m| m.rssi < -85).count();
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "device_mac": mac,
+                "measurements_count": measurements.len(),
+                "time_range": {
+                    "first": measurements.first().map(|m| m.timestamp),
+                    "last": measurements.last().map(|m| m.timestamp)
+                },
+                "rssi_stats": {
+                    "min": min_rssi,
+                    "max": max_rssi,
+                    "avg": format!("{:.2}", avg_rssi)
+                },
+                "trend": {
+                    "direction": trend,
+                    "delta_dbm": rssi_delta,
+                    "description": match trend {
+                        "getting_closer" => "Device is getting closer (signal strengthening)",
+                        "getting_farther" => "Device is moving away (signal weakening)",
+                        _ => "Device distance is stable"
+                    }
+                },
+                "signal_quality_distribution": {
+                    "excellent": excellent,
+                    "good": good,
+                    "fair": fair,
+                    "poor": poor,
+                    "very_poor": very_poor
+                },
+                "measurements": measurements
+            }))
+        }
+        Err(e) => {
+            log::error!("Failed to get raw RSSI measurements: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to retrieve raw RSSI data",
+                "details": e.to_string()
+            }))
+        }
+    }
+}
+
+/// Get real-time RSSI trend for a specific device (trend, motion, slope, variance)
+pub async fn get_device_trend_state(
+    path: web::Path<String>,
+) -> impl Responder {
+    let raw_mac = path.into_inner();
+    let mac = match validate_mac_address(&raw_mac) {
+        Ok(m) => m,
+        Err(e) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": e
+            }))
+        }
+    };
+
+    match crate::rssi_trend_manager::GLOBAL_RSSI_MANAGER.get_device_state(&mac) {
+        Some(state) => {
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "device_mac": mac,
+                "trend": state.trend.to_string(),
+                "motion": state.motion.to_string(),
+                "rssi": state.rssi,
+                "slope_dbm_per_sec": format!("{:.4}", state.slope),
+                "variance": format!("{:.2}", state.variance),
+                "sample_count": state.sample_count,
+                "metrics": {
+                    "approaching": state.trend.to_string() == "approaching",
+                    "leaving": state.trend.to_string() == "leaving",
+                    "stable": state.trend.to_string() == "stable",
+                    "moving": state.motion.to_string() == "moving",
+                    "still": state.motion.to_string() == "still"
+                }
+            }))
+        }
+        None => {
+            HttpResponse::NotFound().json(serde_json::json!({
+                "error": "No trend data available for this device yet",
+                "device_mac": mac
+            }))
+        }
+    }
+}
+
+/// Get RSSI trend state for ALL devices
+pub async fn get_all_device_trends() -> impl Responder {
+    let snapshot = crate::rssi_trend_manager::GLOBAL_RSSI_MANAGER.get_snapshot();
+
+    // Group by trend
+    let approaching: Vec<_> = snapshot.devices.iter()
+        .filter(|d| d.trend == "approaching")
+        .collect();
+    let leaving: Vec<_> = snapshot.devices.iter()
+        .filter(|d| d.trend == "leaving")
+        .collect();
+    let stable: Vec<_> = snapshot.devices.iter()
+        .filter(|d| d.trend == "stable")
+        .collect();
+
+    // Group by motion
+    let moving: Vec<_> = snapshot.devices.iter()
+        .filter(|d| d.motion == "moving")
+        .collect();
+    let still: Vec<_> = snapshot.devices.iter()
+        .filter(|d| d.motion == "still")
+        .collect();
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "success": true,
+        "timestamp": snapshot.timestamp,
+        "total_devices": snapshot.devices.len(),
+        "summary": {
+            "approaching": approaching.len(),
+            "leaving": leaving.len(),
+            "stable": stable.len(),
+            "moving": moving.len(),
+            "still": still.len()
+        },
+        "by_trend": {
+            "approaching": approaching,
+            "leaving": leaving,
+            "stable": stable
+        },
+        "by_motion": {
+            "moving": moving,
+            "still": still
+        },
+        "all_devices": snapshot.devices
+    }))
+}
+
 /// Get company IDs cache statistics
 pub async fn get_company_ids_stats() -> impl Responder {
     if let Some((count, last_updated)) = crate::company_ids::get_cache_stats() {
@@ -1199,8 +1546,6 @@ pub async fn get_company_ids_stats() -> impl Responder {
 
 /// Trigger manual update of company IDs from Bluetooth SIG
 pub async fn update_company_ids() -> impl Responder {
-    log::info!("📡 Manual company IDs update requested via API");
-
     match crate::company_ids::update_from_bluetooth_sig().await {
         Ok(count) => {
             log::info!("✅ Updated {} company IDs", count);
@@ -1220,13 +1565,102 @@ pub async fn update_company_ids() -> impl Responder {
     }
 }
 
+pub async fn get_device_behavior(path: web::Path<String>) -> impl Responder {
+    let raw_mac = path.into_inner();
+    let mac = match validate_mac_address(&raw_mac) {
+        Ok(m) => m,
+        Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+    };
+
+    match crate::event_analyzer::analyze_device_behavior(&mac) {
+        Some(behavior) => HttpResponse::Ok().json(behavior),
+        None => HttpResponse::NotFound().json(serde_json::json!({
+            "error": "No behavior data found for device",
+            "mac": mac
+        })),
+    }
+}
+
+pub async fn get_device_anomalies(path: web::Path<String>) -> impl Responder {
+    let raw_mac = path.into_inner();
+    let mac = match validate_mac_address(&raw_mac) {
+        Ok(m) => m,
+        Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+    };
+
+    let anomalies = crate::event_analyzer::detect_anomalies(&mac);
+    HttpResponse::Ok().json(serde_json::json!({
+        "mac": mac,
+        "count": anomalies.len(),
+        "anomalies": anomalies
+    }))
+}
+
+pub async fn get_temporal_correlations() -> impl Responder {
+    let correlations = crate::event_analyzer::find_correlations();
+    HttpResponse::Ok().json(serde_json::json!({
+        "count": correlations.len(),
+        "correlations": correlations
+    }))
+}
+
+pub async fn get_event_analyzer_stats() -> impl Responder {
+    let event_count = crate::event_analyzer::get_event_count();
+    HttpResponse::Ok().json(serde_json::json!({
+        "event_count": event_count,
+    }))
+}
+
+pub async fn clear_event_analyzer() -> impl Responder {
+    crate::event_analyzer::clear_events();
+    crate::data_flow_estimator::clear_estimates();
+    HttpResponse::Ok().json(serde_json::json!({
+        "message": "Event analyzer and data flow estimator cleared"
+    }))
+}
+
+pub async fn get_device_data_flow(path: web::Path<String>) -> impl Responder {
+    let raw_mac = path.into_inner();
+    let mac = match validate_mac_address(&raw_mac) {
+        Ok(m) => m,
+        Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+    };
+
+    match crate::data_flow_estimator::analyze_device(&mac) {
+        Some(flow) => HttpResponse::Ok().json(flow),
+        None => HttpResponse::NotFound().json(serde_json::json!({
+            "error": "No flow data found for device",
+            "mac": mac
+        })),
+    }
+}
+
+pub async fn get_all_data_flows() -> impl Responder {
+    let flows = crate::data_flow_estimator::analyze_all_devices();
+    HttpResponse::Ok().json(serde_json::json!({
+        "count": flows.len(),
+        "devices": flows
+    }))
+}
+
+pub async fn get_data_flow_stats() -> impl Responder {
+    let device_count = crate::data_flow_estimator::get_device_count();
+    HttpResponse::Ok().json(serde_json::json!({
+        "tracked_devices": device_count,
+    }))
+}
+
 pub fn configure_services(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api")
             .route("/devices", web::get().to(get_devices))
             .route("/devices/{mac}", web::get().to(get_device_detail))
             .route("/devices/{mac}/history", web::get().to(get_device_history))
+            .route("/devices/{mac}/trend", web::get().to(get_device_rssi_trend))
+            .route("/devices/{mac}/trend-state", web::get().to(get_device_trend_state))
+            .route("/devices/{mac}/rssi-raw", web::get().to(get_raw_rssi))
             .route("/devices/{mac}/l2cap", web::get().to(get_l2cap_info))
+            .route("/trends/all", web::get().to(get_all_device_trends))
             .route("/mac/{mac}", web::get().to(get_mac_info))
             .route("/hci-scan", web::get().to(get_hci_scan))
             .route("/export-pcap", web::get().to(export_pcap))
@@ -1235,9 +1669,19 @@ pub fn configure_services(cfg: &mut web::ServiceConfig) {
             .route("/raw-packets/all", web::get().to(get_all_raw_packets))
             .route("/scan-history", web::get().to(get_scan_history))
             .route("/telemetry", web::get().to(get_telemetry))
+            .route("/rssi-telemetry", web::get().to(get_rssi_telemetry))
+            .route("/devices/{mac}/rssi-telemetry", web::get().to(get_device_rssi_telemetry))
             .route("/stats", web::get().to(get_stats))
             .route("/company-ids/stats", web::get().to(get_company_ids_stats))
-            .route("/company-ids/update", web::post().to(update_company_ids)),
+            .route("/company-ids/update", web::post().to(update_company_ids))
+            .route("/devices/{mac}/behavior", web::get().to(get_device_behavior))
+            .route("/devices/{mac}/anomalies", web::get().to(get_device_anomalies))
+            .route("/temporal-correlations", web::get().to(get_temporal_correlations))
+            .route("/event-analyzer-stats", web::get().to(get_event_analyzer_stats))
+            .route("/event-analyzer-clear", web::post().to(clear_event_analyzer))
+            .route("/devices/{mac}/data-flow", web::get().to(get_device_data_flow))
+            .route("/data-flows", web::get().to(get_all_data_flows))
+            .route("/data-flow-stats", web::get().to(get_data_flow_stats)),
     )
     .route("/", web::get().to(index))
     .route("/styles.css", web::get().to(static_css))

@@ -1,6 +1,7 @@
 /// Complete BLE Advertising Data Parser
 /// Parses all 43 AD Types and extracts complete information from advertising packets
 /// Supports: Legacy Advertising, Extended Advertising (BT 5.0+), Scan Response Data
+#[allow(dead_code)]
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

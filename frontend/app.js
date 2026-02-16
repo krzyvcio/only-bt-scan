@@ -192,9 +192,63 @@ async function loadTelemetry() {
         
         const telemetry = await response.json();
         updateTelemetry(telemetry);
+        
+        await loadRssiTelemetry();
     } catch (error) {
         console.error('Error loading telemetry:', error);
     }
+}
+
+async function loadRssiTelemetry() {
+    try {
+        const response = await fetch(`${API_BASE}/rssi-telemetry`);
+        if (!response.ok) throw new Error('Failed to fetch RSSI telemetry');
+        
+        const rssiData = await response.json();
+        updateRssiTelemetry(rssiData);
+    } catch (error) {
+        console.error('Error loading RSSI telemetry:', error);
+    }
+}
+
+function updateRssiTelemetry(data) {
+    const tbody = document.getElementById('rssi-telemetry-tbody');
+    if (!tbody) return;
+    
+    const devices = data.devices || [];
+    
+    document.getElementById('rssi-tracked-devices').textContent = devices.length;
+    
+    const approaching = devices.filter(d => d.trend === 'approaching').length;
+    const leaving = devices.filter(d => d.trend === 'leaving').length;
+    const stable = devices.filter(d => d.trend === 'stable').length;
+    
+    document.getElementById('rssi-approaching').textContent = approaching;
+    document.getElementById('rssi-leaving').textContent = leaving;
+    document.getElementById('rssi-stable').textContent = stable;
+    
+    if (devices.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="loading-msg">No RSSI data yet...</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = devices.map(d => {
+        const trendClass = d.trend === 'approaching' ? 'trend-approaching' : 
+                          d.trend === 'leaving' ? 'trend-leaving' : 'trend-stable';
+        const motionClass = d.motion === 'still' ? 'motion-still' : 'motion-moving';
+        
+        return `
+            <tr>
+                <td style="font-family: var(--font-mono); font-size: 0.8rem;">${d.mac}</td>
+                <td style="text-align: center;">${d.rssi.toFixed(1)} dBm</td>
+                <td style="text-align: center;"><span class="trend-badge ${trendClass}">${d.trend}</span></td>
+                <td style="text-align: center;"><span class="motion-badge ${motionClass}">${d.motion}</span></td>
+                <td style="text-align: center;">${d.slope.toFixed(3)}</td>
+                <td style="text-align: center;">${d.variance.toFixed(2)}</td>
+                <td style="text-align: center;">${(d.confidence * 100).toFixed(0)}%</td>
+            </tr>
+        `;
+    }).join('');
 }
 
 function updateTelemetry(telemetry) {
@@ -350,7 +404,14 @@ function renderDevices(deviceList) {
         return;
     }
 
-    tbody.innerHTML = deviceList.map(device => {
+    // Sort by last_seen descending (most recent first)
+    const sortedDevices = [...deviceList].sort((a, b) => {
+        const aTime = a.last_seen || 0;
+        const bTime = b.last_seen || 0;
+        return bTime - aTime;
+    });
+
+    tbody.innerHTML = sortedDevices.map(device => {
         const signalClass = getSignalClass(device.rssi);
         const rssiClass = getRssiClass(device.rssi);
         const firstSeen = device.first_seen ? formatTimestamp(device.first_seen) : '-';
@@ -388,10 +449,10 @@ function renderDevices(deviceList) {
                     <span class="detection-count">${device.number_of_scan || 1}</span>
                 </td>
                 <td>
-                    <span class="first-seen" title="${firstSeen}">${firstSeen}</span>
+                    <span class="timestamp" title="${firstSeen}">${firstSeen}</span>
                 </td>
                 <td>
-                    <span class="last-seen" title="${lastSeen}">${lastSeen}</span>
+                    <span class="timestamp" title="${lastSeen}">${lastSeen}</span>
                 </td>
                 <td>
                     <button class="history-btn" onclick="showDeviceHistory('${device.mac_address}')">Wyświetl</button>
@@ -616,10 +677,23 @@ async function showDeviceHistory(mac) {
         
         const modal = document.getElementById('device-history-modal');
         const modalBody = document.getElementById('modal-body');
+        const modalDeviceName = document.getElementById('modal-device-name');
+        
+        // Add data-device-mac attribute for RSSI trend loading
+        modal.setAttribute('data-device-mac', mac);
         
         const device = data.device;
         const scanHistory = data.scan_history || [];
         const packets = data.packet_history || [];
+        
+        // Update modal title
+        modalDeviceName.textContent = `${device.device_name || 'Device'} (${mac})`;
+        
+        // Reset tab to info
+        document.querySelectorAll('.modal-tab-content').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.modal-tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById('info-tab').classList.add('active');
+        document.querySelector('.modal-tab-btn').classList.add('active');
         
         modalBody.innerHTML = `
             <div class="modal-section">
@@ -1047,4 +1121,242 @@ function getAppearanceName(appearance) {
         3200: 'Generic Fan'
     };
     return appearances[appearance] || `Unknown (${appearance})`;
+}
+
+/* ==================== RSSI TREND TRACKING ==================== */
+
+function switchTab(tabName) {
+    // Hide all tabs
+    document.querySelectorAll('.modal-tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    document.querySelectorAll('.modal-tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Show selected tab
+    const selectedTab = document.getElementById(tabName);
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+    }
+    
+    // Mark button as active
+    event.target?.classList.add('active');
+    
+    // Load RSSI data if switching to rssi-tab
+    if (tabName === 'rssi-tab' && !selectedTab.dataset.loaded) {
+        const deviceMacs = document.querySelectorAll('[data-device-mac]');
+        if (deviceMacs.length > 0) {
+            const mac = deviceMacs[0].getAttribute('data-device-mac');
+            loadRssiTrend(mac);
+            selectedTab.dataset.loaded = 'true';
+        }
+    }
+}
+
+function loadRssiTrend(deviceMac) {
+    const chartContainer = document.getElementById('rssi-chart');
+    if (!chartContainer) return;
+    
+    // Show loading
+    chartContainer.innerHTML = `
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <span>Loading RSSI trend data...</span>
+        </div>
+    `;
+    
+    fetch(`/api/devices/${encodeURIComponent(deviceMac)}/rssi-raw?limit=100`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success && data.measurements && data.measurements.length > 0) {
+                // Draw the trend chart
+                drawRssiChart(data.measurements, chartContainer);
+                
+                // Update stats
+                const avgRssi = parseFloat(data.rssi_stats.avg).toFixed(1);
+                document.getElementById('rssi-avg').textContent = `${avgRssi} dBm`;
+                document.getElementById('rssi-count').textContent = data.measurements_count;
+                
+                // Update trend indicator
+                const trendDesc = data.trend.description;
+                const trendDir = data.trend.direction;
+                let trendEmoji = '➡️';
+                if (trendDir === 'getting_closer') {
+                    trendEmoji = '📶 Zbliża się';
+                } else if (trendDir === 'getting_farther') {
+                    trendEmoji = '📉 Oddala się';
+                } else {
+                    trendEmoji = '➡️ Stabilne';
+                }
+                document.getElementById('rssi-trend').textContent = trendEmoji;
+                
+                // Draw quality distribution bars
+                drawQualityBars(data.signal_quality_distribution);
+            } else {
+                chartContainer.innerHTML = `
+                    <div class="empty-msg" style="display: flex; align-items: center; justify-content: center; height: 100%;">
+                        <span>No RSSI measurements available yet</span>
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading RSSI trend:', error);
+            chartContainer.innerHTML = `
+                <div class="empty-msg" style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--accent-red);">
+                    <span>Error: ${error.message}</span>
+                </div>
+            `;
+        });
+}
+
+function drawRssiChart(measurements, container) {
+    if (!measurements || measurements.length === 0) {
+        container.innerHTML = '<div class="empty-msg">No data</div>';
+        return;
+    }
+    
+    const width = container.clientWidth;
+    const height = 400;
+    const padding = 40;
+    const chartWidth = width - padding * 2;
+    const chartHeight = height - padding * 2;
+    
+    // Find min/max RSSI
+    const rssiValues = measurements.map(m => m.rssi);
+    const minRssi = Math.min(...rssiValues);
+    const maxRssi = Math.max(...rssiValues);
+    const rssiRange = maxRssi - minRssi || 10;
+    
+    // Create SVG
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.style.cssText = 'display: block;';
+    
+    // Draw grid lines
+    for (let i = 0; i <= 5; i++) {
+        const y = padding + (chartHeight / 5) * i;
+        const rssiLevel = maxRssi - (rssiRange / 5) * i;
+        
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', padding);
+        line.setAttribute('y1', y);
+        line.setAttribute('x2', width - padding);
+        line.setAttribute('y2', y);
+        line.setAttribute('stroke', '#1a2332');
+        line.setAttribute('stroke-width', '0.5');
+        svg.appendChild(line);
+        
+        // Add y-axis label
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', padding - 10);
+        label.setAttribute('y', y + 4);
+        label.setAttribute('text-anchor', 'end');
+        label.setAttribute('font-size', '12');
+        label.setAttribute('fill', '#8b949e');
+        label.textContent = `${Math.round(rssiLevel)}`;
+        svg.appendChild(label);
+    }
+    
+    // Draw data points and line
+    let pathD = '';
+    measurements.forEach((m, idx) => {
+        const x = padding + (chartWidth / (measurements.length - 1 || 1)) * idx;
+        const normalizedRssi = (m.rssi - minRssi) / rssiRange;
+        const y = padding + chartHeight - (normalizedRssi * chartHeight);
+        
+        if (idx === 0) {
+            pathD += `M ${x} ${y}`;
+        } else {
+            pathD += ` L ${x} ${y}`;
+        }
+    });
+    
+    // Draw line
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', pathD);
+    path.setAttribute('stroke', '#58a6ff');
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path);
+    
+    // Draw points
+    measurements.forEach((m, idx) => {
+        const x = padding + (chartWidth / (measurements.length - 1 || 1)) * idx;
+        const normalizedRssi = (m.rssi - minRssi) / rssiRange;
+        const y = padding + chartHeight - (normalizedRssi * chartHeight);
+        
+        const color = m.signal_quality === 'excellent' ? '#3fb950' :
+                     m.signal_quality === 'good' ? '#58a6ff' :
+                     m.signal_quality === 'fair' ? '#d29922' :
+                     m.signal_quality === 'poor' ? '#f85149' : '#d62828';
+        
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', x);
+        circle.setAttribute('cy', y);
+        circle.setAttribute('r', '4');
+        circle.setAttribute('fill', color);
+        circle.setAttribute('stroke', '#0a0e27');
+        circle.setAttribute('stroke-width', '2');
+        circle.style.cursor = 'pointer';
+        
+        const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        title.textContent = `${m.rssi} dBm (${m.signal_quality}) @ ${new Date(m.timestamp).toLocaleTimeString()}`;
+        circle.appendChild(title);
+        
+        svg.appendChild(circle);
+    });
+    
+    // Draw axes
+    const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    xAxis.setAttribute('x1', padding);
+    xAxis.setAttribute('y1', padding + chartHeight);
+    xAxis.setAttribute('x2', width - padding);
+    xAxis.setAttribute('y2', padding + chartHeight);
+    xAxis.setAttribute('stroke', '#3a4a5e');
+    xAxis.setAttribute('stroke-width', '1');
+    svg.appendChild(xAxis);
+    
+    const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    yAxis.setAttribute('x1', padding);
+    yAxis.setAttribute('y1', padding);
+    yAxis.setAttribute('x2', padding);
+    yAxis.setAttribute('y2', padding + chartHeight);
+    yAxis.setAttribute('stroke', '#3a4a5e');
+    yAxis.setAttribute('stroke-width', '1');
+    svg.appendChild(yAxis);
+    
+    // Clear and add SVG
+    container.innerHTML = '';
+    container.appendChild(svg);
+}
+
+function drawQualityBars(distribution) {
+    const container = document.getElementById('quality-bars');
+    if (!container) return;
+    
+    const total = Object.values(distribution).reduce((a, b) => a + b, 0) || 1;
+    const qualities = ['excellent', 'good', 'fair', 'poor', 'very_poor'];
+    const labels = ['Excellent', 'Good', 'Fair', 'Poor', 'Very Poor'];
+    
+    container.innerHTML = qualities.map((q, i) => {
+        const count = distribution[q] || 0;
+        const percent = ((count / total) * 100).toFixed(0);
+        return `
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                <div class="quality-bar ${q}" style="height: ${Math.max(5, percent)}%; width: 100%;"></div>
+                <span style="font-size: 0.7rem; color: var(--text-secondary);">${count}</span>
+            </div>
+        `;
+    }).join('');
 }

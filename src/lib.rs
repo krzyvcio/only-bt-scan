@@ -1,3 +1,8 @@
+//! # only-bt-scan - Bluetooth LE/Bluetooth Scanner Application
+//! 
+//! Główna biblioteka aplikacji skanującej urządzenia Bluetooth.
+//! Obsługuje skanowanie BLE, zapis do bazy danych, Web API i powiadomienia Telegram.
+
 mod adapter_info;
 pub mod adapter_manager;  // NEW: Adapter management with best selection
 mod advertising_parser;
@@ -21,6 +26,8 @@ pub mod db;
 mod db_frames;
 pub mod db_pool; // NEW: Database connection pool
 mod device_events;
+pub mod rssi_analyzer; // NEW: RSSI trend analysis for single device
+pub mod rssi_trend_manager; // NEW: Global RSSI manager for all devices
 pub mod device_tracker;
 mod event_analyzer;
 mod gatt_client;
@@ -66,8 +73,19 @@ use unified_scan::UnifiedScanEngine;
 mod ui_renderer;
 mod web_server;
 
-/// Backup database to *.bak file before startup
-/// Creates: bluetooth_scan.db.bak
+use std::sync::{Arc, OnceLock};
+use crate::rssi_trend_manager::GlobalRssiManager;
+
+/// Globalny menedżer RSSI dla śledzenia trendów siły sygnału wszystkich urządzeń
+static RSSI_MANAGER: OnceLock<Arc<GlobalRssiManager>> = OnceLock::new();
+
+/// Zwraca globalną instancję menedżera RSSI (singleton)
+pub fn get_rssi_manager() -> Arc<GlobalRssiManager> {
+    RSSI_MANAGER.get_or_init(|| GlobalRssiManager::default()).clone()
+}
+
+/// Tworzy kopię zapasową bazy danych przed uruchomieniem aplikacji
+/// Kopia zapisywana jest jako bluetooth_scan.db.bak
 fn backup_database() {
     const DB_PATH: &str = "bluetooth_scan.db";
     const DB_BAK: &str = "bluetooth_scan.db.bak";
@@ -90,8 +108,8 @@ fn backup_database() {
     }
 }
 
-/// Restore database from *.bak backup
-/// Returns true if restore was successful
+/// Przywraca bazę danych z kopii zapasowej .bak
+/// Zwraca true jeśli przywrócenie się powiodło
 pub fn restore_database() -> bool {
     const DB_PATH: &str = "bluetooth_scan.db";
     const DB_BAK: &str = "bluetooth_scan.db.bak";
@@ -125,7 +143,8 @@ pub fn restore_database() -> bool {
     }
 }
 
-/// Format timestamp for display - shows full date with time if not today, otherwise just time
+/// Formatuje znacznik czasu do wyświetlenia w interfejsie
+/// Jeśli data to dzisiaj - pokazuje tylko godzinę, w przeciwnym razie pełną datę
 fn format_timestamp(dt: &chrono::DateTime<chrono::Utc>) -> String {
     let now = chrono::Utc::now();
     let today = now.date_naive();
@@ -140,6 +159,8 @@ fn format_timestamp(dt: &chrono::DateTime<chrono::Utc>) -> String {
     }
 }
 
+/// Główna funkcja uruchamiająca aplikację skanera Bluetooth
+/// Inicjalizuje: logger, bazę danych, HCI capture, Web server, Telegram notifications
 pub async fn run() -> Result<(), anyhow::Error> {
     // Load .env file
     dotenv().ok();
@@ -381,16 +402,39 @@ pub async fn run() -> Result<(), anyhow::Error> {
         }
 
         // Send startup notification
+        eprintln!("[TELEGRAM] Sending startup notification...");
         if let Err(e) =
             telegram_notifier::send_startup_notification(&adapter.address, &adapter.name).await
         {
-            log::warn!("Failed to send startup notification: {}", e);
+            eprintln!("[TELEGRAM] Startup notification failed: {}", e);
+        } else {
+            eprintln!("[TELEGRAM] Startup notification sent!");
         }
 
+        // Send initial device report after 5 seconds
+        eprintln!("[TELEGRAM] Scheduling initial device report in 5 seconds...");
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            eprintln!("[TELEGRAM] Sending initial device report now...");
+            if let Err(e) = telegram_notifier::send_initial_device_report().await {
+                eprintln!("[TELEGRAM] Error: {}", e);
+            } else {
+                eprintln!("[TELEGRAM] Initial device report sent!");
+            }
+        });
+
+        // Spawn periodic report task
+        tokio::spawn(async move {
+            if let Err(e) = telegram_notifier::run_periodic_report_task().await {
+                log::warn!("[Telegram] Periodic task error: {}", e);
+            }
+        });
+
         // Spawn periodic Telegram report task
+        log::info!("[Telegram] Spawning periodic report task");
         tokio::spawn(async {
             if let Err(e) = telegram_notifier::run_periodic_report_task().await {
-                log::warn!("Telegram periodic task failed: {}", e);
+                log::warn!("[Telegram] Periodic task failed: {}", e);
             }
         });
 
@@ -401,7 +445,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
         writeln!(
             stdout(),
             "{}",
-            "✅ Telegram periodic reports enabled (every 5 minutes)".bright_green()
+            "✅ Telegram enabled | Co 5 min: raport + HTML".bright_green()
         )?;
     } else {
         execute!(
@@ -664,6 +708,10 @@ pub async fn run() -> Result<(), anyhow::Error> {
         match unified_engine.run_scan().await {
             Ok(results) => {
                 let devices = &results.devices;
+                let raw_packets = &results.raw_packets;
+
+                // Debug output to stdout
+                println!("[DEBUG] Scan complete: {} devices, {} raw packets", devices.len(), raw_packets.len());
 
                 log::info!(
                     "📝 Scan complete: {} devices, {} raw packets",
@@ -969,9 +1017,9 @@ pub async fn run() -> Result<(), anyhow::Error> {
 // TELEMETRY PERSISTENCE HELPERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Save current telemetry snapshot to database (called every 5 minutes)
+/// Zapisuje bieżącą migawkę telemetrii do bazy danych (wywoływane co 5 minut)
 async fn save_telemetry_snapshot() -> anyhow::Result<()> {
-    use chrono::Utc;
+    
 
     // Get current telemetry from global singleton
     if let Some(snapshot) = telemetry::get_global_telemetry() {

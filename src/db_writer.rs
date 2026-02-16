@@ -7,11 +7,11 @@
 //! - Memory limits and graceful degradation
 //! - Transaction support for consistency
 
-use log::{debug, error, info, warn};
-use rusqlite::{params, Connection, OptionalExtension};
+use log::{debug, error, info};
+use rusqlite::{params, Connection};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::mpsc;
 use tokio::time;
 
 use crate::async_scanner::Packet;
@@ -98,7 +98,7 @@ impl DbWriter {
     /// Create new DB writer (call spawn() to start)
     pub fn new(config: DbWriterConfig, db_path: &str) -> (Self, mpsc::Sender<Packet>, mpsc::Sender<DbWriterCommand>) {
         let (packet_tx, packet_rx) = mpsc::channel(config.queue_capacity);
-        let (control_tx, control_rx) = mpsc::channel(10);
+        let (control_tx, _control_rx) = mpsc::channel(10);
 
         let writer = Self {
             config: config.clone(),

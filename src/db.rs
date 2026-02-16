@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Result as SqliteResult};
+use serde::{Deserialize, Serialize};
 
 const DB_PATH: &str = "bluetooth_scan.db";
 
@@ -390,8 +391,44 @@ pub struct ScannedDevice {
     pub pairing_method: Option<String>,
     pub is_authenticated: bool,
     pub device_class: Option<String>,
-    pub service_classes: Option<String>, // "LE Audio, Networking, ..."
-    pub device_type: Option<String>,     // "Phone/Smart", "Laptop", "Speaker", ...
+    pub service_classes: Option<String>,
+    pub device_type: Option<String>,
+    pub ad_flags: Option<String>,
+    pub ad_local_name: Option<String>,
+    pub ad_tx_power: Option<i8>,
+    pub ad_appearance: Option<String>,
+    pub ad_service_uuids: Option<String>,
+    pub ad_manufacturer_data: Option<String>,
+    pub ad_service_data: Option<String>,
+}
+
+impl Default for ScannedDevice {
+    fn default() -> Self {
+        Self {
+            mac_address: String::new(),
+            name: None,
+            rssi: -100,
+            first_seen: Utc::now(),
+            last_seen: Utc::now(),
+            manufacturer_id: None,
+            manufacturer_name: None,
+            mac_type: None,
+            is_rpa: false,
+            security_level: None,
+            pairing_method: None,
+            is_authenticated: false,
+            device_class: None,
+            service_classes: None,
+            device_type: None,
+            ad_flags: None,
+            ad_local_name: None,
+            ad_tx_power: None,
+            ad_appearance: None,
+            ad_service_uuids: None,
+            ad_manufacturer_data: None,
+            ad_service_data: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -463,6 +500,25 @@ pub fn init_database() -> SqliteResult<()> {
         .ok();
 
     conn.execute("ALTER TABLE devices ADD COLUMN device_type TEXT", [])
+        .ok();
+
+    // Add advertising data columns
+    conn.execute("ALTER TABLE devices ADD COLUMN ad_flags TEXT", [])
+        .ok();
+    conn.execute("ALTER TABLE devices ADD COLUMN ad_local_name TEXT", [])
+        .ok();
+    conn.execute("ALTER TABLE devices ADD COLUMN ad_tx_power INTEGER", [])
+        .ok();
+    conn.execute("ALTER TABLE devices ADD COLUMN ad_appearance TEXT", [])
+        .ok();
+    conn.execute("ALTER TABLE devices ADD COLUMN ad_service_uuids TEXT", [])
+        .ok();
+    conn.execute(
+        "ALTER TABLE devices ADD COLUMN ad_manufacturer_data TEXT",
+        [],
+    )
+    .ok();
+    conn.execute("ALTER TABLE devices ADD COLUMN ad_service_data TEXT", [])
         .ok();
 
     // Create BLE services table
@@ -604,6 +660,17 @@ pub fn insert_or_update_device(device: &ScannedDevice) -> SqliteResult<i32> {
             }
         }
 
+        // 📊 Update global RSSI trend analyzer
+        if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::rssi_trend_manager::GLOBAL_RSSI_MANAGER.update_rssi(
+                &device.mac_address,
+                device.rssi,
+                now,
+            );
+        })) {
+            log::warn!("Failed to update RSSI trend: {:?}", e);
+        }
+
         return Ok(device_id);
     }
 
@@ -628,6 +695,18 @@ pub fn insert_or_update_device(device: &ScannedDevice) -> SqliteResult<i32> {
     )?;
 
     let device_id = conn.last_insert_rowid() as i32;
+
+    // 📊 Update global RSSI trend analyzer
+    if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::rssi_trend_manager::GLOBAL_RSSI_MANAGER.update_rssi(
+            &device.mac_address,
+            device.rssi,
+            now,
+        );
+    })) {
+        log::warn!("Failed to update RSSI trend: {:?}", e);
+    }
+
     Ok(device_id)
 }
 
@@ -718,6 +797,7 @@ pub fn get_all_devices() -> SqliteResult<Vec<ScannedDevice>> {
             device_class: row.get(8).ok(),
             service_classes: None,
             device_type: None,
+            ..Default::default()
         })
     })?;
 
@@ -751,6 +831,7 @@ pub fn get_device(mac_address: &str) -> SqliteResult<Option<ScannedDevice>> {
                 device_class: row.get(8).ok(),
                 service_classes: None,
                 device_type: None,
+                ..Default::default()
             })
         })
         .optional()?;
@@ -808,6 +889,7 @@ pub fn get_recent_devices(minutes: u32) -> SqliteResult<Vec<ScannedDevice>> {
             device_class: row.get(8).ok(),
             service_classes: None,
             device_type: None,
+            ..Default::default()
         })
     })?;
 
@@ -852,6 +934,23 @@ pub struct DeviceTelemetryRecord {
     pub avg_rssi: f64,
     pub min_latency_ms: i32,
     pub max_latency_ms: i32,
+}
+
+/// RSSI Trend point - for signal quality trend visualization
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RssiTrendPoint {
+    pub timestamp: DateTime<Utc>,
+    pub avg_rssi: f64,
+    pub packet_count: i32,
+    pub signal_quality: String, // "excellent", "good", "fair", "poor", "very_poor"
+}
+
+/// Raw RSSI measurement from advertisement frame
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RssiMeasurement {
+    pub timestamp: DateTime<Utc>,
+    pub rssi: i32,
+    pub signal_quality: String,
 }
 
 /// Save telemetry snapshot to database
@@ -1124,6 +1223,16 @@ fn insert_advertisement_frame_inner(
         params![timestamp_str, rssi, mac_address],
     )?;
 
+    // 📊 Update global RSSI trend analyzer for real-time trend tracking
+    let timestamp = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(timestamp_ms as i64)
+        .unwrap_or_else(|| chrono::Utc::now());
+
+    if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::rssi_trend_manager::GLOBAL_RSSI_MANAGER.update_rssi(mac_address, rssi, timestamp);
+    })) {
+        log::warn!("Failed to update RSSI trend: {:?}", e);
+    }
+
     Ok(())
 }
 
@@ -1162,6 +1271,7 @@ fn get_device_inner(conn: &Connection, mac_address: &str) -> SqliteResult<Option
             device_class: row.get(8).ok(),
             service_classes: None,
             device_type: None,
+            ..Default::default()
         })
     })
     .optional()
@@ -1202,6 +1312,7 @@ fn get_all_devices_inner(conn: &Connection) -> SqliteResult<Vec<ScannedDevice>> 
             device_class: row.get(8).ok(),
             service_classes: None,
             device_type: None,
+            ..Default::default()
         })
     })?;
 
@@ -1255,8 +1366,128 @@ fn get_recent_devices_inner(conn: &Connection, minutes: u32) -> SqliteResult<Vec
             device_class: row.get(8).ok(),
             service_classes: None,
             device_type: None,
+            ..Default::default()
         })
     })?;
 
     devices.collect()
+}
+
+/// Determine signal quality based on RSSI value
+/// dBm scale: -30 to -70 and beyond
+/// excellent: >= -50 dBm
+/// good: -50 to -60 dBm
+/// fair: -60 to -70 dBm
+/// poor: -70 to -85 dBm
+/// very_poor: < -85 dBm
+fn get_signal_quality(rssi: f64) -> String {
+    match rssi as i32 {
+        r if r >= -50 => "excellent".to_string(),
+        r if r >= -60 => "good".to_string(),
+        r if r >= -70 => "fair".to_string(),
+        r if r >= -85 => "poor".to_string(),
+        _ => "very_poor".to_string(),
+    }
+}
+
+/// Get RSSI trend for a specific device over time
+/// Returns all telemetry snapshots for the device, showing how signal quality changes
+pub fn get_device_rssi_trend(device_mac: &str, hours: u32) -> SqliteResult<Vec<RssiTrendPoint>> {
+    let conn = Connection::open(DB_PATH)?;
+    let time_filter = format!("-{} hours", hours);
+
+    let mut stmt = conn.prepare(
+        "SELECT ts.snapshot_timestamp, dth.avg_rssi, dth.packet_count
+         FROM device_telemetry_history dth
+         JOIN telemetry_snapshots ts ON dth.snapshot_id = ts.id
+         WHERE dth.device_mac = ?1 AND ts.snapshot_timestamp > datetime('now', ?2)
+         ORDER BY ts.snapshot_timestamp ASC",
+    )?;
+
+    let trend_points = stmt.query_map(params![device_mac, &time_filter], |row| {
+        let ts_str: String = row.get(0)?;
+        let timestamp = DateTime::parse_from_rfc3339(&ts_str)
+            .unwrap_or_else(|_| {
+                chrono::Local::now().with_timezone(&chrono::FixedOffset::east_opt(0).unwrap())
+            })
+            .with_timezone(&Utc);
+
+        let avg_rssi: f64 = row.get(1)?;
+        let signal_quality = get_signal_quality(avg_rssi);
+
+        Ok(RssiTrendPoint {
+            timestamp,
+            avg_rssi,
+            packet_count: row.get(2)?,
+            signal_quality,
+        })
+    })?;
+
+    trend_points.collect()
+}
+
+/// Get RSSI trend using pooled connection
+pub fn get_device_rssi_trend_pooled(
+    device_mac: &str,
+    hours: u32,
+) -> SqliteResult<Vec<RssiTrendPoint>> {
+    let pool = crate::db_pool::get_pool();
+    if let Some(pool) = pool {
+        pool.execute(|_conn| get_device_rssi_trend(device_mac, hours))
+    } else {
+        get_device_rssi_trend(device_mac, hours)
+    }
+}
+
+/// Get last N raw RSSI measurements from advertisement frames
+/// Returns up to `limit` most recent RSSI readings for a device
+pub fn get_raw_rssi_measurements(
+    device_mac: &str,
+    limit: u32,
+) -> SqliteResult<Vec<RssiMeasurement>> {
+    let conn = Connection::open(DB_PATH)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT timestamp, rssi
+         FROM ble_advertisement_frames
+         WHERE mac_address = ?1
+         ORDER BY timestamp DESC
+         LIMIT ?2",
+    )?;
+
+    let measurements = stmt.query_map(params![device_mac, limit], |row| {
+        let ts_str: String = row.get(0)?;
+        let timestamp = DateTime::parse_from_rfc3339(&ts_str)
+            .unwrap_or_else(|_| {
+                chrono::Local::now().with_timezone(&chrono::FixedOffset::east_opt(0).unwrap())
+            })
+            .with_timezone(&Utc);
+
+        let rssi: i32 = row.get(1)?;
+        let signal_quality = get_signal_quality(rssi as f64);
+
+        Ok(RssiMeasurement {
+            timestamp,
+            rssi,
+            signal_quality,
+        })
+    })?;
+
+    let mut result: Vec<RssiMeasurement> = measurements.collect::<Result<Vec<_>, _>>()?;
+    // Reverse to get chronological order (oldest first)
+    result.reverse();
+    Ok(result)
+}
+
+/// Get last N raw RSSI measurements using pooled connection
+pub fn get_raw_rssi_measurements_pooled(
+    device_mac: &str,
+    limit: u32,
+) -> SqliteResult<Vec<RssiMeasurement>> {
+    let pool = crate::db_pool::get_pool();
+    if let Some(pool) = pool {
+        pool.execute(|_conn| get_raw_rssi_measurements(device_mac, limit))
+    } else {
+        get_raw_rssi_measurements(device_mac, limit)
+    }
 }

@@ -194,15 +194,14 @@ impl AdapterInfo {
         use std::process::Command;
 
         let output = Command::new("powershell")
-            .arg("-Command")
-            .arg("(Get-NetAdapter -Physical | Select-Object -First 1 | Get-NetAdapterAdvancedProperty -RegistryKeyword hw_address).DisplayValue")
+            .args(["-NoProfile", "-Command", "Get-NetAdapter | Where-Object {$_.Name -like '*Bluetooth*'} | Select-Object -First 1 | Select-Object -ExpandProperty MacAddress"])
             .output();
 
         match output {
             Ok(out) => {
-                let result = String::from_utf8_lossy(&out.stdout);
-                if !result.trim().is_empty() {
-                    Some(result.trim().to_string())
+                let result = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !result.is_empty() && result.len() == 17 && result.contains(":") {
+                    Some(result)
                 } else {
                     None
                 }

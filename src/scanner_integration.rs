@@ -51,6 +51,34 @@ impl ScannerWithTracking {
             self.telemetry_collector
                 .record_packet_result(&result, packet.rssi);
 
+            // Feed to event analyzer - only the new event, not all
+            if let PacketAddResult::Accepted {
+                packet_id,
+                device_mac,
+                ..
+            } = &result
+            {
+                let event = crate::telemetry::TimelineEvent {
+                    timestamp_ms: packet.timestamp_ms,
+                    device_mac: device_mac.clone(),
+                    packet_id: *packet_id,
+                    event_type: crate::telemetry::EventType::PacketReceived,
+                    rssi: packet.rssi,
+                    details: "Packet accepted".to_string(),
+                };
+                crate::event_analyzer::add_timeline_events(vec![event]);
+            }
+
+            // Feed to data flow estimator
+            if let PacketAddResult::Accepted { .. } = &result {
+                crate::data_flow_estimator::add_packet(
+                    &device.mac_address,
+                    packet.timestamp_ms,
+                    &packet.advertising_data,
+                    packet.rssi,
+                );
+            }
+
             match result {
                 PacketAddResult::Accepted { packet_id, .. } => {
                     log::debug!(
@@ -145,11 +173,11 @@ fn create_raw_packet_from_device(device: &BluetoothDevice, packet_id: u64) -> Ra
 
     let mut advertising_data = Vec::new();
     if let Some((company_id, data)) = device.manufacturer_data.iter().next() {
-        let total_len = 1usize + 2usize + data.len();
+        let total_len: usize = 1 + 2 + data.len();
         if total_len <= u8::MAX as usize {
             advertising_data.push(total_len as u8);
             advertising_data.push(0xFF);
-            advertising_data.extend_from_slice(&company_id.to_le_bytes());
+            advertising_data.extend_from_slice(&(*company_id as u16).to_le_bytes());
             advertising_data.extend_from_slice(data);
         }
     }

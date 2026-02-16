@@ -19,7 +19,6 @@
 ///     ├── Manufacturer name resolution
 ///     └── Datasheet association
 /// ```
-
 #[cfg(target_os = "windows")]
 pub mod unified {
     use crate::company_ids;

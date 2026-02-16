@@ -1,8 +1,9 @@
+//! Moduł skanera Bluetooth - obsługuje BLE i Bluetooth Classic (BR/EDR)
+//! BLE: Cross-platform (Windows, macOS, Linux)
+//! BR/EDR: Tylko Linux (przez BlueZ)
+
 use chrono::Utc;
 use log::{debug, error, info, warn};
-/// Bluetooth Scanner - Supports both BLE and Bluetooth Classic (BR/EDR)
-/// BLE: Cross-platform (Windows, macOS, Linux)
-/// BR/EDR: Linux only (via BlueZ)
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -15,7 +16,7 @@ use crate::db::{self, ScannedDevice};
 use btleplug::api::{Central, Manager, Peripheral};
 use btleplug::platform::Manager as PlatformManager;
 
-/// Scanned Bluetooth device (unified format)
+/// Zeskanowane urządzenie Bluetooth (ujednolicony format)
 #[derive(Debug, Clone)]
 pub struct BluetoothDevice {
     pub mac_address: String,
@@ -27,23 +28,24 @@ pub struct BluetoothDevice {
     pub manufacturer_data: HashMap<u16, Vec<u8>>,
     pub is_connectable: bool,
     pub services: Vec<ServiceInfo>,
-    /// UTC timestamp when first detected (nanoseconds since epoch)
+    /// Znacznik czasu UTC pierwszego wykrycia (nanosekundy od epoki)
     pub first_detected_ns: i64,
-    /// UTC timestamp when last detected (nanoseconds since epoch)
+    /// Znacznik czasu UTC ostatniego wykrycia (nanosekundy od epoki)
     pub last_detected_ns: i64,
-    /// Response time between first and last detection (milliseconds)
+    /// Czas odpowiedzi między pierwszym a ostatnim wykryciem (milisekundy)
     pub response_time_ms: u64,
-    /// Detected Bluetooth version based on services/features
+    /// Wykryta wersja Bluetooth na podstawie usług/funkcji
     pub detected_bt_version: Option<BluetoothVersion>,
-    /// Supported features discovered from this device
+    /// Obsługiwane funkcje wykryte z tego urządzenia
     pub supported_features: Vec<BluetoothFeature>,
-    /// Security info
+    /// Informacje o bezpieczeństwie
     pub mac_type: Option<String>,
     pub is_rpa: bool,
     pub security_level: Option<String>,
     pub pairing_method: Option<String>,
 }
 
+/// Typ urządzenia Bluetooth
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DeviceType {
     BleOnly,
@@ -51,6 +53,7 @@ pub enum DeviceType {
     DualMode,
 }
 
+/// Informacje o usłudze BLE
 #[derive(Debug, Clone)]
 pub struct ServiceInfo {
     pub uuid16: Option<u16>,
@@ -88,13 +91,13 @@ impl Default for BluetoothDevice {
     }
 }
 
-/// Scanner configuration
+/// Konfiguracja skanera
 #[derive(Debug, Clone)]
 pub struct ScanConfig {
     pub scan_duration: Duration,
     pub num_cycles: usize,
     pub use_ble: bool,
-    pub use_bredr: bool, // Only works on Linux
+    pub use_bredr: bool, // Działa tylko na Linux
 }
 
 impl Default for ScanConfig {
@@ -108,7 +111,7 @@ impl Default for ScanConfig {
     }
 }
 
-/// Main Bluetooth Scanner
+/// Główny skaner Bluetooth
 pub struct BluetoothScanner {
     config: ScanConfig,
 }
@@ -118,7 +121,7 @@ impl BluetoothScanner {
         Self { config }
     }
 
-    /// Run complete scan (BLE + optional BR/EDR)
+    /// Uruchamia pełne skanowanie (BLE + opcjonalne BR/EDR)
     pub async fn run_scan(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         info!(
             "Starting Bluetooth scan with {} cycles",
@@ -240,7 +243,7 @@ impl BluetoothScanner {
         Ok(devices)
     }
 
-    /// Scan BLE devices (cross-platform)
+    /// Skanuj urządzenia BLE (cross-platform)
     async fn scan_ble(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         info!("🔍 BLE scanning with btleplug initialized");
 
@@ -361,8 +364,8 @@ impl BluetoothScanner {
         Ok(all_devices)
     }
 
-    /// Run all 4 scanning methods concurrently
-    /// Methods: 1) btleplug BLE, 2) BR-EDR (Linux), 3) Advanced HCI, 4) Raw sniffing
+    /// Uruchamia wszystkie 4 metody skanowania jednocześnie
+    /// Metody: 1) btleplug BLE, 2) BR-EDR (Linux), 3) Zaawansowany HCI, 4) Raw sniffing
     pub async fn concurrent_scan_all_methods(
         &self,
     ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
@@ -438,7 +441,7 @@ impl BluetoothScanner {
         Ok(all_devices)
     }
 
-    /// Advanced BLE scanning with btleplug - discovers services and characteristics
+    /// Zaawansowane skanowanie BLE z wykrywaniem usług i charakterystyk
     pub async fn scan_ble_advanced(
         &self,
     ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
@@ -564,6 +567,13 @@ impl BluetoothScanner {
                 device_class: None,
                 service_classes: None,
                 device_type: None,
+                ad_flags: None,
+                ad_local_name: None,
+                ad_tx_power: None,
+                ad_appearance: None,
+                ad_service_uuids: None,
+                ad_manufacturer_data: None,
+                ad_service_data: None,
             };
 
             match db::insert_or_update_device(&scanned_device) {

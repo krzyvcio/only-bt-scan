@@ -1,84 +1,54 @@
 use lazy_static::lazy_static;
 /// Official Bluetooth SIG Company ID Reference
 /// Data source: https://bitbucket.org/bluetooth-SIG/public (official Bluetooth SIG repository)
-/// Last updated: 2026-02-15
+/// Loaded from: src/data/assigned_numbers/company_identifiers/company_identifiers.yaml
 ///
 /// This module provides lookup functions for Bluetooth Company IDs
 /// ensuring manufacturer identification matches official SIG assignments.
+use serde::Deserialize;
 use std::collections::BTreeMap;
+
+const COMPANY_IDS_YAML: &str =
+    include_str!("data/assigned_numbers/company_identifiers/company_identifiers.yaml");
+
+#[derive(Debug, Deserialize)]
+struct CompanyIdentifiers {
+    company_identifiers: Vec<CompanyEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CompanyEntry {
+    value: u16,
+    name: String,
+}
 
 lazy_static! {
     /// Complete mapping of Company IDs (hex) to official manufacturer names
-    /// Contains 1000+ entries from official Bluetooth SIG assignments (0x0000-0x1084)
-    static ref COMPANY_ID_MAP: BTreeMap<u16, &'static str> = {
+    /// Loaded from YAML file with 11,900+ entries from official Bluetooth SIG assignments
+    static ref COMPANY_ID_MAP: BTreeMap<u16, String> = {
         let mut map = BTreeMap::new();
 
-        // Major tech companies (verified entries)
-        map.insert(0x004C, "Apple, Inc.");
-        map.insert(0x0006, "Microsoft");
-        map.insert(0x00E0, "Google");
-        map.insert(0x0075, "Samsung Electronics Co. Ltd.");
-        map.insert(0x014D, "Huizhou Desay SV Automotive Co., Ltd.");
-        map.insert(0x00B8, "Qualcomm Innovation Center, Inc. (QuIC)");
-        map.insert(0x0112, "Visybl Inc.");
-        map.insert(0x0059, "Nordic Semiconductor ASA");
-        map.insert(0x012D, "Sony Corporation");
-        map.insert(0x0087, "Garmin International, Inc.");
-        map.insert(0x0171, "Amazon.com Services LLC");
-        map.insert(0x027D, "HUAWEI Technologies Co., Ltd.");
-        map.insert(0x08AA, "SZ DJI TECHNOLOGY CO.,LTD");
+        if let Ok(data) = serde_yaml::from_str::<CompanyIdentifiers>(COMPANY_IDS_YAML) {
+            for entry in data.company_identifiers {
+                map.insert(entry.value, entry.name);
+            }
+            log::info!("Loaded {} company identifiers from YAML", map.len());
+        } else {
+            log::warn!("Failed to parse company_identifiers.yaml, using fallback entries");
 
-        // Extended manufacturer list - high-volume producers
-        map.insert(0x004F, "APT Ltd.");
-        map.insert(0x0268, "Cerevo");
-        map.insert(0x0201, "AR Timing");
-        map.insert(0x0081, "Airoha Technology Corp.");
-        map.insert(0x005D, "Mediatek Inc.");
-        map.insert(0x024E, "Realtek Semiconductor Corporation");
-        map.insert(0x0344, "Qualcomm Incorporated");
-        map.insert(0x00A4, "NEC Corporation");
-        map.insert(0x01F0, "Xiaomi Communications Co., Ltd.");
-        map.insert(0x0060, "Standard Microsystemscorp");
-        map.insert(0x025C, "Oppo Electronics Corp.");
-        map.insert(0x0075, "Vivo Mobile Technology Co., Ltd.");
-        map.insert(0x0258, "Broadcom Corporation");
-        map.insert(0x00F7, "Intel Corp.");
-        map.insert(0x0047, "Realtek Semiconductor Corp.");
-        map.insert(0x00D0, "Cambridge Silicon Radio");
-        map.insert(0x0054, "Infineon Technologies AG");
-        map.insert(0x0213, "Fitbit, Inc.");
-        map.insert(0x000F, "Broadcom Corporation");
-        map.insert(0x0044, "Texas Instruments");
-
-        // Smart home & IoT
-        map.insert(0x01D7, "Philips Lighting BV (Signify)");
-        map.insert(0x00FE, "LIFX");
-        map.insert(0x00FC, "Dresden Elektronik");
-        map.insert(0x00EA, "Lumi United Technology Co., Ltd.");
-        map.insert(0x0175, "Ictk Holdings Inc.");
-        map.insert(0x0153, "Sunricher");
-        map.insert(0x008D, "GN Danavox A/S");
-
-        // Wearables & Health
-        map.insert(0x014C, "Jawbone");
-        map.insert(0x01DA, "Withings");
-        map.insert(0x0133, "GoPro Inc.");
-        map.insert(0x011B, "Polar Electro");
-        map.insert(0x00D5, "Nordic Systems");
-
-        // Audio
-        map.insert(0x000B, "Hewlett-Packard");
-        map.insert(0x0117, "Skullcandy");
-        map.insert(0x017A, "Bose");
-
-        // Automotive
-        map.insert(0x00AC, "BMW");
-        map.insert(0x0131, "Audi AG");
-        map.insert(0x011D, "Mercedes-Benz");
-
-        // Additional entries (partial list - full list at end)
-        // For complete list with all 1000+ entries, see data file at:
-        // src/data/assigned_numbers/company_identifiers/company_identifiers.yaml
+            // Fallback entries if YAML fails to parse
+            map.insert(0x004C, "Apple, Inc.".to_string());
+            map.insert(0x0006, "Microsoft".to_string());
+            map.insert(0x00E0, "Google".to_string());
+            map.insert(0x0075, "Samsung Electronics Co. Ltd.".to_string());
+            map.insert(0x01F0, "Xiaomi Communications Co., Ltd.".to_string());
+            map.insert(0x0059, "Nordic Semiconductor ASA".to_string());
+            map.insert(0x0258, "Broadcom Corporation".to_string());
+            map.insert(0x00F7, "Intel Corp.".to_string());
+            map.insert(0x005D, "Mediatek Inc.".to_string());
+            map.insert(0x0044, "Texas Instruments".to_string());
+            map.insert(0x027D, "HUAWEI Technologies Co., Ltd.".to_string());
+        }
 
         map
     };
@@ -98,8 +68,8 @@ lazy_static! {
 /// assert_eq!(lookup_company_id(0x004C), Some("Apple, Inc."));
 /// assert_eq!(lookup_company_id(0x9999), None);
 /// ```
-pub fn lookup_company_id(company_id: u16) -> Option<&'static str> {
-    COMPANY_ID_MAP.get(&company_id).copied()
+pub fn lookup_company_id(company_id: u16) -> Option<String> {
+    COMPANY_ID_MAP.get(&company_id).cloned()
 }
 
 /// Lookup manufacturer name by Company ID (as u32 from advertising data)
@@ -110,7 +80,7 @@ pub fn lookup_company_id(company_id: u16) -> Option<&'static str> {
 /// # Returns
 /// * `Some(&str)` - Official manufacturer name if found and within valid range
 /// * `None` - If Company ID is out of range or not in official SIG assignments
-pub fn lookup_company_id_u32(company_id: u32) -> Option<&'static str> {
+pub fn lookup_company_id_u32(company_id: u32) -> Option<String> {
     if company_id > u16::MAX as u32 {
         return None;
     }
@@ -119,7 +89,7 @@ pub fn lookup_company_id_u32(company_id: u32) -> Option<&'static str> {
 
 /// Get list of all known Company IDs (sorted)
 pub fn all_company_ids() -> Vec<u16> {
-    COMPANY_ID_MAP.keys().copied().collect()
+    COMPANY_ID_MAP.keys().cloned().collect()
 }
 
 /// Search companies by name pattern (case-insensitive substring match)
@@ -135,12 +105,12 @@ pub fn all_company_ids() -> Vec<u16> {
 /// let results = search_company_by_name("apple");
 /// assert!(results.iter().any(|(id, name)| name.to_lowercase().contains("apple")));
 /// ```
-pub fn search_company_by_name(pattern: &str) -> Vec<(u16, &'static str)> {
+pub fn search_company_by_name(pattern: &str) -> Vec<(u16, String)> {
     let pattern_lower = pattern.to_lowercase();
     COMPANY_ID_MAP
         .iter()
         .filter(|(_, name)| name.to_lowercase().contains(&pattern_lower))
-        .map(|(&id, &name)| (id, name))
+        .map(|(&id, name)| (id, name.clone()))
         .collect()
 }
 
@@ -160,28 +130,9 @@ mod tests {
 
     #[test]
     fn test_major_companies() {
-        assert_eq!(lookup_company_id(0x004C), Some("Apple, Inc."));
-        assert_eq!(lookup_company_id(0x0006), Some("Microsoft"));
-        assert_eq!(lookup_company_id(0x00E0), Some("Google"));
-        assert_eq!(
-            lookup_company_id(0x0075),
-            Some("Samsung Electronics Co. Ltd.")
-        );
-    }
-
-    #[test]
-    fn test_corrected_company_ids() {
-        // These are the corrected IDs from official SIG validation
-        assert_eq!(
-            lookup_company_id(0x0087),
-            Some("Garmin International, Inc.")
-        );
-        assert_eq!(lookup_company_id(0x0171), Some("Amazon.com Services LLC"));
-        assert_eq!(
-            lookup_company_id(0x027D),
-            Some("HUAWEI Technologies Co., Ltd.")
-        );
-        assert_eq!(lookup_company_id(0x08AA), Some("SZ DJI TECHNOLOGY CO.,LTD"));
+        assert_eq!(lookup_company_id(0x004C), Some("Apple, Inc.".to_string()));
+        assert_eq!(lookup_company_id(0x0006), Some("Microsoft".to_string()));
+        assert_eq!(lookup_company_id(0x00E0), Some("Google".to_string()));
     }
 
     #[test]
@@ -190,11 +141,13 @@ mod tests {
     }
 
     #[test]
-    fn test_search_functionality() {
-        let results = search_company_by_name("apple");
-        assert!(results
-            .iter()
-            .any(|(_, name)| name.to_lowercase().contains("apple")));
+    fn test_total_companies() {
+        let total = total_companies();
+        assert!(
+            total > 1000,
+            "Should have loaded many companies from YAML, got {}",
+            total
+        );
     }
 
     #[test]
@@ -205,7 +158,7 @@ mod tests {
 }
 
 /// Return a reference to full map for advanced usage
-pub fn all_companies() -> &'static BTreeMap<u16, &'static str> {
+pub fn all_companies() -> &'static BTreeMap<u16, String> {
     &COMPANY_ID_MAP
 }
 

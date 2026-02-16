@@ -1,4 +1,3 @@
-use crate::company_id_reference;
 use crate::device_tracker::DeviceTrackerManager;
 use btleplug::api::{Central, Manager as ManagerTrait, Peripheral as PeripheralTrait, ScanFilter};
 use btleplug::platform::Manager;
@@ -64,6 +63,15 @@ pub struct UnifiedDevice {
     pub l2cap_channels: Vec<u16>,
     pub raw_manufacturing_data: Vec<u8>,
 
+    // === Parsed Advertising Data ===
+    pub ad_flags: Option<String>,
+    pub ad_local_name: Option<String>,
+    pub ad_tx_power: Option<i8>,
+    pub ad_appearance: Option<String>,
+    pub ad_service_uuids: Vec<String>,
+    pub ad_manufacturer_data: Option<String>,
+    pub ad_service_data: Vec<String>,
+
     // === Temporal ===
     pub first_detected: DateTime<Utc>,
     pub last_detected: DateTime<Utc>,
@@ -99,6 +107,13 @@ impl UnifiedDevice {
             vendor_protocol: None,
             l2cap_channels: Vec::new(),
             raw_manufacturing_data: Vec::new(),
+            ad_flags: None,
+            ad_local_name: None,
+            ad_tx_power: None,
+            ad_appearance: None,
+            ad_service_uuids: Vec::new(),
+            ad_manufacturer_data: None,
+            ad_service_data: Vec::new(),
             first_detected: Utc::now(),
             last_detected: Utc::now(),
             detection_count: 0,
@@ -152,6 +167,67 @@ impl UnifiedDevice {
         }
 
         format!("[{}]", methods.join("|"))
+    }
+
+    /// Parse and store advertising data
+    pub fn parse_advertising_data(&mut self) {
+        if self.raw_manufacturing_data.is_empty() {
+            return;
+        }
+
+        use crate::advertising_parser::parse_advertising_packet;
+        
+        let parsed = parse_advertising_packet(
+            &self.mac_address,
+            self.rssi,
+            &self.raw_manufacturing_data,
+            false,
+        );
+
+        // Store flags
+        if let Some(flags) = parsed.flags {
+            let flags_str = format!(
+                "LE:{}, LE_Gen:{}, BR_EDR:{}, LE+BR:{}, BR+LE_Host:{}",
+                flags.le_limited_discoverable,
+                flags.le_general_discoverable,
+                flags.br_edr_not_supported,
+                flags.simultaneous_le_and_br_edr_controller,
+                flags.simultaneous_le_and_br_edr_host
+            );
+            self.ad_flags = Some(flags_str);
+        }
+
+        // Store local name
+        if let Some(name) = parsed.local_name {
+            self.ad_local_name = Some(name);
+        }
+
+        // Store TX Power
+        if let Some(tx) = parsed.tx_power {
+            self.ad_tx_power = Some(tx);
+        }
+
+        // Store appearance
+        if let Some(app) = parsed.appearance {
+            self.ad_appearance = Some(format!("0x{:04X}", app));
+        }
+
+        // Store 16-bit service UUIDs
+        for uuid in &parsed.services_16bit {
+            self.ad_service_uuids.push(format!("0x{:04X}", uuid));
+        }
+
+        // Store manufacturer data as hex string
+        for (mfg_id, data) in &parsed.manufacturer_data {
+            let hex_data = data.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+            self.ad_manufacturer_data = Some(format!("{:04X}: {}", mfg_id, hex_data));
+        }
+
+        // Store service data
+        for (uuid, data) in &parsed.service_data_16 {
+            let hex_data = data.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+            self.ad_service_data.push(format!("0x{:04X}: {}", uuid, hex_data));
+        }
     }
 }
 
@@ -412,6 +488,7 @@ impl MultiMethodScanner {
                         device.detection_count += 1;
                         device.packet_count += 1;
                         device.raw_manufacturing_data = report.advertising_data.clone();
+                        device.parse_advertising_data();
                     }
 
                     // Log to device tracker
@@ -587,6 +664,7 @@ impl MultiMethodScanner {
                     device.detection_count += 1;
                     device.packet_count += 1;
                     device.raw_manufacturing_data = packet.advertising_data.clone();
+                    device.parse_advertising_data();
                 }
 
                 // Log to device tracker
@@ -1062,7 +1140,7 @@ impl MultiMethodScanner {
 
         // Overall stats
         let total_devices = devices.len();
-        let multi_method = devices
+        let _multi_method = devices
             .iter()
             .filter(|d| d.detection_methods_count > 1)
             .count();

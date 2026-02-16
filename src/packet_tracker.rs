@@ -182,8 +182,8 @@ impl GlobalPacketTracker {
             unique_devices: self.device_trackers.len(),
             total_packets_received: total_received,
             total_packets_accepted: self.packet_count,
-            total_filtered: total_filtered,
-            total_duplicates: total_duplicates,
+            total_filtered,
+            total_duplicates,
             acceptance_rate: if total_received > 0 {
                 (self.packet_count as f64 / total_received as f64) * 100.0
             } else {

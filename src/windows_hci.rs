@@ -9,7 +9,7 @@ mod adapter {
     use super::models::LeAdvertisingReport;
     use log::{debug, info, warn};
     use std::collections::HashMap;
-    use std::time::Duration;
+    
 
     pub struct WindowsHciAdapter {
         adapter_id: String,

@@ -111,7 +111,6 @@ pub struct GlobalTelemetry {
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// TELEMETRY GENERATOR
 /// ═══════════════════════════════════════════════════════════════════════════════
-
 pub struct TelemetryCollector {
     events: Vec<TimelineEvent>,
 }
@@ -119,6 +118,14 @@ pub struct TelemetryCollector {
 impl TelemetryCollector {
     pub fn new() -> Self {
         Self { events: Vec::new() }
+    }
+
+    pub fn get_events(&self) -> &[TimelineEvent] {
+        &self.events
+    }
+
+    pub fn get_events_clone(&self) -> Vec<TimelineEvent> {
+        self.events.clone()
     }
 
     /// Record packet addition result
@@ -256,7 +263,6 @@ impl TelemetryCollector {
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// JSON EXPORT HELPERS
 /// ═══════════════════════════════════════════════════════════════════════════════
-
 pub fn telemetry_to_json(telemetry: &GlobalTelemetry) -> Result<String, serde_json::Error> {
     serde_json::to_string_pretty(telemetry)
 }

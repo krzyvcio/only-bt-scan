@@ -259,3 +259,35 @@ The previous session fixed these critical issues:
 
 *Last updated: 2026-02-16*
 *For AI agent use - based on Rust best practices and project-specific patterns*
+## 🤖 AGENT DEFINITIONS (ROLE-SPECIFIC)
+
+To ensure high-quality contributions, AI agents should adopt one of the following roles based on the task:
+
+### 1. 🦀 Rust Systems Architect
+**Focus:** Performance, Memory Safety, Concurrency.
+- **Task:** Designing new modules, optimizing the packet pipeline, or handling `tokio` task synchronization.
+- **Priority:** Zero-cost abstractions, avoiding unnecessary clones, and ensuring thread safety (`Send + Sync`).
+
+### 2. 📊 Data & Protocol Specialist
+**Focus:** BLE Advertising Structures, SQLite Optimization.
+- **Task:** Implementing new AD Type parsers (e.g., Battery Level, Manufacturer Specific Data) or optimizing SQL queries.
+- **Priority:** Correctness of bitwise operations and database index efficiency.
+
+### 3. 🌐 Web API Developer
+**Focus:** Actix-web, REST Best Practices, Frontend Integration.
+- **Task:** Adding new endpoints to `web_server.rs`, implementing pagination, or improving JSON serialization.
+- **Priority:** Input validation (MAC addresses), proper HTTP status codes, and non-blocking DB calls.
+
+---
+
+## 🛠️ AGENT WORKFLOW: "THE RUST WAY"
+
+When generating code, follow this internal checklist:
+
+1.  **Check for `Result`:** Never use `.unwrap()` in `src/`. Use `?` or `match`.
+2.  **Check for `Arc/Mutex`:** If state is shared across `tokio` tasks, use `Arc<Mutex<T>>` or `Arc<RwLock<T>>`.
+3.  **Check for `Tracing/Log`:** Add `debug!` or `info!` macros for visibility.
+4.  **Check for `Clippy`:** Ensure code doesn't trigger `clippy::pedantic` warnings.
+5.  **Check for `Documentation`:** Add `///` doc comments for public functions.
+
+---

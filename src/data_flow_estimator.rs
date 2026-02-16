@@ -1,15 +1,122 @@
 use serde::{Deserialize, Serialize};
-/// Data Flow Estimation Module
-///
-/// Estimates potential data transfer between Bluetooth devices based on:
-/// - Advertising payload analysis
-/// - Protocol pattern recognition (Meshtastic, Eddystone, iBeacon, Custom)
-/// - Packet frequency and RSSI stability
-/// - Connection state inference
-///
-/// NOTE: This is passive analysis of advertising packets only.
-/// Real point-to-point transfers occur in encrypted GATT channels (not visible).
 use std::collections::HashMap;
+
+/// Data Flow Estimator - Estimates BLE advertising patterns and protocols
+///
+/// # How it works:
+/// 1. Each accepted packet adds an observation with MAC, timestamp, payload, RSSI
+/// 2. Protocol detection matches payload header bytes against known signatures:
+///    - Meshtastic: 0x94 0xFE
+///    - Eddystone: 0x16 0xFE 0xAA (Service Data)
+///    - iBeacon: 0xFF 0x4C 0x00 0x02 0x15 (Apple)
+///    - AltBeacon: 0xFF 0xAC 0xBE
+///    - Cybertrack: 0x03 0x01 0xCB
+/// 3. Connection state inference from packet frequency:
+///    - >10 packets/sec → Connected or DataTransfer
+///    - Regular intervals → Advertising
+///    - Sparse → DisconnectedIdle
+/// 4. Reliability estimate based on RSSI variance in 5s window
+
+/// Global singleton for data flow estimation
+static DATA_FLOW_ESTIMATOR: std::sync::LazyLock<std::sync::Mutex<DataFlowEstimatorState>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(DataFlowEstimatorState::new()));
+
+/// Internal state holding packet observations per device
+pub struct DataFlowEstimatorState {
+    estimator: DataFlowEstimator,
+    max_packets_per_device: usize,
+}
+
+impl DataFlowEstimatorState {
+    pub fn new() -> Self {
+        Self {
+            estimator: DataFlowEstimator::new(),
+            max_packets_per_device: 1000,
+        }
+    }
+
+    /// Adds packet observation for a device
+    /// Keeps max 1000 packets per device, removes oldest 100 when full
+    pub fn add_packet(&mut self, mac: &str, timestamp_ms: u64, payload: &[u8], rssi: i8) {
+        use std::collections::hash_map::Entry;
+        if let Entry::Occupied(mut entry) = self.estimator.device_packets.entry(mac.to_string()) {
+            let packets = entry.get_mut();
+            if packets.len() >= self.max_packets_per_device {
+                packets.drain(0..100);
+            }
+        }
+        self.estimator
+            .add_packet_observation(mac, timestamp_ms, payload, rssi);
+    }
+
+    /// Analyzes flow for specific device
+    pub fn analyze_device(&mut self, mac: &str) -> Option<DeviceDataFlow> {
+        self.estimator.analyze_device_flow(mac)
+    }
+
+    /// Analyzes all tracked devices
+    pub fn analyze_all_devices(&mut self) -> Vec<DeviceDataFlow> {
+        let macs: Vec<String> = self.estimator.device_packets.keys().cloned().collect();
+        macs.into_iter()
+            .filter_map(|mac| self.estimator.analyze_device_flow(&mac))
+            .collect()
+    }
+
+    pub fn clear(&mut self) {
+        self.estimator.device_packets.clear();
+        self.estimator.flow_cache.clear();
+    }
+}
+
+/// Adds a packet observation to the global estimator
+/// Called from ScannerWithTracking when packets are accepted
+/// # Arguments
+/// * `mac` - Device MAC address
+/// * `timestamp_ms` - Packet timestamp in milliseconds
+/// * `payload` - Raw advertising data bytes
+/// * `rssi` - Signal strength in dBm
+pub fn add_packet(mac: &str, timestamp_ms: u64, payload: &[u8], rssi: i8) {
+    if let Ok(mut state) = DATA_FLOW_ESTIMATOR.lock() {
+        state.add_packet(mac, timestamp_ms, payload, rssi);
+    }
+}
+
+/// Analyzes data flow characteristics for a specific device
+/// # Returns
+/// Some(DeviceDataFlow) with:
+/// - `detected_protocol`: Meshtastic/Eddystone/IBeacon/AltBeacon/Custom/Unknown
+/// - `estimated_connection_state`: Advertising/Connected/DataTransfer/DisconnectedIdle
+/// - `packet_frequency_hz`: Average packets per second
+/// - `reliability_estimate`: 0-1 based on RSSI stability
+/// - `average_packet_interval_ms`: Time between packets
+pub fn analyze_device(mac: &str) -> Option<DeviceDataFlow> {
+    DATA_FLOW_ESTIMATOR.lock().ok()?.analyze_device(mac)
+}
+
+/// Analyzes data flow for ALL tracked devices
+/// Returns vector of DeviceDataFlow, one per device
+pub fn analyze_all_devices() -> Vec<DeviceDataFlow> {
+    DATA_FLOW_ESTIMATOR
+        .lock()
+        .ok()
+        .map(|mut s| s.analyze_all_devices())
+        .unwrap_or_default()
+}
+
+/// Returns number of devices currently being tracked
+pub fn get_device_count() -> usize {
+    DATA_FLOW_ESTIMATOR
+        .lock()
+        .map(|s| s.estimator.device_packets.len())
+        .unwrap_or(0)
+}
+
+/// Clears all packet observations (useful for starting fresh scan)
+pub fn clear_estimates() {
+    if let Ok(mut state) = DATA_FLOW_ESTIMATOR.lock() {
+        state.clear();
+    }
+}
 
 /// Known Bluetooth protocol types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

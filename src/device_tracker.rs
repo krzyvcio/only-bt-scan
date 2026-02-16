@@ -6,14 +6,172 @@
 /// - Detection count per MAC address
 /// - Verbose terminal logging
 /// - Database persistence
+/// - RSSI telemetry (trend, motion detection)
 use chrono::{DateTime, Utc};
 use colored::Colorize;
 use log::{debug, info};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use crate::company_id_reference;
 use crate::db::{self, ScannedDevice};
+
+/// Telemetry constants
+const TELEMETRY_WINDOW_SIZE: usize = 20;
+const TELEMETRY_EMA_ALPHA: f64 = 0.3;
+const TELEMETRY_SLOPE_EPS: f64 = 0.15;
+const TELEMETRY_VAR_EPS: f64 = 2.0;
+const TELEMETRY_MIN_SAMPLES: usize = 6;
+
+/// Single RSSI sample with timestamp for telemetry
+#[derive(Clone, Copy, Debug)]
+pub struct Sample {
+    pub t: f64,
+    pub rssi: f64,
+}
+
+/// Ring buffer for samples
+#[derive(Debug, Clone)]
+pub struct SampleWindow {
+    samples: VecDeque<Sample>,
+    max_size: usize,
+}
+
+impl SampleWindow {
+    pub fn new(max_size: usize) -> Self {
+        Self {
+            samples: VecDeque::with_capacity(max_size),
+            max_size,
+        }
+    }
+
+    pub fn push(&mut self, s: Sample) {
+        if self.samples.len() == self.max_size {
+            self.samples.pop_front();
+        }
+        self.samples.push_back(s);
+    }
+
+    pub fn samples(&self) -> &VecDeque<Sample> {
+        &self.samples
+    }
+
+    pub fn len(&self) -> usize {
+        self.samples.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.samples.is_empty()
+    }
+}
+
+/// Movement trend relative to antenna
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Trend {
+    Approaching,
+    Leaving,
+    Stable,
+    Unknown,
+}
+
+impl Trend {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Trend::Approaching => "approaching",
+            Trend::Leaving => "leaving",
+            Trend::Stable => "stable",
+            Trend::Unknown => "unknown",
+        }
+    }
+}
+
+/// Motion state
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Motion {
+    Still,
+    Moving,
+    Unknown,
+}
+
+impl Motion {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Motion::Still => "still",
+            Motion::Moving => "moving",
+            Motion::Unknown => "unknown",
+        }
+    }
+}
+
+/// Device telemetry state output
+#[derive(Debug, Clone)]
+pub struct DeviceState {
+    pub trend: Trend,
+    pub motion: Motion,
+    pub slope: f64,
+    pub variance: f64,
+    pub rssi: f64,
+    pub confidence: f64,
+}
+
+impl Default for DeviceState {
+    fn default() -> Self {
+        Self {
+            trend: Trend::Unknown,
+            motion: Motion::Unknown,
+            slope: 0.0,
+            variance: 0.0,
+            rssi: 0.0,
+            confidence: 0.0,
+        }
+    }
+}
+
+/// Compute linear regression slope (dRSSI/dt)
+fn compute_slope(samples: &VecDeque<Sample>) -> f64 {
+    let n = samples.len() as f64;
+    if n < 2.0 {
+        return 0.0;
+    }
+
+    let mut sum_t = 0.0;
+    let mut sum_r = 0.0;
+    let mut sum_tt = 0.0;
+    let mut sum_tr = 0.0;
+
+    for s in samples {
+        sum_t += s.t;
+        sum_r += s.rssi;
+        sum_tt += s.t * s.t;
+        sum_tr += s.t * s.rssi;
+    }
+
+    let denom = n * sum_tt - sum_t * sum_t;
+    if denom.abs() < 1e-9 {
+        return 0.0;
+    }
+
+    (n * sum_tr - sum_t * sum_r) / denom
+}
+
+/// Compute variance of RSSI values
+fn compute_variance(samples: &VecDeque<Sample>) -> f64 {
+    let n = samples.len() as f64;
+    if n == 0.0 {
+        return 0.0;
+    }
+
+    let mean = samples.iter().map(|s| s.rssi).sum::<f64>() / n;
+
+    samples
+        .iter()
+        .map(|s| {
+            let d = s.rssi - mean;
+            d * d
+        })
+        .sum::<f64>()
+        / n
+}
 
 /// Single device tracking record
 #[derive(Debug, Clone)]
@@ -44,6 +202,11 @@ pub struct DeviceTracker {
     // Database persistence
     pub db_device_id: Option<i32>,
     pub stored_in_db: bool,
+
+    // Telemetry (RSSI trend/motion detection)
+    pub telemetry_window: SampleWindow,
+    pub last_rssi_smooth: Option<f64>,
+    pub device_state: DeviceState,
 }
 
 impl DeviceTracker {
@@ -69,6 +232,9 @@ impl DeviceTracker {
             last_detection_method: None,
             db_device_id: None,
             stored_in_db: false,
+            telemetry_window: SampleWindow::new(TELEMETRY_WINDOW_SIZE),
+            last_rssi_smooth: None,
+            device_state: DeviceState::default(),
         }
     }
 
@@ -112,6 +278,68 @@ impl DeviceTracker {
                 }
             }
         }
+
+        // Update telemetry (trend/motion detection)
+        self.update_telemetry();
+    }
+
+    /// Update telemetry state based on RSSI samples
+    fn update_telemetry(&mut self) {
+        let rssi_f = self.current_rssi as f64;
+        let t = self.last_detected.timestamp_subsec_millis() as f64 / 1000.0;
+
+        let rssi_smooth = match self.last_rssi_smooth {
+            None => rssi_f,
+            Some(prev) => TELEMETRY_EMA_ALPHA * rssi_f + (1.0 - TELEMETRY_EMA_ALPHA) * prev,
+        };
+        self.last_rssi_smooth = Some(rssi_smooth);
+
+        self.telemetry_window.push(Sample {
+            t,
+            rssi: rssi_smooth,
+        });
+
+        if self.telemetry_window.len() < TELEMETRY_MIN_SAMPLES {
+            self.device_state = DeviceState {
+                trend: Trend::Unknown,
+                motion: Motion::Unknown,
+                slope: 0.0,
+                variance: 0.0,
+                rssi: rssi_smooth,
+                confidence: 0.0,
+            };
+            return;
+        }
+
+        let slope = compute_slope(self.telemetry_window.samples());
+        let variance = compute_variance(self.telemetry_window.samples());
+
+        let trend = if slope > TELEMETRY_SLOPE_EPS {
+            Trend::Approaching
+        } else if slope < -TELEMETRY_SLOPE_EPS {
+            Trend::Leaving
+        } else {
+            Trend::Stable
+        };
+
+        let motion = if variance < TELEMETRY_VAR_EPS && slope.abs() < TELEMETRY_SLOPE_EPS {
+            Motion::Still
+        } else {
+            Motion::Moving
+        };
+
+        let confidence = (self.telemetry_window.len() as f64 / TELEMETRY_WINDOW_SIZE as f64)
+            .min(1.0)
+            * (1.0 - (variance / 20.0).min(0.5));
+
+        self.device_state = DeviceState {
+            trend,
+            motion,
+            slope,
+            variance,
+            rssi: rssi_smooth,
+            confidence: confidence.max(0.0),
+        };
     }
 
     /// Get time since first detection
@@ -243,6 +471,13 @@ impl DeviceTracker {
             device_class: None,
             service_classes: None,
             device_type: None,
+            ad_flags: None,
+            ad_local_name: None,
+            ad_tx_power: None,
+            ad_appearance: None,
+            ad_service_uuids: None,
+            ad_manufacturer_data: None,
+            ad_service_data: None,
         };
 
         match db::insert_or_update_device(&device) {

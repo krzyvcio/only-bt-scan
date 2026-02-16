@@ -27,7 +27,7 @@ impl DbPool {
     }
 
     /// Get the connection for reading
-    pub fn get(&self) -> DbGuard {
+    pub fn get(&self) -> DbGuard<'_> {
         DbGuard {
             conn: self.conn.lock().unwrap(),
         }
