@@ -1,13 +1,12 @@
 /// HCI Real-time Packet Capture (Windows)
 /// Przechwytuje WSZYSTKIE Bluetooth packets bez opóźnień
 /// Similar to Wireshark Npcap - intercepts at HCI level
-
 use crate::data_models::RawPacketModel;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::SystemTime;
-use log::{info, warn, error};
 use chrono::Utc;
+use log::{error, info, warn};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::SystemTime;
 use tokio::sync::mpsc;
 
 /// HCI packet types
@@ -78,15 +77,13 @@ impl HciRealTimeSniffer {
         #[cfg(target_os = "windows")]
         {
             use std::process::Command;
-            
+
             // Try to run a command that requires admin
-            let output = Command::new("cmd")
-                .args(&["/C", "net session"])
-                .output();
-            
+            let output = Command::new("cmd").args(&["/C", "net session"]).output();
+
             matches!(output, Ok(o) if o.status.success())
         }
-        
+
         #[cfg(not(target_os = "windows"))]
         {
             // On non-Windows, check effective UID
@@ -95,16 +92,13 @@ impl HciRealTimeSniffer {
     }
 
     /// Parse HCI Event packet (Le Meta Event - advertising reports)
-    pub fn parse_le_meta_event(
-        &self,
-        parameters: &[u8],
-    ) -> Option<Vec<RawPacketModel>> {
+    pub fn parse_le_meta_event(&self, parameters: &[u8]) -> Option<Vec<RawPacketModel>> {
         if parameters.is_empty() {
             return None;
         }
 
         let subevent = parameters[0];
-        
+
         // 0x02 = LE Advertising Report
         if subevent == 0x02 {
             return self.parse_le_advertising_report(&parameters[1..]);
@@ -115,10 +109,7 @@ impl HciRealTimeSniffer {
 
     /// Parse LE Advertising Report (0x3E, 0x02)
     /// This is where we get device discovery data with timing
-    fn parse_le_advertising_report(
-        &self,
-        data: &[u8],
-    ) -> Option<Vec<RawPacketModel>> {
+    fn parse_le_advertising_report(&self, data: &[u8]) -> Option<Vec<RawPacketModel>> {
         if data.len() < 2 {
             return None;
         }
@@ -148,11 +139,7 @@ impl HciRealTimeSniffer {
             pos += data_length;
 
             // Create RawPacketModel
-            let packet = RawPacketModel::new(
-                mac_address.clone(),
-                Utc::now(),
-                ad_data,
-            );
+            let packet = RawPacketModel::new(mac_address.clone(), Utc::now(), ad_data);
 
             packets.push(packet.clone());
 
@@ -199,11 +186,9 @@ impl Default for HciRealTimeSniffer {
 }
 
 /// Background HCI capture task
-pub async fn hci_capture_task(
-    rx: mpsc::UnboundedReceiver<RawPacketModel>,
-) {
+pub async fn hci_capture_task(rx: mpsc::UnboundedReceiver<RawPacketModel>) {
     info!("HCI Capture Task started - processing packets in real-time");
-    
+
     let mut rx = rx;
     let mut packet_count = 0u64;
     let start_time = Utc::now();
@@ -222,10 +207,7 @@ pub async fn hci_capture_task(
 
             info!(
                 "HCI Packets captured: {} ({:.1} pps) | Device: {} | RSSI: {}",
-                packet_count,
-                pps,
-                packet.mac_address,
-                packet.rssi
+                packet_count, pps, packet.mac_address, packet.rssi
             );
         }
 

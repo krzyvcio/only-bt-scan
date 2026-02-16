@@ -1,7 +1,6 @@
 /// System integration - hides console window and manages background operation
 /// Windows: System Tray icon + hidden console
 /// Linux: Background daemon mode
-
 use log::info;
 
 #[cfg(target_os = "windows")]
@@ -11,9 +10,9 @@ pub mod windows_integration {
     /// Hide the console window on Windows
     pub fn hide_console_window() {
         unsafe {
+            use windows::Win32::Foundation::HWND;
             use windows::Win32::System::Console::GetConsoleWindow;
             use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
-            use windows::Win32::Foundation::HWND;
 
             let hwnd = GetConsoleWindow();
             if hwnd != HWND::default() {
@@ -26,9 +25,9 @@ pub mod windows_integration {
     /// Show the console window on Windows
     pub fn show_console_window() {
         unsafe {
+            use windows::Win32::Foundation::HWND;
             use windows::Win32::System::Console::GetConsoleWindow;
             use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOW};
-            use windows::Win32::Foundation::HWND;
 
             let hwnd = GetConsoleWindow();
             if hwnd != HWND::default() {

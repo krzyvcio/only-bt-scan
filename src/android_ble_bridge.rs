@@ -169,7 +169,10 @@ impl AndroidBleScanner {
     }
 
     pub fn get_stats(&self) -> (u32, u32) {
-        (self.devices.len() as u32, self.connected_devices.len() as u32)
+        (
+            self.devices.len() as u32,
+            self.connected_devices.len() as u32,
+        )
     }
 }
 

@@ -45,11 +45,11 @@ mod diagnostic {
         //                  The data we got was: 0109202231AF58B9F00F7253DF20A1848DA6DEACC747C910C10EE7
         //                  That's 27 bytes
         //                  So length = 1 (type) + 2 (company_id) + 27 (data) = 30 = 0x1E
-        
+
         let mfg_data = "0109202231AF58B9F00F7253DF20A1848DA6DEACC747C910C10EE7";
         let length = (1 + 2 + mfg_data.len() / 2) as u8; // Type + company_id + data
         let frame = format!("020100{:02x}ff0600{}", length, mfg_data);
-        
+
         println!("\n=== Parsing Microsoft: {} ===", frame);
         let result = parse_advertisement_data(&frame);
         println!("Result: {:?}", result);
@@ -67,7 +67,7 @@ mod diagnostic {
         let mfg_data = "020106030334A2A4";
         let length = (1 + 2 + mfg_data.len() / 2) as u8;
         let frame = format!("020106{:02x}ff5900{}", length, mfg_data);
-        
+
         println!("\n=== Parsing Google: {} ===", frame);
         let result = parse_advertisement_data(&frame);
         println!("Result: {:?}", result);
@@ -81,11 +81,11 @@ mod diagnostic {
         // Flags (type 0x01), length 2: 02 01 06
         // TX Power (type 0x0a), length 2: 02 0a c5
         // Local name (type 0x09), length N: 0x(N+1) 09 "data..."
-        
-        let name_data = "54657374";  // "Test" in hex
+
+        let name_data = "54657374"; // "Test" in hex
         let name_frame = format!("{:02x}09{}", 1 + name_data.len() / 2, name_data);
         let full_hex = format!("020106020ac5{}", name_frame);
-        
+
         println!("\n=== Parsing spec example: {} ===", full_hex);
         let result = parse_advertisement_data(&full_hex);
         println!("Flags: {:?}", result.flags);

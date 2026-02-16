@@ -1,10 +1,9 @@
 /// Raw Bluetooth packet sniffing and frame analysis
 /// Collects complete advertising packets and raw BLE frames
 /// Supports: Linux (HCI raw sockets), Windows (WinAPI), macOS (limited)
-
 use chrono::{DateTime, Utc};
 use log::debug;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Complete Bluetooth frame with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,12 +50,12 @@ impl std::fmt::Display for BluetoothPhy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(non_camel_case_types)]
 pub enum AdvertisingType {
-    Adv_Ind,              // Connectable undirected
-    Adv_Direct_Ind,       // Connectable directed
-    Adv_Nonconn_Ind,      // Non-connectable undirected
-    Adv_Scan_Ind,         // Scannable undirected
-    Scan_Rsp,             // Scan response
-    Ext_Adv_Ind,          // Extended advertising (BT 5.0+)
+    Adv_Ind,         // Connectable undirected
+    Adv_Direct_Ind,  // Connectable directed
+    Adv_Nonconn_Ind, // Non-connectable undirected
+    Adv_Scan_Ind,    // Scannable undirected
+    Scan_Rsp,        // Scan response
+    Ext_Adv_Ind,     // Extended advertising (BT 5.0+)
     Unknown,
 }
 
@@ -148,7 +147,7 @@ pub fn parse_advertising_data(raw_data: &[u8]) -> Vec<AdStructure> {
 
         let ad_type = raw_data[pos + 1];
         let data = &raw_data[pos + 2..pos + len + 1];
-        
+
         structures.push(AdStructure::parse(ad_type, data));
         pos += len + 1;
     }
@@ -188,7 +187,7 @@ impl RawPacketSniffer {
         // Update statistics
         self.stats.total_frames += 1;
         self.stats.total_bytes_captured += frame.advertising_data.len() as u64;
-        
+
         if self.stats.total_frames == 1 {
             self.stats.strongest_signal = frame.rssi;
             self.stats.weakest_signal = frame.rssi;
@@ -265,18 +264,18 @@ impl RawPacketSniffer {
 #[cfg(target_os = "linux")]
 pub mod linux_sniffer {
     use super::*;
-    use log::{info, debug, error};
+    use log::{debug, error, info};
 
     /// Start raw HCI packet sniffing on Linux
     pub async fn start_hci_sniffing(
         adapter_index: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
         info!("Starting HCI sniffing on adapter {}", adapter_index);
-        
+
         // Raw HCI socket listening would go here
         // Requires: struct hci_filter, HCI_CHANNEL_RAW
         // hci_device_raw_open() + raw packet reception loop
-        
+
         debug!("HCI sniffing initialized");
         Ok(())
     }
@@ -287,7 +286,7 @@ pub mod linux_sniffer {
     ) -> Result<BluetoothFrame, Box<dyn std::error::Error>> {
         // HCI LE Meta Event (0x3E) parsing
         // Subevent: LE Advertising Report (0x02)
-        
+
         if data.len() < 11 {
             return Err("Insufficient data for LE Advertising Report".into());
         }
@@ -295,7 +294,7 @@ pub mod linux_sniffer {
         let event_type = data[0];
         let address_type = data[1];
         let rssi = data[data.len() - 1] as i8;
-        
+
         let mac_address = format!(
             "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
             data[2], data[3], data[4], data[5], data[6], data[7]
@@ -336,10 +335,10 @@ pub mod windows_sniffer {
     /// Start Bluetooth packet sniffing on Windows
     pub async fn start_winsock_sniffing() -> Result<(), Box<dyn std::error::Error>> {
         info!("Starting Windows socket-based Bluetooth sniffing");
-        
+
         // WinSock2 RAW socket sniffing would go here
         // Requires elevated privileges and WINSOCK_PACKET_FILTER
-        
+
         debug!("Windows sniffing initialized");
         Ok(())
     }
@@ -370,7 +369,7 @@ mod tests {
             channel: 37,
             frame_type: AdvertisingType::Adv_Ind,
         };
-        
+
         sniffer.add_frame(frame);
         assert_eq!(sniffer.get_stats().total_frames, 1);
         assert_eq!(sniffer.get_unique_devices().len(), 1);

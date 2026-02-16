@@ -1,19 +1,18 @@
+use lazy_static::lazy_static;
 /// Official Bluetooth SIG Company ID Reference
 /// Data source: https://bitbucket.org/bluetooth-SIG/public (official Bluetooth SIG repository)
 /// Last updated: 2026-02-15
 ///
 /// This module provides lookup functions for Bluetooth Company IDs
 /// ensuring manufacturer identification matches official SIG assignments.
-
 use std::collections::BTreeMap;
-use lazy_static::lazy_static;
 
 lazy_static! {
     /// Complete mapping of Company IDs (hex) to official manufacturer names
     /// Contains 1000+ entries from official Bluetooth SIG assignments (0x0000-0x1084)
     static ref COMPANY_ID_MAP: BTreeMap<u16, &'static str> = {
         let mut map = BTreeMap::new();
-        
+
         // Major tech companies (verified entries)
         map.insert(0x004C, "Apple, Inc.");
         map.insert(0x0006, "Microsoft");
@@ -28,7 +27,7 @@ lazy_static! {
         map.insert(0x0171, "Amazon.com Services LLC");
         map.insert(0x027D, "HUAWEI Technologies Co., Ltd.");
         map.insert(0x08AA, "SZ DJI TECHNOLOGY CO.,LTD");
-        
+
         // Extended manufacturer list - high-volume producers
         map.insert(0x004F, "APT Ltd.");
         map.insert(0x0268, "Cerevo");
@@ -50,7 +49,7 @@ lazy_static! {
         map.insert(0x0213, "Fitbit, Inc.");
         map.insert(0x000F, "Broadcom Corporation");
         map.insert(0x0044, "Texas Instruments");
-        
+
         // Smart home & IoT
         map.insert(0x01D7, "Philips Lighting BV (Signify)");
         map.insert(0x00FE, "LIFX");
@@ -59,28 +58,28 @@ lazy_static! {
         map.insert(0x0175, "Ictk Holdings Inc.");
         map.insert(0x0153, "Sunricher");
         map.insert(0x008D, "GN Danavox A/S");
-        
+
         // Wearables & Health
         map.insert(0x014C, "Jawbone");
         map.insert(0x01DA, "Withings");
         map.insert(0x0133, "GoPro Inc.");
         map.insert(0x011B, "Polar Electro");
         map.insert(0x00D5, "Nordic Systems");
-        
+
         // Audio
         map.insert(0x000B, "Hewlett-Packard");
         map.insert(0x0117, "Skullcandy");
         map.insert(0x017A, "Bose");
-        
+
         // Automotive
         map.insert(0x00AC, "BMW");
         map.insert(0x0131, "Audi AG");
         map.insert(0x011D, "Mercedes-Benz");
-        
+
         // Additional entries (partial list - full list at end)
         // For complete list with all 1000+ entries, see data file at:
         // src/data/assigned_numbers/company_identifiers/company_identifiers.yaml
-        
+
         map
     };
 }
@@ -164,15 +163,24 @@ mod tests {
         assert_eq!(lookup_company_id(0x004C), Some("Apple, Inc."));
         assert_eq!(lookup_company_id(0x0006), Some("Microsoft"));
         assert_eq!(lookup_company_id(0x00E0), Some("Google"));
-        assert_eq!(lookup_company_id(0x0075), Some("Samsung Electronics Co. Ltd."));
+        assert_eq!(
+            lookup_company_id(0x0075),
+            Some("Samsung Electronics Co. Ltd.")
+        );
     }
 
     #[test]
     fn test_corrected_company_ids() {
         // These are the corrected IDs from official SIG validation
-        assert_eq!(lookup_company_id(0x0087), Some("Garmin International, Inc."));
+        assert_eq!(
+            lookup_company_id(0x0087),
+            Some("Garmin International, Inc.")
+        );
         assert_eq!(lookup_company_id(0x0171), Some("Amazon.com Services LLC"));
-        assert_eq!(lookup_company_id(0x027D), Some("HUAWEI Technologies Co., Ltd."));
+        assert_eq!(
+            lookup_company_id(0x027D),
+            Some("HUAWEI Technologies Co., Ltd.")
+        );
         assert_eq!(lookup_company_id(0x08AA), Some("SZ DJI TECHNOLOGY CO.,LTD"));
     }
 
@@ -184,7 +192,9 @@ mod tests {
     #[test]
     fn test_search_functionality() {
         let results = search_company_by_name("apple");
-        assert!(results.iter().any(|(_, name)| name.to_lowercase().contains("apple")));
+        assert!(results
+            .iter()
+            .any(|(_, name)| name.to_lowercase().contains("apple")));
     }
 
     #[test]

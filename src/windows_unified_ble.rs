@@ -1,8 +1,8 @@
 /// Unified Windows Bluetooth LE Integration
-/// 
+///
 /// Combines HCI packet capture with device management and official Company ID references
 /// Provides seamless integration between low-level packet analysis and high-level device operations
-/// 
+///
 /// Architecture:
 /// ```
 /// Windows Unified BLE System
@@ -25,11 +25,11 @@ pub mod unified {
     use crate::company_ids;
     use crate::windows_bluetooth::windows_bt::WindowsBluetoothManager;
     use crate::windows_hci::WindowsHciScanner;
+    use chrono::{DateTime, Utc};
+    use colored::Colorize;
     use log::{debug, info, warn};
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
-    use chrono::{DateTime, Utc};
-    use colored::Colorize;
 
     /// Manufacturer device with full context (packets + metadata)
     #[derive(Debug, Clone)]
@@ -199,12 +199,7 @@ pub mod unified {
 
         /// Get all discovered devices
         pub fn get_devices(&self) -> Vec<ManagedDevice> {
-            self.devices
-                .lock()
-                .unwrap()
-                .values()
-                .cloned()
-                .collect()
+            self.devices.lock().unwrap().values().cloned().collect()
         }
 
         /// Get device by MAC address
@@ -244,10 +239,7 @@ pub mod unified {
             let mut stats: Vec<(String, u16, usize)> = grouped
                 .into_iter()
                 .map(|(name, devices)| {
-                    let company_id = devices
-                        .first()
-                        .and_then(|d| d.manufacturer_id)
-                        .unwrap_or(0);
+                    let company_id = devices.first().and_then(|d| d.manufacturer_id).unwrap_or(0);
                     (name, company_id, devices.len())
                 })
                 .collect();
@@ -278,9 +270,15 @@ pub mod unified {
             let devices = self.get_devices();
             let stats = self.manufacturer_stats();
 
-            println!("\n{}", "═══════════════════════════════════════════════════════".cyan());
+            println!(
+                "\n{}",
+                "═══════════════════════════════════════════════════════".cyan()
+            );
             println!("📊 Windows Unified BLE Scan Summary");
-            println!("{}", "═══════════════════════════════════════════════════════".cyan());
+            println!(
+                "{}",
+                "═══════════════════════════════════════════════════════".cyan()
+            );
 
             println!(
                 "📱 Total Devices: {} | Total Packets: {}",
@@ -301,14 +299,13 @@ pub mod unified {
             }
 
             if stats.len() > 20 {
-                println!(
-                    "{:<40} |        | ... and {} more",
-                    "",
-                    stats.len() - 20
-                );
+                println!("{:<40} |        | ... and {} more", "", stats.len() - 20);
             }
 
-            println!("{}", "═══════════════════════════════════════════════════════".cyan());
+            println!(
+                "{}",
+                "═══════════════════════════════════════════════════════".cyan()
+            );
         }
 
         /// Stop scanning
@@ -335,10 +332,7 @@ pub mod unified {
             device.set_manufacturer_id(0x004C); // Apple
 
             assert_eq!(device.manufacturer_id, Some(0x004C));
-            assert!(device
-                .manufacturer_name
-                .to_lowercase()
-                .contains("apple"));
+            assert!(device.manufacturer_name.to_lowercase().contains("apple"));
         }
 
         #[test]

@@ -5,9 +5,8 @@
 /// - Event patterns and correlations
 /// - Device behavior over time
 /// - Anomalies and signal degradation
-
-use crate::telemetry::{TimelineEvent, EventType};
-use serde::{Serialize, Deserialize};
+use crate::telemetry::{EventType, TimelineEvent};
+use serde::{Deserialize, Serialize};
 
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// EVENT PATTERNS
@@ -17,19 +16,19 @@ use serde::{Serialize, Deserialize};
 pub struct DeviceEventPattern {
     pub device_mac: String,
     pub pattern_type: PatternType,
-    pub frequency_hz: f64,          // Events per second
-    pub regularity: f64,            // 0.0-1.0 (1.0 = perfectly regular)
-    pub confidence: f64,            // 0.0-1.0
+    pub frequency_hz: f64, // Events per second
+    pub regularity: f64,   // 0.0-1.0 (1.0 = perfectly regular)
+    pub confidence: f64,   // 0.0-1.0
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum PatternType {
-    Regular,           // Consistent interval
-    Bursty,           // Clusters of events
-    Random,           // Unpredictable
-    Degrading,        // Signal getting weaker
-    Improving,        // Signal getting stronger
-    Intermittent,     // Frequent gaps
+    Regular,      // Consistent interval
+    Bursty,       // Clusters of events
+    Random,       // Unpredictable
+    Degrading,    // Signal getting weaker
+    Improving,    // Signal getting stronger
+    Intermittent, // Frequent gaps
 }
 
 /// ═══════════════════════════════════════════════════════════════════════════════
@@ -43,15 +42,15 @@ pub struct DeviceBehavior {
     pub event_duration_ms: u64,
     pub pattern: DeviceEventPattern,
     pub rssi_trend: RssiTrend,
-    pub stability_score: f64,      // 0.0-100.0
+    pub stability_score: f64, // 0.0-100.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RssiTrend {
-    Stable,      // No significant change
-    Improving,   // Getting stronger
-    Degrading,   // Getting weaker
-    Volatile,    // Rapid fluctuations
+    Stable,    // No significant change
+    Improving, // Getting stronger
+    Degrading, // Getting weaker
+    Volatile,  // Rapid fluctuations
 }
 
 /// ═══════════════════════════════════════════════════════════════════════════════
@@ -62,8 +61,8 @@ pub enum RssiTrend {
 pub struct TemporalCorrelation {
     pub device1: String,
     pub device2: String,
-    pub correlation_coefficient: f64,  // -1.0 to 1.0
-    pub simultaneous_events: usize,    // Events within 100ms
+    pub correlation_coefficient: f64, // -1.0 to 1.0
+    pub simultaneous_events: usize,   // Events within 100ms
     pub correlation_strength: CorrelationStrength,
 }
 
@@ -85,16 +84,16 @@ pub struct EventAnomaly {
     pub timestamp_ms: u64,
     pub device_mac: String,
     pub anomaly_type: AnomalyType,
-    pub severity: f64,              // 0.0-1.0
+    pub severity: f64, // 0.0-1.0
     pub description: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum AnomalyType {
-    GapInTransmission,   // Unexpected silence
-    RssiDropout,         // Sudden signal loss
-    BurstyBehavior,      // Unusual clustering
-    FrequencyChange,     // Different pattern
+    GapInTransmission, // Unexpected silence
+    RssiDropout,       // Sudden signal loss
+    BurstyBehavior,    // Unusual clustering
+    FrequencyChange,   // Different pattern
 }
 
 /// ═══════════════════════════════════════════════════════════════════════════════
@@ -115,7 +114,9 @@ impl EventAnalyzer {
         let device_events: Vec<_> = self
             .events
             .iter()
-            .filter(|e| e.device_mac == mac_address && matches!(e.event_type, EventType::PacketReceived))
+            .filter(|e| {
+                e.device_mac == mac_address && matches!(e.event_type, EventType::PacketReceived)
+            })
             .collect();
 
         if device_events.len() < 2 {
@@ -180,11 +181,12 @@ impl EventAnalyzer {
             0.0
         };
 
-        let event_duration_ms = if let (Some(&first), Some(&last)) = (timestamps.first(), timestamps.last()) {
-            last - first
-        } else {
-            0
-        };
+        let event_duration_ms =
+            if let (Some(&first), Some(&last)) = (timestamps.first(), timestamps.last()) {
+                last - first
+            } else {
+                0
+            };
 
         Some(DeviceBehavior {
             device_mac: mac_address.to_string(),
@@ -226,7 +228,8 @@ impl EventAnalyzer {
             }
         }
 
-        let avg_interval = intervals.iter().map(|(_, i)| i).sum::<u64>() as f64 / intervals.len() as f64;
+        let avg_interval =
+            intervals.iter().map(|(_, i)| i).sum::<u64>() as f64 / intervals.len() as f64;
         let expected_gap = avg_interval * 2.5; // Anomaly if 2.5x longer than average
 
         for (idx, interval) in intervals {
@@ -236,7 +239,10 @@ impl EventAnalyzer {
                     device_mac: mac_address.to_string(),
                     anomaly_type: AnomalyType::GapInTransmission,
                     severity: ((interval as f64 - expected_gap) / expected_gap).min(1.0),
-                    description: format!("Gap of {}ms (expected ~{}ms)", interval, avg_interval as u64),
+                    description: format!(
+                        "Gap of {}ms (expected ~{}ms)",
+                        interval, avg_interval as u64
+                    ),
                 });
             }
         }
@@ -308,7 +314,8 @@ impl EventAnalyzer {
                     correlations.push(TemporalCorrelation {
                         device1: mac1.clone(),
                         device2: mac2.clone(),
-                        correlation_coefficient: simultaneous as f64 / events1.len().max(events2.len()) as f64,
+                        correlation_coefficient: simultaneous as f64
+                            / events1.len().max(events2.len()) as f64,
                         simultaneous_events: simultaneous,
                         correlation_strength,
                     });
@@ -352,11 +359,7 @@ fn calculate_variance(values: &[f64]) -> f64 {
         return 0.0;
     }
     let mean = values.iter().sum::<f64>() / values.len() as f64;
-    let variance = values
-        .iter()
-        .map(|&v| (v - mean).powi(2))
-        .sum::<f64>()
-        / values.len() as f64;
+    let variance = values.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / values.len() as f64;
     variance.sqrt()
 }
 

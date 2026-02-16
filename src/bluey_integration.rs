@@ -1,3 +1,4 @@
+use crate::data_models::{DeviceModel, GattServiceInfo};
 /// Bluey Integration Module
 /// Advanced GATT scanning and connection via Bluey library
 /// Supports Windows, Android with plans for macOS, iOS, Linux, Web
@@ -8,10 +9,8 @@
 /// - Characteristic reading/writing
 /// - Descriptor analysis
 /// - Better cross-platform support than btleplug
-
 use log::{info, warn};
 use std::time::Duration;
-use crate::data_models::{DeviceModel, GattServiceInfo};
 
 /// Bluey scanner configuration
 #[derive(Debug, Clone)]
@@ -179,7 +178,11 @@ impl BlueyCapabilities {
                 "Bluey on {}: ✅ Full support (GATT: {}, Connection: {}, Descriptors: {})",
                 self.platform,
                 if self.gatt_discovery { "✓" } else { "✗" },
-                if self.connection_support { "✓" } else { "✗" },
+                if self.connection_support {
+                    "✓"
+                } else {
+                    "✗"
+                },
                 if self.descriptor_read { "✓" } else { "✗" }
             )
         } else {
@@ -201,7 +204,14 @@ impl HybridScanner {
 
         info!("🔷 Hybrid Scanner Configuration");
         info!("   btleplug: ✓ Always available");
-        info!("   Bluey:    {}", if bluey_caps.supported { "✓ Available" } else { "⏳ Not available on this platform" });
+        info!(
+            "   Bluey:    {}",
+            if bluey_caps.supported {
+                "✓ Available"
+            } else {
+                "⏳ Not available on this platform"
+            }
+        );
 
         Self {
             btleplug_enabled: true,
@@ -223,7 +233,10 @@ impl HybridScanner {
             let bluey_scanner = BlueyScanner::new(self.bluey_config.clone());
             match bluey_scanner.scan_with_bluey().await {
                 Ok(bluey_devices) => {
-                    info!("✅ Bluey scan found {} additional devices", bluey_devices.len());
+                    info!(
+                        "✅ Bluey scan found {} additional devices",
+                        bluey_devices.len()
+                    );
 
                     // Merge results, avoiding duplicates
                     for device in bluey_devices {

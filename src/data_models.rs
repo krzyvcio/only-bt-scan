@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 /// Core Data Models - Two fundamental data types
 ///
 /// This module defines the two main data models in the system:
@@ -8,9 +9,7 @@
 /// - Devices aggregate information from many raw packets
 /// - Raw packets provide the detailed telemetry data
 /// - Web API serves both independently and combined
-
-use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -21,19 +20,19 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceModel {
     // === Core Identification ===
-    pub mac_address: String,        // Primary key
+    pub mac_address: String,         // Primary key
     pub device_name: Option<String>, // Friendly name
     pub device_type: DeviceType,
 
     // === Signal Quality ===
-    pub rssi: i8,                   // Current signal strength
-    pub avg_rssi: f64,              // Average over time
-    pub rssi_variance: f64,         // Signal stability
+    pub rssi: i8,           // Current signal strength
+    pub avg_rssi: f64,      // Average over time
+    pub rssi_variance: f64, // Signal stability
 
     // === Timing ===
     pub first_seen: DateTime<Utc>,
     pub last_seen: DateTime<Utc>,
-    pub response_time_ms: u64,      // First to last detection gap
+    pub response_time_ms: u64, // First to last detection gap
 
     // === Advertising Info ===
     pub manufacturer_id: Option<u16>,
@@ -43,8 +42,8 @@ pub struct DeviceModel {
     pub tx_power: Option<i8>,
 
     // === MAC Addressing ===
-    pub mac_type: Option<String>,   // Public, Random, RPA
-    pub is_rpa: bool,               // Random Private Address flag
+    pub mac_type: Option<String>, // Public, Random, RPA
+    pub is_rpa: bool,             // Random Private Address flag
 
     // === Security & Connection ===
     pub security_level: Option<String>,
@@ -52,8 +51,8 @@ pub struct DeviceModel {
     pub is_connectable: bool,
 
     // === Statistics ===
-    pub detection_count: u64,       // Total times scanned
-    pub last_rssi_values: Vec<i8>,  // Last N RSSI values for charts
+    pub detection_count: u64,      // Total times scanned
+    pub last_rssi_values: Vec<i8>, // Last N RSSI values for charts
 
     // === GATT Discovery ===
     pub discovered_services: Vec<GattServiceInfo>,
@@ -82,8 +81,8 @@ pub struct GattServiceInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VendorProtocolInfo {
-    pub protocol_name: String,      // e.g., "iBeacon", "Eddystone", "Fast Pair"
-    pub protocol_type: String,      // e.g., "beacon", "continuity", "fast_pair"
+    pub protocol_name: String, // e.g., "iBeacon", "Eddystone", "Fast Pair"
+    pub protocol_type: String, // e.g., "beacon", "continuity", "fast_pair"
     pub data: HashMap<String, String>,
 }
 
@@ -95,24 +94,24 @@ pub struct VendorProtocolInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawPacketModel {
     // === Packet Identification ===
-    pub packet_id: u64,                 // Unique ID
-    pub mac_address: String,            // Which device sent this
+    pub packet_id: u64,      // Unique ID
+    pub mac_address: String, // Which device sent this
     pub timestamp: DateTime<Utc>,
-    pub timestamp_ms: u64,              // Milliseconds since epoch (for temporal analysis)
+    pub timestamp_ms: u64, // Milliseconds since epoch (for temporal analysis)
 
     // === Physical Layer ===
-    pub phy: String,                    // "LE 1M", "LE 2M", "LE Coded"
-    pub channel: u8,                    // BLE: 37-39 adv, 0-36 data
-    pub rssi: i8,                       // Signal strength in dBm
+    pub phy: String, // "LE 1M", "LE 2M", "LE Coded"
+    pub channel: u8, // BLE: 37-39 adv, 0-36 data
+    pub rssi: i8,    // Signal strength in dBm
 
     // === Packet Structure ===
-    pub packet_type: String,            // "ADV_IND", "SCAN_RSP", "ADV_NONCONN_IND"
+    pub packet_type: String, // "ADV_IND", "SCAN_RSP", "ADV_NONCONN_IND"
     pub is_scan_response: bool,
-    pub is_extended: bool,              // BT 5.0+ extended advertising
+    pub is_extended: bool, // BT 5.0+ extended advertising
 
     // === Raw Advertising Data ===
-    pub advertising_data: Vec<u8>,      // Complete raw bytes
-    pub advertising_data_hex: String,   // Hex string representation
+    pub advertising_data: Vec<u8>,    // Complete raw bytes
+    pub advertising_data_hex: String, // Hex string representation
 
     // === Parsed AD Structures ===
     pub ad_structures: Vec<AdStructureData>,
@@ -137,7 +136,7 @@ pub struct AdStructureData {
     pub type_name: String,
     pub data: Vec<u8>,
     pub data_hex: String,
-    pub interpretation: String,        // Human-readable meaning
+    pub interpretation: String, // Human-readable meaning
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,7 +160,7 @@ pub struct DevicePacketRelationship {
     pub packets_by_channel: HashMap<u8, u64>,
     pub packets_by_type: HashMap<String, u64>,
     pub packets_by_phy: HashMap<String, u64>,
-    pub last_packet_ids: Vec<u64>,      // Last 100 packet IDs for quick lookup
+    pub last_packet_ids: Vec<u64>, // Last 100 packet IDs for quick lookup
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -236,7 +235,7 @@ pub struct PacketRow {
     pub device_id: i32,
     pub mac_address: String,
     pub rssi: i8,
-    pub advertising_data: Vec<u8>,    // BLOB in DB
+    pub advertising_data: Vec<u8>, // BLOB in DB
     pub phy: String,
     pub channel: i32,
     pub frame_type: String,
@@ -292,7 +291,8 @@ impl DeviceModel {
 
         // Update variance
         let avg_int = self.avg_rssi as i32;
-        let var_sum: i64 = self.last_rssi_values
+        let var_sum: i64 = self
+            .last_rssi_values
             .iter()
             .map(|&r| {
                 let diff = (r as i32) - avg_int;
@@ -306,7 +306,8 @@ impl DeviceModel {
 impl RawPacketModel {
     pub fn new(mac_address: String, timestamp: DateTime<Utc>, advertising_data: Vec<u8>) -> Self {
         let advertising_data_hex = hex::encode(&advertising_data);
-        let timestamp_ms = (timestamp.timestamp() as u64) * 1000 + (timestamp.timestamp_subsec_millis() as u64);
+        let timestamp_ms =
+            (timestamp.timestamp() as u64) * 1000 + (timestamp.timestamp_subsec_millis() as u64);
 
         Self {
             packet_id: 0,

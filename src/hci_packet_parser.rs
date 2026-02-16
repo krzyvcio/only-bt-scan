@@ -67,11 +67,32 @@ pub struct HciEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HciEventDecoded {
-    LeAdvertisingReport { subevent_code: u8, num_reports: u8, reports: Vec<AdvertisingReport> },
-    LeExtendedAdvertisingReport { subevent_code: u8, num_reports: u8, reports: Vec<ExtendedAdvertisingReport> },
-    LeConnectionUpdateComplete { subevent_code: u8, status: u8, connection_handle: u16, connection_interval: u16, peripheral_latency: u16, supervision_timeout: u16 },
-    DisconnectionComplete { status: u8, connection_handle: u16, reason: u8 },
-    Other { data: Vec<u8> },
+    LeAdvertisingReport {
+        subevent_code: u8,
+        num_reports: u8,
+        reports: Vec<AdvertisingReport>,
+    },
+    LeExtendedAdvertisingReport {
+        subevent_code: u8,
+        num_reports: u8,
+        reports: Vec<ExtendedAdvertisingReport>,
+    },
+    LeConnectionUpdateComplete {
+        subevent_code: u8,
+        status: u8,
+        connection_handle: u16,
+        connection_interval: u16,
+        peripheral_latency: u16,
+        supervision_timeout: u16,
+    },
+    DisconnectionComplete {
+        status: u8,
+        connection_handle: u16,
+        reason: u8,
+    },
+    Other {
+        data: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -138,7 +159,9 @@ pub struct HciPacketParser {
 }
 
 impl Default for HciPacketParser {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl HciPacketParser {
@@ -162,7 +185,11 @@ impl HciPacketParser {
             0x13 => "Number of Completed Packets".to_string(),
             _ => format!("Unknown Event (0x{:02X})", event_code),
         };
-        *self.stats.event_type_counts.entry(event_name.clone()).or_insert(0) += 1;
+        *self
+            .stats
+            .event_type_counts
+            .entry(event_name.clone())
+            .or_insert(0) += 1;
         HciEvent {
             event_code,
             event_name,

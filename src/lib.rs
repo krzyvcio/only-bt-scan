@@ -1,5 +1,8 @@
 mod adapter_info;
+pub mod adapter_manager;  // NEW: Adapter management with best selection
 mod advertising_parser;
+pub mod async_scanner;    // NEW: Async scanner with channels
+pub mod db_writer;       // NEW: Batch DB writer with backpressure
 mod android_ble_bridge;
 mod background;
 mod ble_security;
@@ -15,9 +18,10 @@ mod core_bluetooth_integration;
 mod data_flow_estimator;
 mod data_models;
 pub mod db;
-pub mod device_tracker;
 mod db_frames;
+pub mod db_pool; // NEW: Database connection pool
 mod device_events;
+pub mod device_tracker;
 mod event_analyzer;
 mod gatt_client;
 mod hci_packet_parser;
@@ -62,12 +66,89 @@ use unified_scan::UnifiedScanEngine;
 mod ui_renderer;
 mod web_server;
 
+/// Backup database to *.bak file before startup
+/// Creates: bluetooth_scan.db.bak
+fn backup_database() {
+    const DB_PATH: &str = "bluetooth_scan.db";
+    const DB_BAK: &str = "bluetooth_scan.db.bak";
+    
+    // Check if database exists
+    if !std::path::Path::new(DB_PATH).exists() {
+        return;
+    }
+    
+    // Try to create backup
+    match std::fs::copy(DB_PATH, DB_BAK) {
+        Ok(bytes) => {
+            println!("📦 Database backup created ({} bytes)", bytes);
+            log::info!("Database backup created: {} bytes", bytes);
+        }
+        Err(e) => {
+            println!("⚠️  Backup failed: {}", e);
+            log::warn!("Database backup failed: {}", e);
+        }
+    }
+}
+
+/// Restore database from *.bak backup
+/// Returns true if restore was successful
+pub fn restore_database() -> bool {
+    const DB_PATH: &str = "bluetooth_scan.db";
+    const DB_BAK: &str = "bluetooth_scan.db.bak";
+    
+    // Check if backup exists
+    if !std::path::Path::new(DB_BAK).exists() {
+        println!("❌ No backup file found");
+        return false;
+    }
+    
+    // Remove corrupted database
+    if std::path::Path::new(DB_PATH).exists() {
+        if let Err(e) = std::fs::remove_file(DB_PATH) {
+            println!("❌ Failed to remove corrupted database: {}", e);
+            return false;
+        }
+    }
+    
+    // Restore from backup
+    match std::fs::copy(DB_BAK, DB_PATH) {
+        Ok(bytes) => {
+            println!("✅ Database restored from backup ({} bytes)", bytes);
+            log::info!("Database restored from backup: {} bytes", bytes);
+            true
+        }
+        Err(e) => {
+            println!("❌ Failed to restore database: {}", e);
+            log::error!("Database restore failed: {}", e);
+            false
+        }
+    }
+}
+
+/// Format timestamp for display - shows full date with time if not today, otherwise just time
+fn format_timestamp(dt: &chrono::DateTime<chrono::Utc>) -> String {
+    let now = chrono::Utc::now();
+    let today = now.date_naive();
+    let dt_date = dt.date_naive();
+    
+    if dt_date == today {
+        // Today - show only time
+        dt.format("%H:%M:%S").to_string()
+    } else {
+        // Not today - show full date with time
+        dt.format("%Y-%m-%d %H:%M").to_string()
+    }
+}
+
 pub async fn run() -> Result<(), anyhow::Error> {
     // Load .env file
     dotenv().ok();
 
-    // Initialize logging (only warnings and errors)
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+    // Initialize file logger ONLY - no env_logger stdout output
+    // All logs go to file via logger module
+    if let Err(e) = logger::init_logger(&logger::get_log_path()) {
+        eprintln!("Failed to initialize file logger: {}", e);
+    }
 
     // Draw initial static header
     if let Err(e) = ui_renderer::draw_static_header() {
@@ -111,6 +192,9 @@ pub async fn run() -> Result<(), anyhow::Error> {
         )?;
     }
 
+    // Backup database before starting (if exists)
+    backup_database();
+    
     // Initialize database
     match db::init_database() {
         Ok(_) => {
@@ -121,6 +205,16 @@ pub async fn run() -> Result<(), anyhow::Error> {
             return Err(anyhow::anyhow!("Database initialization failed: {}", e));
         }
     }
+
+    // Initialize database connection pool
+    if let Err(e) = db_pool::init_pool() {
+        log::error!("Failed to initialize database pool: {}", e);
+        return Err(anyhow::anyhow!(
+            "Database pool initialization failed: {}",
+            e
+        ));
+    }
+    log::info!("Database connection pool initialized");
     execute!(
         stdout(),
         MoveTo(0, ui_renderer::get_device_list_start_line() - 8)
@@ -165,9 +259,9 @@ pub async fn run() -> Result<(), anyhow::Error> {
     // LOAD INITIAL TELEMETRY FROM DATABASE
     // ═══════════════════════════════════════════════════════════════
     {
-        use std::collections::HashMap;
         use crate::telemetry::{DeviceTelemetryQuick, LatencyStatsQuick, TelemetrySnapshot};
         use chrono::Utc;
+        use std::collections::HashMap;
 
         if let Ok(conn) = rusqlite::Connection::open("./bluetooth_scan.db") {
             // Count packets per device
@@ -201,7 +295,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
                     }
                 }
             }
-            
+
             // Convert milliseconds to DateTime
             let snapshot_timestamp = if latest_timestamp_ms > 0 {
                 chrono::DateTime::<Utc>::from_timestamp_millis(latest_timestamp_ms as i64)
@@ -214,12 +308,15 @@ pub async fn run() -> Result<(), anyhow::Error> {
             let mut devices_map: HashMap<String, DeviceTelemetryQuick> = HashMap::new();
             for (mac, rssi_values) in &device_rssi_values {
                 if !rssi_values.is_empty() {
-                    let avg_rssi = rssi_values.iter().map(|&r| r as f64).sum::<f64>() / rssi_values.len() as f64;
+                    let avg_rssi = rssi_values.iter().map(|&r| r as f64).sum::<f64>()
+                        / rssi_values.len() as f64;
                     let packet_count = device_packet_counts.get(mac).copied().unwrap_or(0);
-                    
+
                     // Calculate latency as difference between min/max timestamps
                     let latency_ms = if let Some(timestamps) = device_timestamps.get(mac) {
-                        if let (Some(&min_ts), Some(&max_ts)) = (timestamps.iter().min(), timestamps.iter().max()) {
+                        if let (Some(&min_ts), Some(&max_ts)) =
+                            (timestamps.iter().min(), timestamps.iter().max())
+                        {
                             max_ts.saturating_sub(min_ts)
                         } else {
                             0
@@ -227,22 +324,26 @@ pub async fn run() -> Result<(), anyhow::Error> {
                     } else {
                         0
                     };
-                    
-                    devices_map.insert(mac.clone(), DeviceTelemetryQuick {
-                        mac: mac.clone(),
-                        packet_count,
-                        avg_rssi,
-                        latencies: LatencyStatsQuick {
-                            min_ms: 0,
-                            max_ms: latency_ms,  // Total span = max - min
-                            avg_ms: 0.0,
+
+                    devices_map.insert(
+                        mac.clone(),
+                        DeviceTelemetryQuick {
+                            mac: mac.clone(),
+                            packet_count,
+                            avg_rssi,
+                            latencies: LatencyStatsQuick {
+                                min_ms: 0,
+                                max_ms: latency_ms, // Total span = max - min
+                                avg_ms: 0.0,
+                            },
                         },
-                    });
+                    );
                 }
             }
 
             // Sort top devices
-            let mut top_devices: Vec<(String, u64)> = device_packet_counts.iter()
+            let mut top_devices: Vec<(String, u64)> = device_packet_counts
+                .iter()
                 .map(|(mac, count)| (mac.clone(), *count))
                 .collect();
             top_devices.sort_by(|a, b| b.1.cmp(&a.1));
@@ -250,7 +351,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
 
             // Create and save snapshot (timestamp COMES FROM ACTUAL PACKET, not Utc::now())
             let snapshot = TelemetrySnapshot {
-                timestamp: snapshot_timestamp,  // ← From packet data, not processing time
+                timestamp: snapshot_timestamp, // ← From packet data, not processing time
                 total_packets: device_packet_counts.values().sum(),
                 total_devices: devices_map.len(),
                 devices: devices_map,
@@ -327,23 +428,37 @@ pub async fn run() -> Result<(), anyhow::Error> {
     // Captures ALL Bluetooth traffic at HCI level with ~1ms precision
     // ═══════════════════════════════════════════════════════════════
     {
-        let (hci_tx, hci_rx) = tokio::sync::mpsc::unbounded_channel::<crate::data_models::RawPacketModel>();
+        let (hci_tx, hci_rx) =
+            tokio::sync::mpsc::unbounded_channel::<crate::data_models::RawPacketModel>();
         let mut hci_sniffer = hci_realtime_capture::HciRealTimeSniffer::new();
-        
+
         match hci_sniffer.start(hci_tx) {
             Ok(_) => {
-                execute!(stdout(), MoveTo(0, ui_renderer::get_device_list_start_line() - 1))?;
-                writeln!(stdout(), "✓ HCI Real-time Capture enabled (packets at 1ms resolution)")?;
+                execute!(
+                    stdout(),
+                    MoveTo(0, ui_renderer::get_device_list_start_line() - 1)
+                )?;
+                writeln!(
+                    stdout(),
+                    "✓ HCI Real-time Capture enabled (packets at 1ms resolution)"
+                )?;
                 log::info!("HCI Real-time Sniffer started - capturing all BLE traffic");
-                
+
                 // Spawn HCI packet processing task
                 tokio::spawn(async {
                     hci_realtime_capture::hci_capture_task(hci_rx).await;
                 });
             }
             Err(e) => {
-                execute!(stdout(), MoveTo(0, ui_renderer::get_device_list_start_line() - 1))?;
-                writeln!(stdout(), "⚠️  HCI Capture: {} (requires admin elevation)", e)?;
+                execute!(
+                    stdout(),
+                    MoveTo(0, ui_renderer::get_device_list_start_line() - 1)
+                )?;
+                writeln!(
+                    stdout(),
+                    "⚠️  HCI Capture: {} (requires admin elevation)",
+                    e
+                )?;
                 log::warn!("HCI Real-time Capture: {}", e);
             }
         }
@@ -560,9 +675,11 @@ pub async fn run() -> Result<(), anyhow::Error> {
                 // UPDATE GLOBAL TELEMETRY
                 // ═══════════════════════════════════════════════════════════════
                 {
-                    use std::collections::HashMap;
-                    use crate::telemetry::{DeviceTelemetryQuick, LatencyStatsQuick, TelemetrySnapshot};
+                    use crate::telemetry::{
+                        DeviceTelemetryQuick, LatencyStatsQuick, TelemetrySnapshot,
+                    };
                     use chrono::Utc;
+                    use std::collections::HashMap;
 
                     let mut device_stats: HashMap<String, Vec<i8>> = HashMap::new();
                     let mut device_packet_counts: HashMap<String, u64> = HashMap::new();
@@ -570,11 +687,15 @@ pub async fn run() -> Result<(), anyhow::Error> {
 
                     // Count packets, RSSI values, and timestamps per device
                     for packet in &results.raw_packets {
-                        *device_packet_counts.entry(packet.mac_address.clone()).or_insert(0) += 1;
-                        device_stats.entry(packet.mac_address.clone())
+                        *device_packet_counts
+                            .entry(packet.mac_address.clone())
+                            .or_insert(0) += 1;
+                        device_stats
+                            .entry(packet.mac_address.clone())
                             .or_insert_with(Vec::new)
                             .push(packet.rssi);
-                        device_timestamps.entry(packet.mac_address.clone())
+                        device_timestamps
+                            .entry(packet.mac_address.clone())
                             .or_insert_with(Vec::new)
                             .push(packet.timestamp_ms);
                     }
@@ -583,12 +704,15 @@ pub async fn run() -> Result<(), anyhow::Error> {
                     let mut devices_map: HashMap<String, DeviceTelemetryQuick> = HashMap::new();
                     for (mac, rssi_values) in &device_stats {
                         if !rssi_values.is_empty() {
-                            let avg_rssi = rssi_values.iter().map(|&r| r as f64).sum::<f64>() / rssi_values.len() as f64;
+                            let avg_rssi = rssi_values.iter().map(|&r| r as f64).sum::<f64>()
+                                / rssi_values.len() as f64;
                             let packet_count = device_packet_counts.get(mac).copied().unwrap_or(0);
-                            
+
                             // Calculate latency as difference between min/max packet timestamps
                             let latency_ms = if let Some(timestamps) = device_timestamps.get(mac) {
-                                if let (Some(&min_ts), Some(&max_ts)) = (timestamps.iter().min(), timestamps.iter().max()) {
+                                if let (Some(&min_ts), Some(&max_ts)) =
+                                    (timestamps.iter().min(), timestamps.iter().max())
+                                {
                                     max_ts.saturating_sub(min_ts)
                                 } else {
                                     0
@@ -596,31 +720,35 @@ pub async fn run() -> Result<(), anyhow::Error> {
                             } else {
                                 0
                             };
-                            
-                            devices_map.insert(mac.clone(), DeviceTelemetryQuick {
-                                mac: mac.clone(),
-                                packet_count,
-                                avg_rssi,
-                                latencies: LatencyStatsQuick {
-                                    min_ms: 0,
-                                    max_ms: latency_ms,  // Total latency span
-                                    avg_ms: 0.0,
+
+                            devices_map.insert(
+                                mac.clone(),
+                                DeviceTelemetryQuick {
+                                    mac: mac.clone(),
+                                    packet_count,
+                                    avg_rssi,
+                                    latencies: LatencyStatsQuick {
+                                        min_ms: 0,
+                                        max_ms: latency_ms, // Total latency span
+                                        avg_ms: 0.0,
+                                    },
                                 },
-                            });
+                            );
                         }
                     }
 
                     // Sort by packet count for top devices
-                    let mut top_devices: Vec<(String, u64)> = device_packet_counts.iter()
+                    let mut top_devices: Vec<(String, u64)> = device_packet_counts
+                        .iter()
                         .map(|(mac, count)| (mac.clone(), *count))
                         .collect();
                     top_devices.sort_by(|a, b| b.1.cmp(&a.1));
                     top_devices.truncate(20);
 
                     // Create snapshot - use the max timestamp from all packets
-                    let snapshot_timestamp = if let Some(max_ts) = results.raw_packets.iter()
-                        .map(|p| p.timestamp_ms)
-                        .max() {
+                    let snapshot_timestamp = if let Some(max_ts) =
+                        results.raw_packets.iter().map(|p| p.timestamp_ms).max()
+                    {
                         chrono::DateTime::<Utc>::from_timestamp_millis(max_ts as i64)
                             .unwrap_or_else(|| Utc::now())
                     } else {
@@ -628,7 +756,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
                     };
 
                     let snapshot = TelemetrySnapshot {
-                        timestamp: snapshot_timestamp,  // Latest packet time from this scan
+                        timestamp: snapshot_timestamp, // Latest packet time from this scan
                         total_packets: results.raw_packets.len() as u64,
                         total_devices: devices.len(),
                         devices: devices_map,
@@ -647,7 +775,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
                     let mut new_macs = Vec::new();
                     for device in devices {
                         match db::get_device(&device.mac_address) {
-                            Ok(Some(_)) => {}, // Device exists, skip
+                            Ok(Some(_)) => {} // Device exists, skip
                             Ok(None) => new_macs.push(device.mac_address.clone()),
                             Err(e) => log::warn!("Could not check if MAC is new: {}", e),
                         }
@@ -656,25 +784,46 @@ pub async fn run() -> Result<(), anyhow::Error> {
                     // For each packet from a new device, show analysis
                     if !new_macs.is_empty() {
                         writeln!(stdout())?;
-                        writeln!(stdout(), "{}", "═══════════════════════════════════════════════════════".bright_cyan())?;
-                        writeln!(stdout(), "{}", "🆕 NEW DEVICES DETECTED".bright_green().bold())?;
-                        writeln!(stdout(), "{}", "═══════════════════════════════════════════════════════".bright_cyan())?;
-                        
+                        writeln!(
+                            stdout(),
+                            "{}",
+                            "═══════════════════════════════════════════════════════".bright_cyan()
+                        )?;
+                        writeln!(
+                            stdout(),
+                            "{}",
+                            "🆕 NEW DEVICES DETECTED".bright_green().bold()
+                        )?;
+                        writeln!(
+                            stdout(),
+                            "{}",
+                            "═══════════════════════════════════════════════════════".bright_cyan()
+                        )?;
+
                         for packet in &results.raw_packets {
                             if new_macs.contains(&packet.mac_address) {
                                 // Show one analysis per MAC (first packet)
-                                if results.raw_packets.iter()
+                                if results
+                                    .raw_packets
+                                    .iter()
                                     .filter(|p| p.mac_address == packet.mac_address)
                                     .next()
                                     .map(|p| p.packet_id == packet.packet_id)
                                     .unwrap_or(false)
                                 {
-                                    let formatted = crate::packet_analyzer_terminal::format_packet_for_terminal(packet);
+                                    let formatted =
+                                        crate::packet_analyzer_terminal::format_packet_for_terminal(
+                                            packet,
+                                        );
                                     writeln!(stdout(), "{}", formatted)?;
                                 }
                             }
                         }
-                        writeln!(stdout(), "{}", "═══════════════════════════════════════════════════════".bright_cyan())?;
+                        writeln!(
+                            stdout(),
+                            "{}",
+                            "═══════════════════════════════════════════════════════".bright_cyan()
+                        )?;
                         writeln!(stdout())?;
                     }
                 }
@@ -727,17 +876,22 @@ pub async fn run() -> Result<(), anyhow::Error> {
                 for (i, device) in devices.iter().take(15).enumerate() {
                     let name = device.name.as_deref().unwrap_or("Unknown");
                     let name_trunc = if name.len() > 16 { &name[..16] } else { name };
-                    
+
                     // Convert nanosecond timestamps to DateTime for formatting
-                    let first_seen = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(device.first_detected_ns / 1_000_000)
-                        .unwrap_or_else(|| chrono::Utc::now());
-                    let last_seen = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(device.last_detected_ns / 1_000_000)
-                        .unwrap_or_else(|| chrono::Utc::now());
-                    
-                    let first_seen_str = first_seen.format("%H:%M:%S").to_string();
-                    let last_seen_str = last_seen.format("%H:%M:%S").to_string();
+                    let first_seen = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(
+                        device.first_detected_ns / 1_000_000,
+                    )
+                    .unwrap_or_else(|| chrono::Utc::now());
+                    let last_seen = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(
+                        device.last_detected_ns / 1_000_000,
+                    )
+                    .unwrap_or_else(|| chrono::Utc::now());
+
+                    // Format: show full date if not today, otherwise just time
+                    let first_seen_str = format_timestamp(&first_seen);
+                    let last_seen_str = format_timestamp(&last_seen);
                     let resp_time_ms = device.response_time_ms;
-                    
+
                     writeln!(
                         stdout(),
                         "│ {:3} │ {:16} │ {:12} │ {:5} dBm │ {:<12} │ {:<12} │ {:5}ms │",
@@ -826,7 +980,8 @@ async fn save_telemetry_snapshot() -> anyhow::Result<()> {
             snapshot.timestamp,
             snapshot.total_packets as i32,
             snapshot.total_devices as i32,
-        ).map_err(|e| anyhow::anyhow!("Failed to save snapshot: {}", e))?;
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to save snapshot: {}", e))?;
 
         // Save per-device telemetry
         for (mac, device_telemetry) in &snapshot.devices {
@@ -837,7 +992,8 @@ async fn save_telemetry_snapshot() -> anyhow::Result<()> {
                 device_telemetry.avg_rssi,
                 device_telemetry.latencies.min_ms as u64,
                 device_telemetry.latencies.max_ms as u64,
-            ).map_err(|e| anyhow::anyhow!("Failed to save device telemetry: {}", e))?;
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to save device telemetry: {}", e))?;
         }
 
         log::info!(

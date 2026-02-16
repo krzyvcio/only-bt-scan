@@ -13,17 +13,15 @@ pub struct ParsedAdvertisementData {
     pub service_uuids: Vec<String>,
     pub manufacturer_name: Option<String>,
     pub manufacturer_data: Option<String>,
-    
+
     // Temporal metrics (1ms resolution)
-    pub frame_interval_ms: Option<i32>,        // Time since last frame for THIS device
-    pub frames_per_second: Option<f32>,        // Rate this device is transmitting
+    pub frame_interval_ms: Option<i32>, // Time since last frame for THIS device
+    pub frames_per_second: Option<f32>, // Rate this device is transmitting
 }
 
 /// Get last advertisement data for a device and parse it
 /// WITH frame interval timing (millisecond precision)
-pub fn get_parsed_advertisement_with_timing(
-    mac_address: &str,
-) -> ParsedAdvertisementData {
+pub fn get_parsed_advertisement_with_timing(mac_address: &str) -> ParsedAdvertisementData {
     if let Ok(conn) = Connection::open(DB_PATH) {
         // Get last 2 frames for this device to calculate interval
         if let Ok(mut stmt) = conn.prepare(
@@ -32,14 +30,11 @@ pub fn get_parsed_advertisement_with_timing(
              FROM ble_advertisement_frames
              WHERE mac_address = ?
              ORDER BY timestamp DESC
-             LIMIT 2"
+             LIMIT 2",
         ) {
             let mut results: Vec<(String, i64)> = Vec::new();
             if let Ok(rows) = stmt.query_map([mac_address], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, i64>(1)?,
-                ))
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             }) {
                 for row in rows {
                     if let Ok((ad_hex, ts_ms)) = row {
@@ -47,26 +42,26 @@ pub fn get_parsed_advertisement_with_timing(
                     }
                 }
             }
-            
+
             if !results.is_empty() {
                 let mut ad_data = parse_advertisement_data(&results[0].0);
-                
+
                 // Calculate frame interval if we have 2 timestamps
                 if results.len() >= 2 {
                     let interval_ms = (results[0].1 - results[1].1) as i32;
                     ad_data.frame_interval_ms = Some(interval_ms.abs());
-                    
+
                     // Calculate frames per second (if interval > 0)
                     if interval_ms > 0 {
                         ad_data.frames_per_second = Some(1000.0 / interval_ms as f32);
                     }
                 }
-                
+
                 return ad_data;
             }
         }
     }
-    
+
     ParsedAdvertisementData::default()
 }
 
@@ -75,13 +70,13 @@ pub fn get_parsed_advertisement_with_timing(
 /// 1eff060001092022... = 1e(len) ff(type=mfg) 0600(mfg_id=Microsoft) 01092022...(data)
 pub fn parse_advertisement_data(hex_data: &str) -> ParsedAdvertisementData {
     let mut result = ParsedAdvertisementData::default();
-    
+
     // Convert hex string to bytes
     let bytes = match hex_to_bytes(hex_data) {
         Some(b) => b,
         None => return result,
     };
-    
+
     let mut pos = 0;
     while pos < bytes.len() {
         // Read length
@@ -90,13 +85,13 @@ pub fn parse_advertisement_data(hex_data: &str) -> ParsedAdvertisementData {
             break;
         }
         pos += 1;
-        
+
         // Read type
         let ad_type = bytes[pos];
         pos += 1;
-        
+
         let data_len = length - 1; // Subtract type byte
-        
+
         match ad_type {
             0x01 => {
                 // Flags
@@ -143,7 +138,7 @@ pub fn parse_advertisement_data(hex_data: &str) -> ParsedAdvertisementData {
                 if pos + 1 < bytes.len() {
                     let mfg_id = u16::from_le_bytes([bytes[pos], bytes[pos + 1]]);
                     result.manufacturer_name = Some(get_manufacturer_name(mfg_id));
-                    
+
                     // Format manufacturer data as hex
                     if data_len > 2 {
                         let mfg_data = &bytes[pos + 2..pos + data_len];
@@ -153,10 +148,10 @@ pub fn parse_advertisement_data(hex_data: &str) -> ParsedAdvertisementData {
             }
             _ => {} // Ignore other types for now
         }
-        
+
         pos += data_len;
     }
-    
+
     result
 }
 
@@ -164,7 +159,7 @@ pub fn parse_advertisement_data(hex_data: &str) -> ParsedAdvertisementData {
 fn hex_to_bytes(hex_str: &str) -> Option<Vec<u8>> {
     let mut bytes = Vec::new();
     let hex_str = hex_str.trim().replace(" ", "").replace("\n", "");
-    
+
     for i in (0..hex_str.len()).step_by(2) {
         if i + 1 < hex_str.len() {
             if let Ok(byte) = u8::from_str_radix(&hex_str[i..i + 2], 16) {
@@ -174,7 +169,7 @@ fn hex_to_bytes(hex_str: &str) -> Option<Vec<u8>> {
             }
         }
     }
-    
+
     if bytes.is_empty() {
         None
     } else {
@@ -190,14 +185,26 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
 /// Parse flags byte
 fn parse_flags(flags: u8) -> Option<String> {
     let mut flag_list = Vec::new();
-    
-    if flags & 0x01 != 0 { flag_list.push("LE Limited Discoverable"); }
-    if flags & 0x02 != 0 { flag_list.push("LE General Discoverable"); }
-    if flags & 0x04 != 0 { flag_list.push("BR/EDR Not Supported"); }
-    if flags & 0x08 != 0 { flag_list.push("Simultaneous LE+BR/EDR"); }
-    if flags & 0x10 != 0 { flag_list.push("LE BR/EDR Controller"); }
-    if flags & 0x20 != 0 { flag_list.push("LE BR/EDR Host"); }
-    
+
+    if flags & 0x01 != 0 {
+        flag_list.push("LE Limited Discoverable");
+    }
+    if flags & 0x02 != 0 {
+        flag_list.push("LE General Discoverable");
+    }
+    if flags & 0x04 != 0 {
+        flag_list.push("BR/EDR Not Supported");
+    }
+    if flags & 0x08 != 0 {
+        flag_list.push("Simultaneous LE+BR/EDR");
+    }
+    if flags & 0x10 != 0 {
+        flag_list.push("LE BR/EDR Controller");
+    }
+    if flags & 0x20 != 0 {
+        flag_list.push("LE BR/EDR Host");
+    }
+
     if flag_list.is_empty() {
         None
     } else {
@@ -215,7 +222,7 @@ pub fn parse_device_class(device_class_str: Option<&str>) -> (Option<String>, Op
     if let Some(dc_str) = device_class_str {
         // Remove "0x" prefix if exists
         let hex_str = dc_str.trim_start_matches("0x").trim_start_matches("0X");
-        
+
         if hex_str.len() >= 6 {
             // Parse three bytes: service classes, major, minor
             if let Ok(service_byte) = u8::from_str_radix(&hex_str[0..2], 16) {
@@ -234,16 +241,32 @@ pub fn parse_device_class(device_class_str: Option<&str>) -> (Option<String>, Op
 
 fn parse_service_classes(byte: u8) -> Option<String> {
     let mut classes = Vec::new();
-    
-    if byte & 0x80 != 0 { classes.push("LE Audio"); }
-    if byte & 0x40 != 0 { classes.push("Rendering"); }
-    if byte & 0x20 != 0 { classes.push("Capturing"); }
-    if byte & 0x10 != 0 { classes.push("Object Transfer"); }
-    if byte & 0x08 != 0 { classes.push("Audio"); }
-    if byte & 0x04 != 0 { classes.push("Telephony"); }
-    if byte & 0x02 != 0 { classes.push("Networking"); }
-    if byte & 0x01 != 0 { classes.push("Limited Discoverable"); }
-    
+
+    if byte & 0x80 != 0 {
+        classes.push("LE Audio");
+    }
+    if byte & 0x40 != 0 {
+        classes.push("Rendering");
+    }
+    if byte & 0x20 != 0 {
+        classes.push("Capturing");
+    }
+    if byte & 0x10 != 0 {
+        classes.push("Object Transfer");
+    }
+    if byte & 0x08 != 0 {
+        classes.push("Audio");
+    }
+    if byte & 0x04 != 0 {
+        classes.push("Telephony");
+    }
+    if byte & 0x02 != 0 {
+        classes.push("Networking");
+    }
+    if byte & 0x01 != 0 {
+        classes.push("Limited Discoverable");
+    }
+
     if classes.is_empty() {
         None
     } else {
@@ -254,7 +277,7 @@ fn parse_service_classes(byte: u8) -> Option<String> {
 fn parse_device_type(major: u8, minor: u8) -> Option<String> {
     let major_class = major >> 2; // Top 6 bits
     let minor_class = (major & 0x03) << 4 | (minor >> 4); // Bottom 2 of major + top 4 of minor
-    
+
     let major_name = match major_class {
         0 => "Miscellaneous",
         1 => "Computer",
@@ -268,9 +291,10 @@ fn parse_device_type(major: u8, minor: u8) -> Option<String> {
         9 => "Health",
         _ => "Uncategorized",
     };
-    
+
     let minor_name = match major_class {
-        1 => match minor_class >> 2 { // Computer
+        1 => match minor_class >> 2 {
+            // Computer
             0 => "Unspecified",
             1 => "Desktop",
             2 => "Laptop",
@@ -279,7 +303,8 @@ fn parse_device_type(major: u8, minor: u8) -> Option<String> {
             5 => "Server",
             _ => "Other",
         },
-        2 => match minor_class >> 2 { // Phone
+        2 => match minor_class >> 2 {
+            // Phone
             0 => "Unspecified",
             1 => "Cellular",
             2 => "Cordless",
@@ -287,7 +312,8 @@ fn parse_device_type(major: u8, minor: u8) -> Option<String> {
             4 => "Wired",
             _ => "Other",
         },
-        4 => match minor_class >> 2 { // Audio/Video
+        4 => match minor_class >> 2 {
+            // Audio/Video
             0 => "Unspecified",
             1 => "Headset",
             2 => "Hands-Free",
@@ -306,7 +332,8 @@ fn parse_device_type(major: u8, minor: u8) -> Option<String> {
             15 => "Video Conferencing",
             _ => "Other",
         },
-        7 => match minor_class >> 2 { // Wearable
+        7 => match minor_class >> 2 {
+            // Wearable
             1 => "Wristwatch",
             2 => "Pager",
             3 => "Jacket",
@@ -314,7 +341,8 @@ fn parse_device_type(major: u8, minor: u8) -> Option<String> {
             5 => "Glasses",
             _ => "Wearable Device",
         },
-        8 => match minor_class >> 2 { // Toy
+        8 => match minor_class >> 2 {
+            // Toy
             1 => "Robot",
             2 => "Vehicle",
             3 => "Doll",
@@ -322,7 +350,8 @@ fn parse_device_type(major: u8, minor: u8) -> Option<String> {
             5 => "Game",
             _ => "Toy",
         },
-        9 => match minor_class >> 2 { // Health
+        9 => match minor_class >> 2 {
+            // Health
             1 => "Blood Pressure Monitor",
             2 => "Thermometer",
             3 => "Weighing Scale",
@@ -338,7 +367,7 @@ fn parse_device_type(major: u8, minor: u8) -> Option<String> {
         },
         _ => "Device",
     };
-    
+
     if minor_name == "Other" || minor_name == "Unspecified" || minor_name == "Device" {
         Some(major_name.to_string())
     } else {
@@ -361,8 +390,8 @@ pub struct ScannedDevice {
     pub pairing_method: Option<String>,
     pub is_authenticated: bool,
     pub device_class: Option<String>,
-    pub service_classes: Option<String>,  // "LE Audio, Networking, ..."
-    pub device_type: Option<String>,       // "Phone/Smart", "Laptop", "Speaker", ...
+    pub service_classes: Option<String>, // "LE Audio, Networking, ..."
+    pub device_type: Option<String>,     // "Phone/Smart", "Laptop", "Speaker", ...
 }
 
 #[derive(Debug, Clone)]
@@ -427,23 +456,14 @@ pub fn init_database() -> SqliteResult<()> {
     )
     .ok();
 
-    conn.execute(
-        "ALTER TABLE devices ADD COLUMN device_class TEXT",
-        [],
-    )
-    .ok();
+    conn.execute("ALTER TABLE devices ADD COLUMN device_class TEXT", [])
+        .ok();
 
-    conn.execute(
-        "ALTER TABLE devices ADD COLUMN service_classes TEXT",
-        [],
-    )
-    .ok();
+    conn.execute("ALTER TABLE devices ADD COLUMN service_classes TEXT", [])
+        .ok();
 
-    conn.execute(
-        "ALTER TABLE devices ADD COLUMN device_type TEXT",
-        [],
-    )
-    .ok();
+    conn.execute("ALTER TABLE devices ADD COLUMN device_type TEXT", [])
+        .ok();
 
     // Create BLE services table
     conn.execute(
@@ -502,7 +522,7 @@ pub fn init_database() -> SqliteResult<()> {
     // ═══════════════════════════════════════════════════════════════
     // TELEMETRY HISTORY TABLES (for v0.4.0 persistence)
     // ═══════════════════════════════════════════════════════════════
-    
+
     // Telemetry snapshots - overall stats every 5 minutes
     conn.execute(
         "CREATE TABLE IF NOT EXISTS telemetry_snapshots (
@@ -841,13 +861,13 @@ pub fn save_telemetry_snapshot(
     total_devices: i32,
 ) -> SqliteResult<i32> {
     let conn = Connection::open(DB_PATH)?;
-    
+
     conn.execute(
         "INSERT INTO telemetry_snapshots (snapshot_timestamp, total_packets, total_devices)
          VALUES (?1, ?2, ?3)",
         params![snapshot_timestamp, total_packets, total_devices],
     )?;
-    
+
     let snapshot_id = conn.last_insert_rowid() as i32;
     Ok(snapshot_id)
 }
@@ -862,7 +882,7 @@ pub fn save_device_telemetry(
     max_latency_ms: u64,
 ) -> SqliteResult<()> {
     let conn = Connection::open(DB_PATH)?;
-    
+
     conn.execute(
         "INSERT INTO device_telemetry_history 
          (snapshot_id, device_mac, packet_count, avg_rssi, min_latency_ms, max_latency_ms)
@@ -876,7 +896,7 @@ pub fn save_device_telemetry(
             max_latency_ms as i32
         ],
     )?;
-    
+
     Ok(())
 }
 
@@ -884,20 +904,22 @@ pub fn save_device_telemetry(
 pub fn get_telemetry_snapshots(hours: u32) -> SqliteResult<Vec<TelemetrySnapshot>> {
     let conn = Connection::open(DB_PATH)?;
     let time_filter = format!("-{} hours", hours);
-    
+
     let mut stmt = conn.prepare(
         "SELECT id, snapshot_timestamp, total_packets, total_devices
          FROM telemetry_snapshots
          WHERE snapshot_timestamp > datetime('now', ?1)
-         ORDER BY snapshot_timestamp DESC"
+         ORDER BY snapshot_timestamp DESC",
     )?;
-    
+
     let snapshots = stmt.query_map(params![&time_filter], |row| {
         let ts_str: String = row.get(1)?;
         let timestamp = DateTime::parse_from_rfc3339(&ts_str)
-            .unwrap_or_else(|_| chrono::Local::now().with_timezone(&chrono::FixedOffset::east_opt(0).unwrap()))
+            .unwrap_or_else(|_| {
+                chrono::Local::now().with_timezone(&chrono::FixedOffset::east_opt(0).unwrap())
+            })
             .with_timezone(&Utc);
-        
+
         Ok(TelemetrySnapshot {
             id: row.get(0)?,
             snapshot_timestamp: timestamp,
@@ -905,21 +927,21 @@ pub fn get_telemetry_snapshots(hours: u32) -> SqliteResult<Vec<TelemetrySnapshot
             total_devices: row.get(3)?,
         })
     })?;
-    
+
     snapshots.collect()
 }
 
 /// Get device telemetry for a snapshot
 pub fn get_snapshot_device_telemetry(snapshot_id: i32) -> SqliteResult<Vec<DeviceTelemetryRecord>> {
     let conn = Connection::open(DB_PATH)?;
-    
+
     let mut stmt = conn.prepare(
         "SELECT id, snapshot_id, device_mac, packet_count, avg_rssi, min_latency_ms, max_latency_ms
          FROM device_telemetry_history
          WHERE snapshot_id = ?1
-         ORDER BY packet_count DESC"
+         ORDER BY packet_count DESC",
     )?;
-    
+
     let records = stmt.query_map(params![snapshot_id], |row| {
         Ok(DeviceTelemetryRecord {
             id: row.get(0)?,
@@ -931,7 +953,7 @@ pub fn get_snapshot_device_telemetry(snapshot_id: i32) -> SqliteResult<Vec<Devic
             max_latency_ms: row.get(6)?,
         })
     })?;
-    
+
     records.collect()
 }
 
@@ -939,7 +961,7 @@ pub fn get_snapshot_device_telemetry(snapshot_id: i32) -> SqliteResult<Vec<Devic
 pub fn cleanup_old_telemetry(days: u32) -> SqliteResult<usize> {
     let conn = Connection::open(DB_PATH)?;
     let time_filter = format!("-{} days", days);
-    
+
     conn.execute(
         "DELETE FROM telemetry_snapshots WHERE snapshot_timestamp < datetime('now', ?1)",
         params![&time_filter],
@@ -958,35 +980,41 @@ pub fn insert_advertisement_frame(
     timestamp_ms: u64,
 ) -> SqliteResult<()> {
     let conn = Connection::open(DB_PATH)?;
-    
+
     // Convert milliseconds to ISO 8601 datetime string
-    let timestamp_str = if let Some(dt) = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(timestamp_ms as i64) {
+    let timestamp_str = if let Some(dt) =
+        chrono::DateTime::<chrono::Utc>::from_timestamp_millis(timestamp_ms as i64)
+    {
         dt.to_rfc3339()
     } else {
         chrono::Utc::now().to_rfc3339()
     };
-    
+
     // Get or create device
-    let device_id: i32 = conn.query_row(
-        "SELECT id FROM devices WHERE mac_address = ?",
-        [mac_address],
-        |row| row.get(0),
-    ).optional()?
-     .unwrap_or_else(|| {
-        // Create new device if doesn't exist
-        conn.execute(
-            "INSERT INTO devices (mac_address, device_name, rssi, first_seen, last_seen)
-             VALUES (?, NULL, ?, datetime('now'), datetime('now'))",
-            [mac_address, &rssi.to_string(), ""],
-        ).ok();
-        
-        conn.query_row(
+    let device_id: i32 = conn
+        .query_row(
             "SELECT id FROM devices WHERE mac_address = ?",
             [mac_address],
             |row| row.get(0),
-        ).unwrap_or(0)
-    });
-    
+        )
+        .optional()?
+        .unwrap_or_else(|| {
+            // Create new device if doesn't exist
+            conn.execute(
+                "INSERT INTO devices (mac_address, device_name, rssi, first_seen, last_seen)
+             VALUES (?, NULL, ?, datetime('now'), datetime('now'))",
+                [mac_address, &rssi.to_string(), ""],
+            )
+            .ok();
+
+            conn.query_row(
+                "SELECT id FROM devices WHERE mac_address = ?",
+                [mac_address],
+                |row| row.get(0),
+            )
+            .unwrap_or(0)
+        });
+
     // Insert advertisement frame
     conn.execute(
         "INSERT INTO ble_advertisement_frames 
@@ -994,12 +1022,241 @@ pub fn insert_advertisement_frame(
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params![device_id, mac_address, rssi, advertising_data_hex, phy, channel as i32, frame_type, timestamp_str, timestamp_ms as i64],
     )?;
-    
+
     // Update device last_seen
     conn.execute(
         "UPDATE devices SET last_seen = ?, rssi = ? WHERE mac_address = ?",
         params![timestamp_str, rssi, mac_address],
     )?;
-    
+
     Ok(())
+}
+
+/// Insert advertisement frame using pooled connection
+/// This is more efficient than opening a new connection each time
+pub fn insert_advertisement_frame_pooled(
+    mac_address: &str,
+    rssi: i8,
+    advertising_data_hex: &str,
+    phy: &str,
+    channel: u8,
+    frame_type: &str,
+    timestamp_ms: u64,
+) -> SqliteResult<()> {
+    let pool = crate::db_pool::get_pool();
+    if let Some(pool) = pool {
+        pool.execute(|conn| {
+            insert_advertisement_frame_inner(
+                conn,
+                mac_address,
+                rssi,
+                advertising_data_hex,
+                phy,
+                channel,
+                frame_type,
+                timestamp_ms,
+            )
+        })
+    } else {
+        insert_advertisement_frame(
+            mac_address,
+            rssi,
+            advertising_data_hex,
+            phy,
+            channel,
+            frame_type,
+            timestamp_ms,
+        )
+    }
+}
+
+/// Inner function for inserting advertisement frame (used by pooled version)
+fn insert_advertisement_frame_inner(
+    conn: &Connection,
+    mac_address: &str,
+    rssi: i8,
+    advertising_data_hex: &str,
+    phy: &str,
+    channel: u8,
+    frame_type: &str,
+    timestamp_ms: u64,
+) -> SqliteResult<()> {
+    let timestamp_str = if let Some(dt) =
+        chrono::DateTime::<chrono::Utc>::from_timestamp_millis(timestamp_ms as i64)
+    {
+        dt.to_rfc3339()
+    } else {
+        chrono::Utc::now().to_rfc3339()
+    };
+
+    let device_id: i32 = conn
+        .query_row(
+            "SELECT id FROM devices WHERE mac_address = ?",
+            [mac_address],
+            |row| row.get(0),
+        )
+        .optional()?
+        .unwrap_or_else(|| {
+            conn.execute(
+                "INSERT INTO devices (mac_address, device_name, rssi, first_seen, last_seen)
+              VALUES (?, NULL, ?, datetime('now'), datetime('now'))",
+                [mac_address, &rssi.to_string()],
+            )
+            .ok();
+
+            conn.query_row(
+                "SELECT id FROM devices WHERE mac_address = ?",
+                [mac_address],
+                |row| row.get(0),
+            )
+            .unwrap_or(0)
+        });
+
+    conn.execute(
+        "INSERT INTO ble_advertisement_frames 
+         (device_id, mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp, timestamp_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![device_id, mac_address, rssi, advertising_data_hex, phy, channel as i32, frame_type, timestamp_str, timestamp_ms as i64],
+    )?;
+
+    conn.execute(
+        "UPDATE devices SET last_seen = ?, rssi = ? WHERE mac_address = ?",
+        params![timestamp_str, rssi, mac_address],
+    )?;
+
+    Ok(())
+}
+
+/// Get device by MAC using pooled connection
+pub fn get_device_pooled(mac_address: &str) -> SqliteResult<Option<ScannedDevice>> {
+    let pool = crate::db_pool::get_pool();
+    if let Some(pool) = pool {
+        pool.execute(|conn| get_device_inner(conn, mac_address))
+    } else {
+        get_device(mac_address)
+    }
+}
+
+/// Inner function for get_device (used by pooled version)
+fn get_device_inner(conn: &Connection, mac_address: &str) -> SqliteResult<Option<ScannedDevice>> {
+    let mut stmt = conn.prepare(
+        "SELECT mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name, is_authenticated, device_class
+         FROM devices
+         WHERE mac_address = ?1"
+    )?;
+
+    stmt.query_row(params![mac_address], |row| {
+        Ok(ScannedDevice {
+            mac_address: row.get(0)?,
+            name: row.get(1)?,
+            rssi: row.get(2)?,
+            first_seen: row.get(3)?,
+            last_seen: row.get(4)?,
+            manufacturer_id: row.get(5)?,
+            manufacturer_name: row.get(6)?,
+            mac_type: None,
+            is_rpa: false,
+            security_level: None,
+            pairing_method: None,
+            is_authenticated: row.get::<_, i32>(7).unwrap_or(0) != 0,
+            device_class: row.get(8).ok(),
+            service_classes: None,
+            device_type: None,
+        })
+    })
+    .optional()
+}
+
+/// Get all devices using pooled connection
+pub fn get_all_devices_pooled() -> SqliteResult<Vec<ScannedDevice>> {
+    let pool = crate::db_pool::get_pool();
+    if let Some(pool) = pool {
+        pool.execute(|conn| get_all_devices_inner(conn))
+    } else {
+        get_all_devices()
+    }
+}
+
+/// Inner function for get_all_devices (used by pooled version)
+fn get_all_devices_inner(conn: &Connection) -> SqliteResult<Vec<ScannedDevice>> {
+    let mut stmt = conn.prepare(
+        "SELECT mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name, is_authenticated, device_class
+         FROM devices
+         ORDER BY last_seen DESC"
+    )?;
+
+    let devices = stmt.query_map([], |row| {
+        Ok(ScannedDevice {
+            mac_address: row.get(0)?,
+            name: row.get(1)?,
+            rssi: row.get(2)?,
+            first_seen: row.get(3)?,
+            last_seen: row.get(4)?,
+            manufacturer_id: row.get(5)?,
+            manufacturer_name: row.get(6)?,
+            mac_type: None,
+            is_rpa: false,
+            security_level: None,
+            pairing_method: None,
+            is_authenticated: row.get::<_, i32>(7).unwrap_or(0) != 0,
+            device_class: row.get(8).ok(),
+            service_classes: None,
+            device_type: None,
+        })
+    })?;
+
+    devices.collect()
+}
+
+/// Get device count using pooled connection
+pub fn get_device_count_pooled() -> SqliteResult<i32> {
+    let pool = crate::db_pool::get_pool();
+    if let Some(pool) = pool {
+        pool.execute(|conn| conn.query_row("SELECT COUNT(*) FROM devices", [], |row| row.get(0)))
+    } else {
+        get_device_count()
+    }
+}
+
+/// Get recent devices using pooled connection
+pub fn get_recent_devices_pooled(minutes: u32) -> SqliteResult<Vec<ScannedDevice>> {
+    let pool = crate::db_pool::get_pool();
+    if let Some(pool) = pool {
+        pool.execute(|conn| get_recent_devices_inner(conn, minutes))
+    } else {
+        get_recent_devices(minutes)
+    }
+}
+
+/// Inner function for get_recent_devices (used by pooled version)
+fn get_recent_devices_inner(conn: &Connection, minutes: u32) -> SqliteResult<Vec<ScannedDevice>> {
+    let mut stmt = conn.prepare(
+        "SELECT mac_address, device_name, rssi, first_seen, last_seen, manufacturer_id, manufacturer_name, is_authenticated, device_class
+         FROM devices
+         WHERE last_seen > datetime('now', ?1)
+         ORDER BY last_seen DESC"
+    )?;
+
+    let time_filter = format!("-{} minutes", minutes);
+    let devices = stmt.query_map(params![&time_filter], |row| {
+        Ok(ScannedDevice {
+            mac_address: row.get(0)?,
+            name: row.get(1)?,
+            rssi: row.get(2)?,
+            first_seen: row.get(3)?,
+            last_seen: row.get(4)?,
+            manufacturer_id: row.get(5)?,
+            manufacturer_name: row.get(6)?,
+            mac_type: None,
+            is_rpa: false,
+            security_level: None,
+            pairing_method: None,
+            is_authenticated: row.get::<_, i32>(7).unwrap_or(0) != 0,
+            device_class: row.get(8).ok(),
+            service_classes: None,
+            device_type: None,
+        })
+    })?;
+
+    devices.collect()
 }

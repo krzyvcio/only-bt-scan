@@ -270,7 +270,6 @@ pub fn device_telemetry_to_json(
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// GLOBAL TELEMETRY SINGLETON
 /// ═══════════════════════════════════════════════════════════════════════════════
-
 use std::sync::{LazyLock, Mutex};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -316,10 +315,7 @@ pub fn update_global_telemetry(snapshot: TelemetrySnapshot) {
 
 /// Get current global telemetry snapshot
 pub fn get_global_telemetry() -> Option<TelemetrySnapshot> {
-    GLOBAL_TELEMETRY
-        .lock()
-        .ok()
-        .map(|g| g.clone())
+    GLOBAL_TELEMETRY.lock().ok().map(|g| g.clone())
 }
 
 #[cfg(test)]

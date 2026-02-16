@@ -1,9 +1,8 @@
 /// Legacy company IDs module - compatibility wrapper
 /// Delegates to company_id_reference for official Bluetooth SIG lookups
-
 use crate::company_id_reference;
-use std::sync::Mutex;
 use lazy_static::lazy_static;
+use std::sync::Mutex;
 
 lazy_static! {
     static ref CACHE_STATS: Mutex<(u32, i64)> = Mutex::new((0, 0));
@@ -29,11 +28,11 @@ pub fn init_company_ids() {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs() as i64;
-    
+
     if let Ok(mut stats) = CACHE_STATS.lock() {
         *stats = (count as u32, timestamp);
     }
-    
+
     log::info!("Initialized {} official Bluetooth SIG Company IDs", count);
 }
 
@@ -57,7 +56,10 @@ pub async fn check_and_update_cache() -> Result<(), anyhow::Error> {
 pub async fn update_from_bluetooth_sig() -> Result<String, anyhow::Error> {
     init_company_ids();
     let count = company_id_reference::total_companies();
-    Ok(format!("Updated with {} official Bluetooth SIG Company IDs", count))
+    Ok(format!(
+        "Updated with {} official Bluetooth SIG Company IDs",
+        count
+    ))
 }
 
 /// Search for company by name pattern

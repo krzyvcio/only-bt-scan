@@ -1,15 +1,14 @@
+use chrono::Utc;
+use colored::Colorize;
 /// Comprehensive Example: btleplug Scanner with Device Tracking & Database Persistence
-/// 
+///
 /// This example demonstrates:
 /// 1. btleplug standard BLE scanning
 /// 2. Device discovery tracking (first/last detection, count)
 /// 3. Verbose terminal logging with timestamps
 /// 4. Database persistence of all discovered devices
 /// 5. Real-time statistics and reporting
-
 use only_bt_scan::device_tracker::DeviceTrackerManager;
-use chrono::Utc;
-use colored::Colorize;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -63,7 +62,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n💾 Persisting devices to database...");
     match tracker_manager.persist_all() {
         Ok(count) => {
-            println!("   ✓ Persisted {} devices", count.to_string().bright_green().bold());
+            println!(
+                "   ✓ Persisted {} devices",
+                count.to_string().bright_green().bold()
+            );
         }
         Err(e) => {
             println!("   ❌ Error: {}", e);
@@ -74,12 +76,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n📂 Retrieving devices from database...");
     match only_bt_scan::db::get_all_devices() {
         Ok(db_devices) => {
-            println!("   ✓ Retrieved {} devices from database", db_devices.len().to_string().bright_cyan());
-            
+            println!(
+                "   ✓ Retrieved {} devices from database",
+                db_devices.len().to_string().bright_cyan()
+            );
+
             if !db_devices.is_empty() {
                 println!("\n   Device List:");
                 for device in db_devices.iter().take(5) {
-                    println!("   ├─ {} - {} (RSSI: {} dBm, Seen: {} times)",
+                    println!(
+                        "   ├─ {} - {} (RSSI: {} dBm, Seen: {} times)",
                         device.mac_address.bright_cyan(),
                         device.name.as_deref().unwrap_or("Unknown").bright_white(),
                         device.rssi.to_string().bright_green(),
@@ -87,7 +93,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
                 if db_devices.len() > 5 {
-                    println!("   └─ ... and {} more", (db_devices.len() - 5).to_string().bright_yellow());
+                    println!(
+                        "   └─ ... and {} more",
+                        (db_devices.len() - 5).to_string().bright_yellow()
+                    );
                 }
             }
         }
@@ -136,7 +145,7 @@ async fn simulate_device_discovery(tracker: &DeviceTrackerManager) {
         Some("iPhone 14 Pro".to_string()),
         Some(0x004C),
     );
-    
+
     println!("   ✓ iPhone 14 Pro detected 3 times");
 
     // Device 2: Xiaomi Mi Band

@@ -1,5 +1,6 @@
+use serde::{Deserialize, Serialize};
 /// Data Flow Estimation Module
-/// 
+///
 /// Estimates potential data transfer between Bluetooth devices based on:
 /// - Advertising payload analysis
 /// - Protocol pattern recognition (Meshtastic, Eddystone, iBeacon, Custom)
@@ -8,9 +9,7 @@
 ///
 /// NOTE: This is passive analysis of advertising packets only.
 /// Real point-to-point transfers occur in encrypted GATT channels (not visible).
-
 use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
 
 /// Known Bluetooth protocol types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -66,13 +65,13 @@ pub enum ConnectionState {
 pub struct DataFlowEstimator {
     // Timeline of packets per device
     device_packets: HashMap<String, Vec<PacketRecord>>,
-    
+
     // Known protocol signatures [first_bytes] -> ProtocolType
     protocol_signatures: HashMap<Vec<u8>, ProtocolType>,
-    
+
     // Cached flow estimates
     flow_cache: HashMap<String, DeviceDataFlow>,
-    
+
     // Configuration
     config: EstimatorConfig,
 }
@@ -110,7 +109,7 @@ impl DataFlowEstimator {
             flow_cache: HashMap::new(),
             config: EstimatorConfig::default(),
         };
-        
+
         estimator.register_protocol_signatures();
         estimator
     }
@@ -158,7 +157,7 @@ impl DataFlowEstimator {
         rssi: i8,
     ) {
         let device_key = mac_address.to_string();
-        
+
         self.device_packets
             .entry(device_key)
             .or_insert_with(Vec::new)
@@ -168,7 +167,7 @@ impl DataFlowEstimator {
                 rssi,
                 raw_data: payload.to_vec(),
             });
-        
+
         // Invalidate cache for this device
         self.flow_cache.remove(mac_address);
     }
@@ -218,7 +217,8 @@ impl DataFlowEstimator {
             data_flow_pairs,
         };
 
-        self.flow_cache.insert(mac_address.to_string(), flow.clone());
+        self.flow_cache
+            .insert(mac_address.to_string(), flow.clone());
         Some(flow)
     }
 
@@ -254,14 +254,18 @@ impl DataFlowEstimator {
     }
 
     /// Calculate confidence score for detected protocol (0.0 - 1.0)
-    fn calculate_protocol_confidence(&self, packets: &[PacketRecord], detected: ProtocolType) -> f32 {
+    fn calculate_protocol_confidence(
+        &self,
+        packets: &[PacketRecord],
+        detected: ProtocolType,
+    ) -> f32 {
         if detected == ProtocolType::Unknown {
             return 0.0;
         }
 
         // Count matching signatures
         let mut matches = 0u32;
-        
+
         for packet in packets {
             for sig_len in [5, 3, 2] {
                 if packet.raw_data.len() >= sig_len {
@@ -334,17 +338,17 @@ impl DataFlowEstimator {
 
         // For each unique packet pattern, estimate if it's talking to another device
         // This is speculative based on packet structure analysis
-        
+
         let total_bytes: u64 = packets.iter().map(|p| p.payload_size as u64).sum();
         let avg_payload = total_bytes as f32 / packets.len().max(1) as f32;
-        
+
         // Calculate frequency
         let time_span_ms = if packets.len() > 1 {
             packets.last().unwrap().timestamp_ms - packets.first().unwrap().timestamp_ms
         } else {
             0
         };
-        
+
         let freq_hz = if time_span_ms > 0 {
             (packets.len() as f64 * 1000.0) / time_span_ms as f64
         } else {
@@ -455,11 +459,11 @@ mod tests {
     #[test]
     fn test_protocol_detection() {
         let mut estimator = DataFlowEstimator::new();
-        
+
         // Simulate Eddystone packets
         let eddystone_packet = vec![0x16, 0xfe, 0xaa, 0x10, 0xec, 0x00, 0x3c];
         estimator.add_packet_observation("AA:BB:CC:DD:EE:FF", 1000, &eddystone_packet, -50);
-        
+
         if let Some(flow) = estimator.analyze_device_flow("AA:BB:CC:DD:EE:FF") {
             assert_eq!(flow.detected_protocol, ProtocolType::Eddystone);
         }
@@ -468,7 +472,7 @@ mod tests {
     #[test]
     fn test_connection_state_inference() {
         let mut estimator = DataFlowEstimator::new();
-        
+
         // Add dense packets (high frequency)
         for i in 0..20 {
             let packet = vec![0x02, 0x01, 0x06]; // BLE flags
@@ -479,9 +483,12 @@ mod tests {
                 -60,
             );
         }
-        
+
         if let Some(flow) = estimator.analyze_device_flow("AA:BB:CC:DD:EE:FF") {
-            assert_eq!(flow.estimated_connection_state, ConnectionState::DataTransfer);
+            assert_eq!(
+                flow.estimated_connection_state,
+                ConnectionState::DataTransfer
+            );
         }
     }
 }

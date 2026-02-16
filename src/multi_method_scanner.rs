@@ -1,5 +1,12 @@
+use crate::company_id_reference;
+use crate::device_tracker::DeviceTrackerManager;
+use btleplug::api::{Central, Manager as ManagerTrait, Peripheral as PeripheralTrait, ScanFilter};
+use btleplug::platform::Manager;
+use chrono::{DateTime, Utc};
+use colored::Colorize;
+use log::{debug, info, warn};
 /// Multi-Method Unified Bluetooth Scanner
-/// 
+///
 /// Combines ALL available scanning methods simultaneously to maximize device detection
 /// - btleplug standard scanning
 /// - Windows HCI raw packets
@@ -10,20 +17,12 @@
 /// - Security & vendor-specific detection
 /// - Android bridge scanning
 /// - CoreBluetooth (macOS/iOS)
-/// 
+///
 /// A device might only be visible through ONE method, so we use ALL of them!
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::task::JoinSet;
-use log::{debug, info, warn};
-use chrono::{DateTime, Utc};
-use btleplug::platform::Manager;
-use btleplug::api::{Manager as ManagerTrait, Central, Peripheral as PeripheralTrait, ScanFilter};
-use colored::Colorize;
-use crate::device_tracker::DeviceTrackerManager;
-use crate::company_id_reference;
 
 /// Complete device info merged from all detection methods
 #[derive(Debug, Clone)]
@@ -31,7 +30,7 @@ pub struct UnifiedDevice {
     // === Identification ===
     pub mac_address: String,
     pub device_name: Option<String>,
-    
+
     // === Detection Methods Used ===
     pub detected_by_btleplug: bool,
     pub detected_by_hci_raw: bool,
@@ -41,30 +40,30 @@ pub struct UnifiedDevice {
     pub detected_by_android_bridge: bool,
     pub detected_by_corebluetooth: bool,
     pub detection_methods_count: usize,
-    
+
     // === Signal & Physical ===
     pub rssi: i8,
     pub tx_power: Option<i8>,
     pub phy: Option<String>,
     pub channel: Option<u8>,
-    
+
     // === Device Info ===
     pub manufacturer_id: Option<u16>,
     pub manufacturer_name: String,
     pub device_type: Option<String>,
     pub device_class: Option<String>,
-    
+
     // === Services & Features ===
     pub advertised_services: Vec<String>,
     pub security_flags: Option<String>,
     pub pairing_capable: bool,
     pub le_audio_capable: bool,
-    
+
     // === Vendor-Special ===
     pub vendor_protocol: Option<String>,
     pub l2cap_channels: Vec<u16>,
     pub raw_manufacturing_data: Vec<u8>,
-    
+
     // === Temporal ===
     pub first_detected: DateTime<Utc>,
     pub last_detected: DateTime<Utc>,
@@ -130,14 +129,28 @@ impl UnifiedDevice {
     /// Pretty-print detection methods used
     pub fn detection_methods_str(&self) -> String {
         let mut methods = Vec::new();
-        if self.detected_by_btleplug { methods.push("btleplug") }
-        if self.detected_by_hci_raw { methods.push("HCI-raw") }
-        if self.detected_by_windows_api { methods.push("API") }
-        if self.detected_by_hci_realtime { methods.push("HCI-rt") }
-        if self.detected_by_vendor_protocol { methods.push("Vendor") }
-        if self.detected_by_android_bridge { methods.push("Android") }
-        if self.detected_by_corebluetooth { methods.push("CoreBT") }
-        
+        if self.detected_by_btleplug {
+            methods.push("btleplug")
+        }
+        if self.detected_by_hci_raw {
+            methods.push("HCI-raw")
+        }
+        if self.detected_by_windows_api {
+            methods.push("API")
+        }
+        if self.detected_by_hci_realtime {
+            methods.push("HCI-rt")
+        }
+        if self.detected_by_vendor_protocol {
+            methods.push("Vendor")
+        }
+        if self.detected_by_android_bridge {
+            methods.push("Android")
+        }
+        if self.detected_by_corebluetooth {
+            methods.push("CoreBT")
+        }
+
         format!("[{}]", methods.join("|"))
     }
 }
@@ -271,7 +284,7 @@ impl MultiMethodScanner {
         devices: Arc<Mutex<HashMap<String, UnifiedDevice>>>,
     ) -> Result<(), String> {
         debug!("btleplug scan: Using standard BLE scanning");
-        
+
         // Create platform manager
         let manager = Manager::new().await.map_err(|e| e.to_string())?;
         let adapters = manager.adapters().await.map_err(|e| e.to_string())?;
@@ -289,7 +302,7 @@ impl MultiMethodScanner {
                 warn!("Failed to start scan on adapter: {}", e);
                 continue;
             }
-            
+
             // Scan for specified duration
             tokio::time::sleep(Duration::from_secs(10)).await;
 
@@ -325,7 +338,7 @@ impl MultiMethodScanner {
                     if let Some(rssi) = properties.rssi {
                         device.rssi = rssi as i8;
                     }
-                    
+
                     if let Some(tx_power) = properties.tx_power_level {
                         device.tx_power = Some(tx_power as i8);
                     }
@@ -334,7 +347,8 @@ impl MultiMethodScanner {
                     device.detection_count += 1;
                 }
 
-                debug!("btleplug: {} - {} (RSSI: {})",
+                debug!(
+                    "btleplug: {} - {} (RSSI: {})",
                     mac,
                     properties.local_name.as_deref().unwrap_or("Unknown"),
                     properties.rssi.unwrap_or(0)
@@ -356,9 +370,9 @@ impl MultiMethodScanner {
         devices: Arc<Mutex<HashMap<String, UnifiedDevice>>>,
     ) -> Result<(), String> {
         use crate::windows_hci::WindowsHciScanner;
-        
+
         debug!("HCI raw scan: Capturing low-level HCI packets");
-        
+
         let tracker = DeviceTrackerManager::new();
         let mut scanner = WindowsHciScanner::new("primary".to_string());
 
@@ -401,13 +415,7 @@ impl MultiMethodScanner {
                     }
 
                     // Log to device tracker
-                    tracker.record_detection(
-                        &mac,
-                        rssi,
-                        "hci_raw",
-                        None,
-                        None,
-                    );
+                    tracker.record_detection(&mac, rssi, "hci_raw", None, None);
 
                     device_count += 1;
                     debug!("HCI raw: {} - RSSI: {} dBm", mac, rssi);
@@ -452,9 +460,9 @@ impl MultiMethodScanner {
         devices: Arc<Mutex<HashMap<String, UnifiedDevice>>>,
     ) -> Result<(), String> {
         use crate::windows_bluetooth::windows_bt::WindowsBluetoothManager;
-        
+
         debug!("Windows API scan: Using native Bluetooth API");
-        
+
         let tracker = DeviceTrackerManager::new();
         let mut manager = WindowsBluetoothManager::new();
 
@@ -463,7 +471,7 @@ impl MultiMethodScanner {
             Ok(bt_devices) => {
                 let device_count = bt_devices.len();
                 info!("  ▶ Windows API enumerated {} paired devices", device_count);
-                
+
                 for bt_device in bt_devices {
                     let mac = bt_device.mac_address.clone();
                     let name = bt_device.name.clone();
@@ -489,17 +497,16 @@ impl MultiMethodScanner {
 
                     // Log to device tracker
                     let name_for_logging = name.clone();
-                    tracker.record_detection(
-                        &mac,
-                        rssi,
-                        "windows_api",
-                        name,
-                        None,
-                    );
+                    tracker.record_detection(&mac, rssi, "windows_api", name, None);
 
-                    debug!("Windows API: {} - {} (RSSI: {} dBm)", mac, name_for_logging.as_deref().unwrap_or("Unknown"), rssi);
+                    debug!(
+                        "Windows API: {} - {} (RSSI: {} dBm)",
+                        mac,
+                        name_for_logging.as_deref().unwrap_or("Unknown"),
+                        rssi
+                    );
                 }
-                
+
                 info!("  ✓ Windows API scan completed ({} devices)", device_count);
             }
             Err(e) => {
@@ -528,9 +535,9 @@ impl MultiMethodScanner {
     ) -> Result<(), String> {
         use crate::hci_realtime_capture::HciRealTimeSniffer;
         use tokio::sync::mpsc;
-        
+
         debug!("HCI realtime: Capturing real-time HCI events");
-        
+
         let tracker = DeviceTrackerManager::new();
         let mut sniffer = HciRealTimeSniffer::new();
 
@@ -543,7 +550,10 @@ impl MultiMethodScanner {
                 info!("  ▶ Real-time HCI sniffer started");
             }
             Err(e) => {
-                warn!("❌ Failed to start HCI real-time sniffer: {} (requires admin)", e);
+                warn!(
+                    "❌ Failed to start HCI real-time sniffer: {} (requires admin)",
+                    e
+                );
                 return Ok(());
             }
         }
@@ -580,13 +590,7 @@ impl MultiMethodScanner {
                 }
 
                 // Log to device tracker
-                tracker.record_detection(
-                    &mac,
-                    rssi,
-                    "hci_realtime",
-                    None,
-                    None,
-                );
+                tracker.record_detection(&mac, rssi, "hci_realtime", None, None);
 
                 device_count += 1;
                 debug!("HCI realtime: {} - RSSI: {} dBm", mac, rssi);
@@ -599,7 +603,10 @@ impl MultiMethodScanner {
                 info!("  ✓ HCI realtime scan completed ({} devices)", device_count);
             }
             Err(_) => {
-                info!("  ✓ HCI realtime scan timeout reached ({} devices)", device_count);
+                info!(
+                    "  ✓ HCI realtime scan timeout reached ({} devices)",
+                    device_count
+                );
             }
         }
 
@@ -630,7 +637,13 @@ impl MultiMethodScanner {
             devices_lock
                 .values()
                 .filter(|d| !d.raw_manufacturing_data.is_empty())
-                .map(|d| (d.mac_address.clone(), d.rssi, d.raw_manufacturing_data.clone()))
+                .map(|d| {
+                    (
+                        d.mac_address.clone(),
+                        d.rssi,
+                        d.raw_manufacturing_data.clone(),
+                    )
+                })
                 .collect()
         };
 
@@ -670,23 +683,26 @@ impl MultiMethodScanner {
                 }
             }
 
-            tracker.record_detection(
-                &mac,
-                rssi,
-                "vendor_protocol",
-                None,
-                None,
-            );
+            tracker.record_detection(&mac, rssi, "vendor_protocol", None, None);
 
             detected_count += 1;
-            info!("  ✓ Vendor protocols detected for {} [{}]", mac, protocol_summary);
+            info!(
+                "  ✓ Vendor protocols detected for {} [{}]",
+                mac, protocol_summary
+            );
         }
 
         if let Err(e) = tracker.persist_all() {
-            warn!("Failed to persist vendor protocol devices to database: {}", e);
+            warn!(
+                "Failed to persist vendor protocol devices to database: {}",
+                e
+            );
         }
 
-        info!("  ✓ Vendor protocol scan completed ({} devices)", detected_count);
+        info!(
+            "  ✓ Vendor protocol scan completed ({} devices)",
+            detected_count
+        );
         Ok(())
     }
 
@@ -877,10 +893,16 @@ impl MultiMethodScanner {
         }
 
         if let Err(e) = tracker.persist_all() {
-            warn!("Failed to persist Android bridge devices to database: {}", e);
+            warn!(
+                "Failed to persist Android bridge devices to database: {}",
+                e
+            );
         }
 
-        info!("  ✓ Android bridge scan completed ({} devices)", android_devices.len());
+        info!(
+            "  ✓ Android bridge scan completed ({} devices)",
+            android_devices.len()
+        );
         Ok(())
     }
 
@@ -949,7 +971,10 @@ impl MultiMethodScanner {
             warn!("Failed to persist CoreBluetooth devices to database: {}", e);
         }
 
-        info!("  ✓ CoreBluetooth scan completed ({} devices)", results.len());
+        info!(
+            "  ✓ CoreBluetooth scan completed ({} devices)",
+            results.len()
+        );
         Ok(())
     }
 
@@ -970,10 +995,8 @@ impl MultiMethodScanner {
         devices_lock
             .entry(mac.to_string())
             .or_insert_with(|| UnifiedDevice::new(mac.to_string()));
-        
-        Arc::new(Mutex::new(
-            devices_lock.get(mac).unwrap().clone()
-        ))
+
+        Arc::new(Mutex::new(devices_lock.get(mac).unwrap().clone()))
     }
 
     /// Get all discovered devices sorted by confidence
@@ -1021,39 +1044,87 @@ impl MultiMethodScanner {
     /// Print comprehensive discovery summary
     pub fn print_discovery_summary(&self) {
         let devices = self.get_devices_by_confidence();
-        
+
         if devices.is_empty() {
             println!("❌ No devices discovered");
             return;
         }
 
-        println!("\n{}", "═══════════════════════════════════════════════════════════════".cyan());
+        println!(
+            "\n{}",
+            "═══════════════════════════════════════════════════════════════".cyan()
+        );
         println!("📊 Multi-Method Discovery Summary");
-        println!("{}", "═══════════════════════════════════════════════════════════════".cyan());
+        println!(
+            "{}",
+            "═══════════════════════════════════════════════════════════════".cyan()
+        );
 
         // Overall stats
         let total_devices = devices.len();
-        let multi_method = devices.iter().filter(|d| d.detection_methods_count > 1).count();
-        let unique = devices.iter().filter(|d| d.detection_methods_count == 1).count();
+        let multi_method = devices
+            .iter()
+            .filter(|d| d.detection_methods_count > 1)
+            .count();
+        let unique = devices
+            .iter()
+            .filter(|d| d.detection_methods_count == 1)
+            .count();
 
         println!("📱 Total Devices: {}", total_devices);
-        println!("  ├─ Found by 7 methods: {}", 
-            devices.iter().filter(|d| d.detection_methods_count == 7).count());
-        println!("  ├─ Found by 3-6 methods: {}", 
-            devices.iter().filter(|d| d.detection_methods_count >= 3 && d.detection_methods_count < 7).count());
-        println!("  ├─ Found by 2 methods: {}", 
-            devices.iter().filter(|d| d.detection_methods_count == 2).count());
+        println!(
+            "  ├─ Found by 7 methods: {}",
+            devices
+                .iter()
+                .filter(|d| d.detection_methods_count == 7)
+                .count()
+        );
+        println!(
+            "  ├─ Found by 3-6 methods: {}",
+            devices
+                .iter()
+                .filter(|d| d.detection_methods_count >= 3 && d.detection_methods_count < 7)
+                .count()
+        );
+        println!(
+            "  ├─ Found by 2 methods: {}",
+            devices
+                .iter()
+                .filter(|d| d.detection_methods_count == 2)
+                .count()
+        );
         println!("  └─ Found by 1 method (UNIQUE): {}", unique);
 
         // Method coverage
         println!("\n🔍 Method Coverage:");
-        println!("  ├─ btleplug: {} devices", self.get_devices_by_method("btleplug").len());
-        println!("  ├─ HCI Raw: {} devices", self.get_devices_by_method("hci_raw").len());
-        println!("  ├─ Windows API: {} devices", self.get_devices_by_method("windows_api").len());
-        println!("  ├─ HCI Realtime: {} devices", self.get_devices_by_method("hci_realtime").len());
-        println!("  ├─ Vendor Protocols: {} devices", self.get_devices_by_method("vendor").len());
-        println!("  ├─ Android Bridge: {} devices", self.get_devices_by_method("android").len());
-        println!("  └─ CoreBluetooth: {} devices", self.get_devices_by_method("corebluetooth").len());
+        println!(
+            "  ├─ btleplug: {} devices",
+            self.get_devices_by_method("btleplug").len()
+        );
+        println!(
+            "  ├─ HCI Raw: {} devices",
+            self.get_devices_by_method("hci_raw").len()
+        );
+        println!(
+            "  ├─ Windows API: {} devices",
+            self.get_devices_by_method("windows_api").len()
+        );
+        println!(
+            "  ├─ HCI Realtime: {} devices",
+            self.get_devices_by_method("hci_realtime").len()
+        );
+        println!(
+            "  ├─ Vendor Protocols: {} devices",
+            self.get_devices_by_method("vendor").len()
+        );
+        println!(
+            "  ├─ Android Bridge: {} devices",
+            self.get_devices_by_method("android").len()
+        );
+        println!(
+            "  └─ CoreBluetooth: {} devices",
+            self.get_devices_by_method("corebluetooth").len()
+        );
 
         // Top devices
         println!("\n🏆 Top Devices (by confidence):");
@@ -1061,14 +1132,11 @@ impl MultiMethodScanner {
         println!("{}", "─".repeat(70));
 
         for device in devices.iter().take(15) {
-            let confidence = "█".repeat(device.detection_methods_count) 
+            let confidence = "█".repeat(device.detection_methods_count)
                 + &"░".repeat(7 - device.detection_methods_count);
             println!(
                 "{:<20} | {} | {:4} | {:4}",
-                device.mac_address,
-                confidence,
-                device.detection_count,
-                device.rssi
+                device.mac_address, confidence, device.detection_count, device.rssi
             );
         }
 
@@ -1076,7 +1144,10 @@ impl MultiMethodScanner {
             println!("... and {} more devices", devices.len() - 15);
         }
 
-        println!("{}", "═══════════════════════════════════════════════════════════════".cyan());
+        println!(
+            "{}",
+            "═══════════════════════════════════════════════════════════════".cyan()
+        );
     }
 
     /// Stop scanning

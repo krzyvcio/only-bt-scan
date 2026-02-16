@@ -2,7 +2,6 @@
 
 /// Bluetooth Feature Detection and Version Mapping
 /// Supports Bluetooth 1.0 through 6.0 with comprehensive feature tracking
-
 use std::collections::HashSet;
 
 /// Bluetooth Core Specification Versions
@@ -75,17 +74,17 @@ impl BluetoothVersion {
 pub enum BluetoothFeature {
     // Baseband Features (1.0-2.1)
     Baseband,
-    AFH,               // Adaptive Frequency Hopping (1.2+)
-    EDR,               // Enhanced Data Rate (2.0+)
-    SSP,               // Simple Secure Pairing (2.1+)
+    AFH, // Adaptive Frequency Hopping (1.2+)
+    EDR, // Enhanced Data Rate (2.0+)
+    SSP, // Simple Secure Pairing (2.1+)
 
     // Radio Frequency (2.0+)
-    BrEdrBasicRate,    // BR/EDR Basic Rate
-    BrEdrEdr2Mbps,     // BR/EDR Enhanced Data Rate 2 Mbps
-    BrEdrEdr3Mbps,     // BR/EDR Enhanced Data Rate 3 Mbps
+    BrEdrBasicRate, // BR/EDR Basic Rate
+    BrEdrEdr2Mbps,  // BR/EDR Enhanced Data Rate 2 Mbps
+    BrEdrEdr3Mbps,  // BR/EDR Enhanced Data Rate 3 Mbps
 
     // High Speed (3.0+)
-    HighSpeed,         // Bluetooth 3.0+ HS via WiFi
+    HighSpeed, // Bluetooth 3.0+ HS via WiFi
 
     // Low Energy (4.0+)
     BLE,
@@ -94,38 +93,38 @@ pub enum BluetoothFeature {
     LEScan,
 
     // LE Features (4.1+)
-    LEPhy2M,           // LE 2M PHY (4.2+, secondary)
-    LEPhyCoded,        // LE Coded PHY (5.0+)
+    LEPhy2M,               // LE 2M PHY (4.2+, secondary)
+    LEPhyCoded,            // LE Coded PHY (5.0+)
     LEExtendedAdvertising, // Extended Advertising (5.0+)
     LEPeriodicAdvertising, // Periodic Advertising (5.0+)
 
     // LE Audio Features (5.2+)
-    LEAudio,           // LE Audio framework
-    LC3Codec,          // LC3 codec support
-    LEAudioUnicast,    // Unicast Audio
-    LEAudioBroadcast,  // Broadcast Audio (isochronous)
-    LEAudioMultiStream,// Multiple audio streams
+    LEAudio,            // LE Audio framework
+    LC3Codec,           // LC3 codec support
+    LEAudioUnicast,     // Unicast Audio
+    LEAudioBroadcast,   // Broadcast Audio (isochronous)
+    LEAudioMultiStream, // Multiple audio streams
 
     // LE Connection Features (4.1+)
-    EATT,              // Enhanced ATT (5.2+)
-    LEConnLengthExtension, // Connection Length Extension (4.2+)
-    LEChannelSelection,    // Channel Selection Algorithm #2 (5.0+)
+    EATT,                        // Enhanced ATT (5.2+)
+    LEConnLengthExtension,       // Connection Length Extension (4.2+)
+    LEChannelSelection,          // Channel Selection Algorithm #2 (5.0+)
     LEDataPacketLengthExtension, // Data Packet Length Extension (4.2+)
 
     // Range & Speed (5.0+)
-    LE2xSpeed,         // 2x BLE speed (5.0+)
-    LE4xRange,         // 4x range improvement (5.0+)
-    LE8xBroadcast,     // 8x broadcast capacity (5.0+)
+    LE2xSpeed,     // 2x BLE speed (5.0+)
+    LE4xRange,     // 4x range improvement (5.0+)
+    LE8xBroadcast, // 8x broadcast capacity (5.0+)
 
     // Direction Finding (5.1+)
     LEDirectionFinding,
-    LEAngleOfArrival,  // AoA
-    LEAngleOfDeparture,// AoD
+    LEAngleOfArrival,   // AoA
+    LEAngleOfDeparture, // AoD
 
     // Power Management (5.3+)
-    LEPowerControl,    // LE Power Control
-    LEPathLoss,        // LE Path Loss Monitoring
-    LEConnSubrating,   // Connection Subrating
+    LEPowerControl,  // LE Power Control
+    LEPathLoss,      // LE Path Loss Monitoring
+    LEConnSubrating, // Connection Subrating
 
     // Advanced (6.0+)
     LargeScaleNetworking, // Large scale IoT support
@@ -135,8 +134,8 @@ pub enum BluetoothFeature {
     BLEMesh,
 
     // Other
-    MultipleLE,        // Multiple LE Controllers
-    DualMode,          // Simultaneous LE & BR/EDR
+    MultipleLE, // Multiple LE Controllers
+    DualMode,   // Simultaneous LE & BR/EDR
 }
 
 impl BluetoothFeature {
@@ -246,11 +245,7 @@ impl VersionFeatureSet {
     }
 
     pub fn list_features(&self) -> Vec<&'static str> {
-        let mut features: Vec<_> = self
-            .features
-            .iter()
-            .map(|f| f.name())
-            .collect();
+        let mut features: Vec<_> = self.features.iter().map(|f| f.name()).collect();
         features.sort();
         features
     }
@@ -361,7 +356,9 @@ pub fn get_features_for_version(version: BluetoothVersion) -> HashSet<BluetoothF
 }
 
 /// Detect likely Bluetooth version based on discovered features/services
-pub fn detect_version_from_features(discovered_features: &[BluetoothFeature]) -> Option<BluetoothVersion> {
+pub fn detect_version_from_features(
+    discovered_features: &[BluetoothFeature],
+) -> Option<BluetoothVersion> {
     let feature_set: HashSet<_> = discovered_features.iter().copied().collect();
 
     // Work from newest to oldest
@@ -394,7 +391,10 @@ pub fn detect_version_from_features(discovered_features: &[BluetoothFeature]) ->
 /// Estimate version from common service UUIDs
 pub fn detect_version_from_services(service_uuids: &[u16]) -> Option<BluetoothVersion> {
     // LE Audio services (5.2+)
-    if service_uuids.iter().any(|uuid| matches!(uuid, 0x1849 | 0x1844 | 0x184F | 0x1853)) {
+    if service_uuids
+        .iter()
+        .any(|uuid| matches!(uuid, 0x1849 | 0x1844 | 0x184F | 0x1853))
+    {
         return Some(BluetoothVersion::V5_2);
     }
 
@@ -404,7 +404,10 @@ pub fn detect_version_from_services(service_uuids: &[u16]) -> Option<BluetoothVe
     }
 
     // Heart rate, battery (4.0+) are very common
-    if service_uuids.iter().any(|uuid| matches!(uuid, 0x180D | 0x180F)) {
+    if service_uuids
+        .iter()
+        .any(|uuid| matches!(uuid, 0x180D | 0x180F))
+    {
         return Some(BluetoothVersion::V4_0);
     }
 

@@ -2,7 +2,6 @@
 
 /// Bluetooth Adapter Information Discovery
 /// Shows available adapters and their capabilities
-
 use log::info;
 use std::fmt;
 
@@ -164,7 +163,11 @@ impl AdapterInfo {
         adapter.is_powered = true;
         adapter.is_connectable = true;
         adapter.is_discoverable = true;
-        adapter.supported_modes = vec![BluetoothMode::BLE, BluetoothMode::BrEdr, BluetoothMode::DualMode];
+        adapter.supported_modes = vec![
+            BluetoothMode::BLE,
+            BluetoothMode::BrEdr,
+            BluetoothMode::DualMode,
+        ];
         adapter.supported_phys = vec![
             BluetoothPhy::Le1M,
             BluetoothPhy::Le2M,
@@ -212,9 +215,7 @@ impl AdapterInfo {
     fn get_linux_mac_address() -> Option<String> {
         use std::process::Command;
 
-        let output = Command::new("hciconfig")
-            .arg("hci0")
-            .output();
+        let output = Command::new("hciconfig").arg("hci0").output();
 
         match output {
             Ok(out) => {
@@ -266,39 +267,50 @@ pub fn display_adapter_info(adapter: &AdapterInfo) {
     println!("║                      📱 BLUETOOTH ADAPTER INFORMATION                          ║");
     println!("╠════════════════════════════════════════════════════════════════════════════════╣");
     println!("║                                                                                ║");
-    println!("║  Adapter Name:     {} {}", adapter.name, 
-        if adapter.is_powered { "✅ ACTIVE" } else { "❌ INACTIVE" }
+    println!(
+        "║  Adapter Name:     {} {}",
+        adapter.name,
+        if adapter.is_powered {
+            "✅ ACTIVE"
+        } else {
+            "❌ INACTIVE"
+        }
     );
     println!("║  MAC Address:      {:<62} ║", adapter.address);
-    
+
     if let Some(version) = &adapter.bt_version {
         println!("║  BT Version:       {:<62} ║", version);
     }
-    
-    println!("║  Status:           Powered={} Connectable={} Discoverable={}",
+
+    println!(
+        "║  Status:           Powered={} Connectable={} Discoverable={}",
         if adapter.is_powered { "✓" } else { "✗" },
         if adapter.is_connectable { "✓" } else { "✗" },
-        if adapter.is_discoverable { "✓" } else { "✗" }
+        if adapter.is_discoverable {
+            "✓"
+        } else {
+            "✗"
+        }
     );
     println!("║");
-    
+
     println!("║  SUPPORTED MODES:                                                              ║");
     for mode in &adapter.supported_modes {
         println!("║    • {:<77} ║", mode.to_string());
     }
-    
+
     println!("║                                                                                ║");
     println!("║  SUPPORTED PHY (Physical Layers):                                              ║");
     for phy in &adapter.supported_phys {
         println!("║    • {:<77} ║", phy.to_string());
     }
-    
+
     println!("║                                                                                ║");
     println!("║  ADVANCED FEATURES:                                                            ║");
     for feature in &adapter.features {
         println!("║    ✨ {:<75} ║", feature);
     }
-    
+
     println!("║                                                                                ║");
     println!("╚════════════════════════════════════════════════════════════════════════════════╝");
 }
@@ -308,39 +320,46 @@ pub fn log_adapter_info(adapter: &AdapterInfo) {
     info!("");
     info!("📱 BLUETOOTH ADAPTER INFORMATION");
     info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    info!("  Adapter:       {} {}", adapter.name, 
+    info!(
+        "  Adapter:       {} {}",
+        adapter.name,
         if adapter.is_powered { "✅" } else { "❌" }
     );
     info!("  Address:       {}", adapter.address);
-    
+
     if let Some(version) = &adapter.bt_version {
         info!("  Version:       {}", version);
     }
-    
-    info!("  Status:        Powered={} Connectable={} Discoverable={}",
+
+    info!(
+        "  Status:        Powered={} Connectable={} Discoverable={}",
         if adapter.is_powered { "✓" } else { "✗" },
         if adapter.is_connectable { "✓" } else { "✗" },
-        if adapter.is_discoverable { "✓" } else { "✗" }
+        if adapter.is_discoverable {
+            "✓"
+        } else {
+            "✗"
+        }
     );
-    
+
     info!("");
     info!("  📡 Supported Modes:");
     for mode in &adapter.supported_modes {
         info!("     • {}", mode);
     }
-    
+
     info!("");
     info!("  📶 Supported PHY:");
     for phy in &adapter.supported_phys {
         info!("     • {}", phy);
     }
-    
+
     info!("");
     info!("  ✨ Features:");
     for feature in &adapter.features {
         info!("     ✓ {}", feature);
     }
-    
+
     info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     info!("");
 }

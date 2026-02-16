@@ -10,6 +10,49 @@ use std::sync::Mutex;
 const MAX_RAW_PACKETS: usize = 500;
 const DEFAULT_PAGE_SIZE: usize = 50;
 
+/// Validates MAC address format (AA:BB:CC:DD:EE:FF or AA-BB-CC-DD-EE-FF)
+/// Returns normalized MAC address or error if invalid
+pub fn validate_mac_address(mac: &str) -> Result<String, &'static str> {
+    let trimmed = mac.trim();
+
+    // Check length
+    if trimmed.len() != 17 && trimmed.len() != 12 {
+        return Err("Invalid MAC address length (expected 17 with separators or 12 without)");
+    }
+
+    // Check valid hex characters
+    let cleaned: String = if trimmed.contains(':') || trimmed.contains('-') {
+        trimmed.replace(':', "").replace('-', "").to_uppercase()
+    } else {
+        trimmed.to_uppercase()
+    };
+
+    if cleaned.len() != 12 {
+        return Err("Invalid MAC address format");
+    }
+
+    // Validate each byte is valid hex
+    for chunk in cleaned.as_bytes().chunks(2) {
+        let byte_str = std::str::from_utf8(chunk).map_err(|_| "Invalid hex in MAC")?;
+        u8::from_str_radix(byte_str, 16).map_err(|_| "Invalid hex in MAC")?;
+    }
+
+    // Normalize to colon-separated format
+    let normalized: String = cleaned
+        .as_bytes()
+        .chunks(2)
+        .map(|c| std::str::from_utf8(c).unwrap())
+        .collect::<Vec<&str>>()
+        .join(":");
+
+    Ok(normalized)
+}
+
+/// Checks if MAC address is valid (without throwing error)
+pub fn is_valid_mac(mac: &str) -> bool {
+    validate_mac_address(mac).is_ok()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiDevice {
     pub id: Option<i32>,
@@ -32,9 +75,9 @@ pub struct ApiDevice {
     pub detection_percentage: f64,
     pub is_authenticated: bool,
     pub device_class: Option<String>,
-    pub service_classes: Option<String>,  // Parsed from Device Class
-    pub bt_device_type: Option<String>,   // Parsed from Device Class (renamed to avoid conflict)
-    
+    pub service_classes: Option<String>, // Parsed from Device Class
+    pub bt_device_type: Option<String>,  // Parsed from Device Class (renamed to avoid conflict)
+
     // Advertisement Data fields (wszystkie możliwe pola)
     pub ad_local_name: Option<String>,
     pub ad_tx_power: Option<i8>,
@@ -43,10 +86,10 @@ pub struct ApiDevice {
     pub ad_service_uuids: Vec<String>,
     pub ad_manufacturer_name: Option<String>,
     pub ad_manufacturer_data: Option<String>,
-    
+
     // Temporal metrics (1ms resolution)
-    pub frame_interval_ms: Option<i32>,        // Time since last frame in milliseconds
-    pub frames_per_second: Option<f32>,        // Transmission rate Hz
+    pub frame_interval_ms: Option<i32>, // Time since last frame in milliseconds
+    pub frames_per_second: Option<f32>, // Transmission rate Hz
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -160,18 +203,71 @@ pub fn init_state() -> web::Data<AppState> {
 }
 
 /// Get last advertisement data for a device and parse it
-fn get_parsed_ad_data(conn: &rusqlite::Connection, mac_address: &str) -> crate::db::ParsedAdvertisementData {
+fn get_parsed_ad_data(
+    conn: &rusqlite::Connection,
+    mac_address: &str,
+) -> crate::db::ParsedAdvertisementData {
     if let Ok(mut stmt) = conn.prepare(
         "SELECT advertising_data FROM ble_advertisement_frames
          WHERE mac_address = ?
          ORDER BY timestamp DESC
-         LIMIT 1"
+         LIMIT 1",
     ) {
         if let Ok(ad_hex) = stmt.query_row([mac_address], |row| row.get::<_, String>(0)) {
             return crate::db::parse_advertisement_data(&ad_hex);
         }
     }
     crate::db::ParsedAdvertisementData::default()
+}
+
+/// Batch get advertisement data for multiple devices (fixes N+1 problem)
+/// Returns a HashMap of MAC -> ParsedAdvertisementData
+fn get_parsed_ad_data_batch(
+    conn: &rusqlite::Connection,
+    mac_addresses: &[String],
+) -> std::collections::HashMap<String, crate::db::ParsedAdvertisementData> {
+    use std::collections::HashMap;
+
+    let mut result = HashMap::new();
+
+    if mac_addresses.is_empty() {
+        return result;
+    }
+
+    // Build query with IN clause
+    let placeholders: Vec<&str> = mac_addresses.iter().map(|_| "?").collect();
+    let query = format!(
+        r#"SELECT mac_address, advertising_data 
+           FROM ble_advertisement_frames f1
+           WHERE id = (
+               SELECT MAX(id) FROM ble_advertisement_frames 
+               WHERE mac_address = f1.mac_address
+           )
+           AND mac_address IN ({})"#,
+        placeholders.join(",")
+    );
+
+    if let Ok(mut stmt) = conn.prepare(&query) {
+        let mut rows = match stmt.query(rusqlite::params_from_iter(mac_addresses.iter())) {
+            Ok(r) => r,
+            Err(_) => return result,
+        };
+
+        while let Ok(Some(row)) = rows.next() {
+            if let (Ok(mac), Ok(ad_hex)) = (row.get::<_, String>(0), row.get::<_, String>(1)) {
+                result.insert(mac, crate::db::parse_advertisement_data(&ad_hex));
+            }
+        }
+    }
+
+    // Fill in missing MACs with defaults
+    for mac in mac_addresses {
+        result
+            .entry(mac.clone())
+            .or_insert_with(|| crate::db::ParsedAdvertisementData::default());
+    }
+
+    result
 }
 
 #[derive(Debug, Deserialize)]
@@ -226,7 +322,7 @@ pub async fn get_devices(web::Query(params): web::Query<PaginationParams>) -> im
             } else {
                 (None, None)
             };
-            
+
             Ok(ApiDevice {
                 id: row.get(0)?,
                 mac_address: row.get(1)?,
@@ -283,19 +379,23 @@ pub async fn get_devices(web::Query(params): web::Query<PaginationParams>) -> im
                     }
                 }
             }
-            
-            // Load Advertisement Data for all devices
+
+            // Load Advertisement Data for all devices (BATCH - fixes N+1)
+            let macs: Vec<String> = device_list.iter().map(|d| d.mac_address.clone()).collect();
+            let ad_data_map = get_parsed_ad_data_batch(&conn, &macs);
+
             for device in &mut device_list {
-                let ad_data = get_parsed_ad_data(&conn, &device.mac_address);
-                device.ad_local_name = ad_data.local_name;
-                device.ad_tx_power = ad_data.tx_power;
-                device.ad_flags = ad_data.flags;
-                device.ad_appearance = ad_data.appearance;
-                device.ad_service_uuids = ad_data.service_uuids;
-                device.ad_manufacturer_name = ad_data.manufacturer_name;
-                device.ad_manufacturer_data = ad_data.manufacturer_data;
+                if let Some(ad_data) = ad_data_map.get(&device.mac_address) {
+                    device.ad_local_name = ad_data.local_name.clone();
+                    device.ad_tx_power = ad_data.tx_power;
+                    device.ad_flags = ad_data.flags.clone();
+                    device.ad_appearance = ad_data.appearance.clone();
+                    device.ad_service_uuids = ad_data.service_uuids.clone();
+                    device.ad_manufacturer_name = ad_data.manufacturer_name.clone();
+                    device.ad_manufacturer_data = ad_data.manufacturer_data.clone();
+                }
             }
-            
+
             let total_pages = (total as f64 / page_size as f64).ceil() as usize;
             HttpResponse::Ok().json(PaginatedResponse {
                 data: device_list,
@@ -370,6 +470,18 @@ fn get_all_device_services(
 }
 
 pub async fn get_device_detail(path: web::Path<String>) -> impl Responder {
+    let raw_mac = path.into_inner();
+
+    // Validate MAC address
+    let mac = match validate_mac_address(&raw_mac) {
+        Ok(m) => m,
+        Err(e) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": e
+            }));
+        }
+    };
+
     let conn = match rusqlite::Connection::open("bluetooth_scan.db") {
         Ok(c) => c,
         Err(e) => {
@@ -378,8 +490,6 @@ pub async fn get_device_detail(path: web::Path<String>) -> impl Responder {
             }))
         }
     };
-
-    let mac = path.into_inner();
 
     let device: Option<ApiDevice> = conn
         .query_row(
@@ -444,7 +554,7 @@ pub async fn get_device_detail(path: web::Path<String>) -> impl Responder {
                     d.services = services;
                 }
             }
-            
+
             // Load Advertisement Data
             let ad_data = get_parsed_ad_data(&conn, &d.mac_address);
             d.ad_local_name = ad_data.local_name;
@@ -454,7 +564,7 @@ pub async fn get_device_detail(path: web::Path<String>) -> impl Responder {
             d.ad_service_uuids = ad_data.service_uuids;
             d.ad_manufacturer_name = ad_data.manufacturer_name;
             d.ad_manufacturer_data = ad_data.manufacturer_data;
-            
+
             HttpResponse::Ok().json(d)
         }
         None => HttpResponse::NotFound().json(serde_json::json!({
@@ -737,6 +847,18 @@ pub async fn get_scan_history(web::Query(params): web::Query<PaginationParams>) 
 }
 
 pub async fn get_device_history(path: web::Path<String>) -> impl Responder {
+    let raw_mac = path.into_inner();
+
+    // Validate MAC address
+    let mac = match validate_mac_address(&raw_mac) {
+        Ok(m) => m,
+        Err(e) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": e
+            }));
+        }
+    };
+
     let conn = match rusqlite::Connection::open("bluetooth_scan.db") {
         Ok(c) => c,
         Err(e) => {
@@ -745,8 +867,6 @@ pub async fn get_device_history(path: web::Path<String>) -> impl Responder {
             }))
         }
     };
-
-    let mac = path.into_inner();
 
     let device: Option<ApiDevice> = conn
         .query_row(
@@ -815,7 +935,7 @@ pub async fn get_device_history(path: web::Path<String>) -> impl Responder {
             d.ad_service_uuids = ad_data.service_uuids;
             d.ad_manufacturer_name = ad_data.manufacturer_name;
             d.ad_manufacturer_data = ad_data.manufacturer_data;
-            
+
             let mut scan_history = Vec::new();
             let mut packet_history = Vec::new();
 
@@ -894,7 +1014,17 @@ pub async fn get_latest_raw_packets(state: web::Data<AppState>) -> impl Responde
 }
 
 pub async fn get_l2cap_info(path: web::Path<String>) -> impl Responder {
-    let mac_address = path.into_inner();
+    let raw_mac = path.into_inner();
+
+    // Validate MAC address
+    let mac_address = match validate_mac_address(&raw_mac) {
+        Ok(m) => m,
+        Err(e) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": e
+            }));
+        }
+    };
 
     match rusqlite::Connection::open("bluetooth_scan.db") {
         Ok(conn) => {
@@ -1070,7 +1200,7 @@ pub async fn get_company_ids_stats() -> impl Responder {
 /// Trigger manual update of company IDs from Bluetooth SIG
 pub async fn update_company_ids() -> impl Responder {
     log::info!("📡 Manual company IDs update requested via API");
-    
+
     match crate::company_ids::update_from_bluetooth_sig().await {
         Ok(count) => {
             log::info!("✅ Updated {} company IDs", count);
@@ -1079,7 +1209,7 @@ pub async fn update_company_ids() -> impl Responder {
                 "message": format!("Successfully updated {} company IDs from Bluetooth SIG", count),
                 "count": count
             }))
-        },
+        }
         Err(e) => {
             log::error!("❌ Failed to update company IDs: {}", e);
             HttpResponse::InternalServerError().json(serde_json::json!({

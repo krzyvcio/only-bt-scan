@@ -12,16 +12,16 @@ pub struct MacAddress {
 impl MacAddress {
     pub fn from_string(s: &str) -> Result<Self, String> {
         let cleaned = s.replace(":", "").replace("-", "");
-        
+
         if cleaned.len() != 12 {
             return Err("MAC address must be 6 octets".to_string());
         }
 
         let mut bytes = [0u8; 6];
         for i in 0..6 {
-            let hex_str = &cleaned[i*2..(i+1)*2];
-            bytes[i] = u8::from_str_radix(hex_str, 16)
-                .map_err(|_| format!("Invalid hex: {}", hex_str))?;
+            let hex_str = &cleaned[i * 2..(i + 1) * 2];
+            bytes[i] =
+                u8::from_str_radix(hex_str, 16).map_err(|_| format!("Invalid hex: {}", hex_str))?;
         }
 
         let address = format!(
@@ -37,7 +37,10 @@ impl MacAddress {
             "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]
         );
-        MacAddress { address, bytes: *bytes }
+        MacAddress {
+            address,
+            bytes: *bytes,
+        }
     }
 
     pub fn as_str(&self) -> &str {

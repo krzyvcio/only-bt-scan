@@ -1,7 +1,7 @@
 //! HCI Scanner - Raw HCI event capture and L2CAP packet parsing
 
-use crate::hci_packet_parser::{HciPacketParser, L2CapPacket, HciEvent};
-use log::{info, debug};
+use crate::hci_packet_parser::{HciEvent, HciPacketParser, L2CapPacket};
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -96,42 +96,50 @@ impl HciScanner {
     pub fn simulate_hci_event(&mut self, event_code: u8, parameters: &[u8]) -> HciEvent {
         info!("HCI Event: 0x{:02X}", event_code);
         let event = self.parser.parse_hci_event(event_code, parameters);
-        
+
         self.stats.total_events += 1;
-        *self.stats.events_by_type.entry(event.event_name.clone()).or_insert(0) += 1;
-        
+        *self
+            .stats
+            .events_by_type
+            .entry(event.event_name.clone())
+            .or_insert(0) += 1;
+
         match event_code {
             0x3E => {
                 if !parameters.is_empty() {
                     match parameters[0] {
                         0x13 => self.stats.extended_advertising_reports += 1,
                         0x03 => self.stats.connection_updates += 1,
-                        _ => {},
+                        _ => {}
                     }
                 }
-            },
+            }
             0x05 => self.stats.disconnections += 1,
-            _ => {},
+            _ => {}
         }
-        
+
         self.captured_events.push(event.clone());
         event
     }
 
-    pub fn simulate_l2cap_packet(&mut self, data: &[u8], source_mac: Option<String>) -> Result<L2CapPacketInfo, String> {
+    pub fn simulate_l2cap_packet(
+        &mut self,
+        data: &[u8],
+        source_mac: Option<String>,
+    ) -> Result<L2CapPacketInfo, String> {
         let packet = self.parser.parse_l2cap_packet(data)?;
-        
+
         if let Some(ref filter) = self.config.cid_filter {
             if !filter.contains(&packet.channel_id) {
                 return Err("CID filtered out".to_string());
             }
         }
-        
+
         let packet_size = packet.payload.len() as f64;
-        self.stats.avg_packet_size = 
-            (self.stats.avg_packet_size * self.stats.total_l2cap_packets as f64 + packet_size) 
-            / (self.stats.total_l2cap_packets as f64 + 1.0);
-        
+        self.stats.avg_packet_size =
+            (self.stats.avg_packet_size * self.stats.total_l2cap_packets as f64 + packet_size)
+                / (self.stats.total_l2cap_packets as f64 + 1.0);
+
         let info = L2CapPacketInfo {
             packet,
             timestamp: std::time::SystemTime::now()
@@ -141,13 +149,21 @@ impl HciScanner {
             source_mac,
             dest_cid: 0,
         };
-        
+
         self.stats.total_l2cap_packets += 1;
-        *self.stats.packets_by_cid.entry(info.packet.channel_id).or_insert(0) += 1;
-        
-        debug!("L2CAP Packet: CID=0x{:04X} ({}), Size={} bytes", 
-               info.packet.channel_id, info.packet.channel_name(), info.packet.payload.len());
-        
+        *self
+            .stats
+            .packets_by_cid
+            .entry(info.packet.channel_id)
+            .or_insert(0) += 1;
+
+        debug!(
+            "L2CAP Packet: CID=0x{:04X} ({}), Size={} bytes",
+            info.packet.channel_id,
+            info.packet.channel_name(),
+            info.packet.payload.len()
+        );
+
         self.captured_packets.push(info.clone());
         Ok(info)
     }

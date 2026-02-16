@@ -1,20 +1,19 @@
 /// Device Discovery Tracker
-/// 
+///
 /// Tracks all device discoveries with:
 /// - First detection timestamp
 /// - Last detection timestamp
 /// - Detection count per MAC address
 /// - Verbose terminal logging
 /// - Database persistence
-
 use chrono::{DateTime, Utc};
+use colored::Colorize;
+use log::{debug, info};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use log::{info, debug};
-use colored::Colorize;
 
-use crate::db::{self, ScannedDevice};
 use crate::company_id_reference;
+use crate::db::{self, ScannedDevice};
 
 /// Single device tracking record
 #[derive(Debug, Clone)]
@@ -23,25 +22,25 @@ pub struct DeviceTracker {
     pub device_name: Option<String>,
     pub manufacturer_id: Option<u16>,
     pub manufacturer_name: Option<String>,
-    
+
     // Temporal tracking
     pub first_detected: DateTime<Utc>,
     pub last_detected: DateTime<Utc>,
     pub detection_count: u64,
     pub detection_times: Vec<DateTime<Utc>>,
-    
+
     // Signal tracking
     pub rssi_values: Vec<i8>,
     pub current_rssi: i8,
     pub avg_rssi: f64,
     pub min_rssi: i8,
     pub max_rssi: i8,
-    
+
     // Detection metadata
     pub detected_by_methods: Vec<String>,
     pub detection_methods_count: usize,
     pub last_detection_method: Option<String>,
-    
+
     // Database persistence
     pub db_device_id: Option<i32>,
     pub stored_in_db: bool,
@@ -85,22 +84,22 @@ impl DeviceTracker {
         self.last_detected = Utc::now();
         self.detection_count += 1;
         self.detection_times.push(self.last_detected);
-        
+
         // Update method tracking
         if !self.detected_by_methods.contains(&method.to_string()) {
             self.detected_by_methods.push(method.to_string());
             self.detection_methods_count = self.detected_by_methods.len();
         }
         self.last_detection_method = Some(method.to_string());
-        
+
         // Update signal tracking
         self.current_rssi = rssi;
         self.rssi_values.push(rssi);
         self.min_rssi = self.min_rssi.min(rssi);
         self.max_rssi = self.max_rssi.max(rssi);
-        self.avg_rssi = self.rssi_values.iter().map(|&x| x as f64).sum::<f64>() 
-            / self.rssi_values.len() as f64;
-        
+        self.avg_rssi =
+            self.rssi_values.iter().map(|&x| x as f64).sum::<f64>() / self.rssi_values.len() as f64;
+
         // Update device info if provided
         if let Some(name) = device_name {
             self.device_name = Some(name);
@@ -125,50 +124,86 @@ impl DeviceTracker {
         let method_str = self.detected_by_methods.join(", ");
         let duration = self.duration_detected();
         let duration_str = format_duration(duration);
-        
+
         println!("\n{}", "═".repeat(100));
         println!("📱 Device: {}", self.mac_address.bright_cyan().bold());
-        
+
         if let Some(name) = &self.device_name {
             println!("  Name: {}", name.bright_white());
         }
-        
+
         if let Some(mfg_name) = &self.manufacturer_name {
-            println!("  Manufacturer: {} {}", 
+            println!(
+                "  Manufacturer: {} {}",
                 "🏭".bright_yellow(),
                 mfg_name.bright_white()
             );
         }
-        
+
         println!("\n⏰ Temporal Info:");
-        println!("  First detected:  {}", self.first_detected.format("%Y-%m-%d %H:%M:%S.%3f UTC").to_string().bright_green());
-        println!("  Last detected:   {}", self.last_detected.format("%Y-%m-%d %H:%M:%S.%3f UTC").to_string().bright_green());
-        println!("  Detection span:  {} ({})", duration_str.bright_yellow(), 
-            format!("{:.2}s", duration.num_milliseconds() as f64 / 1000.0));
-        
+        println!(
+            "  First detected:  {}",
+            self.first_detected
+                .format("%Y-%m-%d %H:%M:%S.%3f UTC")
+                .to_string()
+                .bright_green()
+        );
+        println!(
+            "  Last detected:   {}",
+            self.last_detected
+                .format("%Y-%m-%d %H:%M:%S.%3f UTC")
+                .to_string()
+                .bright_green()
+        );
+        println!(
+            "  Detection span:  {} ({})",
+            duration_str.bright_yellow(),
+            format!("{:.2}s", duration.num_milliseconds() as f64 / 1000.0)
+        );
+
         println!("\n📊 Detection Stats:");
-        println!("  Total detections: {} times", self.detection_count.to_string().bright_cyan().bold());
-        println!("  Detection rate: {:.2} per minute", 
-            (self.detection_count as f64 / (duration.num_seconds() as f64 / 60.0)).to_string().bright_cyan());
-        println!("  Methods used: {} {}", 
+        println!(
+            "  Total detections: {} times",
+            self.detection_count.to_string().bright_cyan().bold()
+        );
+        println!(
+            "  Detection rate: {:.2} per minute",
+            (self.detection_count as f64 / (duration.num_seconds() as f64 / 60.0))
+                .to_string()
+                .bright_cyan()
+        );
+        println!(
+            "  Methods used: {} {}",
             self.detection_methods_count.to_string().bright_magenta(),
             format!("[{}]", method_str).bright_magenta()
         );
-        println!("  Last method: {}", 
-            self.last_detection_method.as_deref().unwrap_or("unknown").bright_cyan()
+        println!(
+            "  Last method: {}",
+            self.last_detection_method
+                .as_deref()
+                .unwrap_or("unknown")
+                .bright_cyan()
         );
-        
+
         println!("\n📡 Signal Quality:");
-        println!("  Current RSSI:     {} dBm", self.current_rssi.to_string().bright_white());
-        println!("  Average RSSI:     {:.1} dBm", self.avg_rssi.to_string().bright_white());
-        println!("  Min/Max RSSI:     {} / {} dBm", 
+        println!(
+            "  Current RSSI:     {} dBm",
+            self.current_rssi.to_string().bright_white()
+        );
+        println!(
+            "  Average RSSI:     {:.1} dBm",
+            self.avg_rssi.to_string().bright_white()
+        );
+        println!(
+            "  Min/Max RSSI:     {} / {} dBm",
             self.min_rssi.to_string().bright_white(),
             self.max_rssi.to_string().bright_white()
         );
-        println!("  Signal range:     {} dBm", 
+        println!(
+            "  Signal range:     {} dBm",
             (self.max_rssi - self.min_rssi).to_string().bright_white()
         );
-        
+
         // Detection timeline (last 10)
         if !self.detection_times.is_empty() {
             println!("\n⌚ Recent Detection Timeline:");
@@ -177,15 +212,16 @@ impl DeviceTracker {
             } else {
                 &self.detection_times[..]
             };
-            
+
             for (idx, time) in recent.iter().enumerate() {
-                println!("  #{:<3} {}", 
+                println!(
+                    "  #{:<3} {}",
                     idx + 1,
                     time.format("%H:%M:%S.%3f").to_string().bright_blue()
                 );
             }
         }
-        
+
         println!("{}", "═".repeat(100));
     }
 
@@ -216,38 +252,63 @@ impl DeviceTracker {
                 debug!("Device {} persisted to DB with ID {}", self.mac_address, id);
                 Ok(id)
             }
-            Err(e) => {
-                Err(format!("Failed to persist device {}: {}", self.mac_address, e))
-            }
+            Err(e) => Err(format!(
+                "Failed to persist device {}: {}",
+                self.mac_address, e
+            )),
         }
     }
 }
 
 /// Global device tracker manager
+///
+/// Limits:
+/// - Max tracked devices: 10000 (prevents memory leak)
+/// - Oldest devices are removed when limit reached
 pub struct DeviceTrackerManager {
     devices: Arc<Mutex<HashMap<String, DeviceTracker>>>,
+    max_devices: usize,
 }
 
 impl DeviceTrackerManager {
+    /// Create new manager with default limit (10000 devices)
     pub fn new() -> Self {
         Self {
             devices: Arc::new(Mutex::new(HashMap::new())),
+            max_devices: 10000,
+        }
+    }
+
+    /// Create new manager with custom device limit
+    pub fn with_limit(max_devices: usize) -> Self {
+        Self {
+            devices: Arc::new(Mutex::new(HashMap::new())),
+            max_devices,
         }
     }
 
     /// Get or create tracker for device
+    /// Returns Arc to the tracker - caller should hold the lock briefly
     pub fn get_or_create(&self, mac: &str) -> Arc<Mutex<DeviceTracker>> {
         let mut devices = self.devices.lock().unwrap();
+
+        // Evict oldest device if at capacity
+        if devices.len() >= self.max_devices && !devices.contains_key(mac) {
+            if let Some((oldest_mac, _)) = devices.iter().min_by_key(|(_, v)| v.first_detected) {
+                let oldest = oldest_mac.clone();
+                devices.remove(&oldest);
+                log::warn!("Evicted oldest device {} due to capacity limit", oldest);
+            }
+        }
+
         devices
             .entry(mac.to_string())
             .or_insert_with(|| DeviceTracker::new(mac.to_string()));
-        
-        Arc::new(Mutex::new(
-            devices.get(mac).unwrap().clone()
-        ))
+
+        Arc::new(Mutex::new(devices.get(mac).unwrap().clone()))
     }
 
-    /// Record detection on device
+    /// Record detection on device - holds lock for entire operation to prevent race
     pub fn record_detection(
         &self,
         mac: &str,
@@ -256,29 +317,31 @@ impl DeviceTrackerManager {
         device_name: Option<String>,
         manufacturer_id: Option<u16>,
     ) -> String {
+        // Get tracker and hold lock for entire operation
         let tracker = self.get_or_create(mac);
-        {
-            let mut t = tracker.lock().unwrap();
-            t.record_detection(rssi, method, device_name, manufacturer_id);
-        }
-        
-        // Log to terminal immediately
-        let t = tracker.lock().unwrap();
+        let mut t = tracker.lock().unwrap();
+
+        // Record detection
+        t.record_detection(rssi, method, device_name, manufacturer_id);
+
+        // Build log message while still holding lock
         let timestamp = Utc::now().format("%H:%M:%S.%3f").to_string();
-        
-        let name_str = t.device_name
+
+        let name_str = t
+            .device_name
             .as_deref()
             .unwrap_or("(unknown)")
             .bright_white();
-        
-        let mfg_str = t.manufacturer_name
+
+        let mfg_str = t
+            .manufacturer_name
             .as_deref()
             .unwrap_or("Unknown")
             .bright_yellow();
-        
+
         let _method_str = format!("[{}]", method).bright_magenta();
         let rssi_str = format!("{:+4} dBm", rssi);
-        
+
         let log_msg = format!(
             "{} 📡 {} | {} | {} | {:#6} | Count: {:#4} | Avg RSSI: {:.1} dBm",
             timestamp.bright_blue(),
@@ -289,7 +352,7 @@ impl DeviceTrackerManager {
             t.detection_count.to_string().bright_yellow(),
             t.avg_rssi
         );
-        
+
         info!("{}", log_msg);
         log_msg
     }
@@ -311,7 +374,7 @@ impl DeviceTrackerManager {
     /// Print summary of all tracked devices
     pub fn print_summary(&self) {
         let devices = self.get_all_devices();
-        
+
         if devices.is_empty() {
             println!("❌ No devices tracked");
             return;
@@ -320,8 +383,9 @@ impl DeviceTrackerManager {
         println!("\n{}", "═".repeat(120));
         println!("🎯 DEVICE TRACKING SUMMARY");
         println!("{}", "═".repeat(120));
-        
-        println!("{:<20} | {:<35} | {:<20} | Count | Avg RSSI | Methods",
+
+        println!(
+            "{:<20} | {:<35} | {:<20} | Count | Avg RSSI | Methods",
             "MAC Address".bright_cyan(),
             "Device Name".bright_white(),
             "Manufacturer".bright_yellow()
@@ -332,8 +396,9 @@ impl DeviceTrackerManager {
             let name = device.device_name.as_deref().unwrap_or("(unknown)");
             let mfg = device.manufacturer_name.as_deref().unwrap_or("Unknown");
             let methods = device.detected_by_methods.join(", ");
-            
-            println!("{:<20} | {:<35} | {:<20} | {:<5} | {:<8.1} | {}",
+
+            println!(
+                "{:<20} | {:<35} | {:<20} | {:<5} | {:<8.1} | {}",
                 device.mac_address.bright_cyan(),
                 name.bright_white(),
                 mfg.bright_yellow(),
@@ -344,7 +409,10 @@ impl DeviceTrackerManager {
         }
 
         println!("{}", "═".repeat(120));
-        println!("Total devices: {}", devices.len().to_string().bright_cyan().bold());
+        println!(
+            "Total devices: {}",
+            devices.len().to_string().bright_cyan().bold()
+        );
     }
 
     /// Persist all devices to database
@@ -372,20 +440,40 @@ impl DeviceTrackerManager {
         let devices = self.get_all_devices();
         let mut report = String::new();
 
-        report.push_str(&format!("Device Discovery Report - {}\n", Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
+        report.push_str(&format!(
+            "Device Discovery Report - {}\n",
+            Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+        ));
         report.push_str(&"═".repeat(150));
         report.push_str("\n");
 
         for device in devices {
             report.push_str(&format!("MAC: {}\n", device.mac_address));
-            report.push_str(&format!("Name: {}\n", device.device_name.as_deref().unwrap_or("Unknown")));
-            report.push_str(&format!("Manufacturer: {}\n", device.manufacturer_name.as_deref().unwrap_or("Unknown")));
-            report.push_str(&format!("First Detected: {}\n", device.first_detected.format("%Y-%m-%d %H:%M:%S.%3f UTC")));
-            report.push_str(&format!("Last Detected: {}\n", device.last_detected.format("%Y-%m-%d %H:%M:%S.%3f UTC")));
+            report.push_str(&format!(
+                "Name: {}\n",
+                device.device_name.as_deref().unwrap_or("Unknown")
+            ));
+            report.push_str(&format!(
+                "Manufacturer: {}\n",
+                device.manufacturer_name.as_deref().unwrap_or("Unknown")
+            ));
+            report.push_str(&format!(
+                "First Detected: {}\n",
+                device.first_detected.format("%Y-%m-%d %H:%M:%S.%3f UTC")
+            ));
+            report.push_str(&format!(
+                "Last Detected: {}\n",
+                device.last_detected.format("%Y-%m-%d %H:%M:%S.%3f UTC")
+            ));
             report.push_str(&format!("Detection Count: {}\n", device.detection_count));
-            report.push_str(&format!("Detected By: {}\n", device.detected_by_methods.join(", ")));
-            report.push_str(&format!("RSSI: {} / {:.1} / {} dBm (min/avg/max)\n", 
-                device.min_rssi, device.avg_rssi, device.max_rssi));
+            report.push_str(&format!(
+                "Detected By: {}\n",
+                device.detected_by_methods.join(", ")
+            ));
+            report.push_str(&format!(
+                "RSSI: {} / {:.1} / {} dBm (min/avg/max)\n",
+                device.min_rssi, device.avg_rssi, device.max_rssi
+            ));
             report.push_str(&"─".repeat(150));
             report.push_str("\n");
         }
@@ -422,13 +510,21 @@ mod tests {
         assert_eq!(tracker.mac_address, "AA:BB:CC:DD:EE:FF");
         assert_eq!(tracker.detection_count, 1);
         assert_eq!(tracker.current_rssi, -50);
-        assert!(tracker.detected_by_methods.contains(&"btleplug".to_string()));
+        assert!(tracker
+            .detected_by_methods
+            .contains(&"btleplug".to_string()));
     }
 
     #[test]
     fn test_manager_tracking() {
         let manager = DeviceTrackerManager::new();
-        manager.record_detection("AA:BB:CC:DD:EE:FF", -50, "btleplug", Some("Test".to_string()), Some(0x004C));
+        manager.record_detection(
+            "AA:BB:CC:DD:EE:FF",
+            -50,
+            "btleplug",
+            Some("Test".to_string()),
+            Some(0x004C),
+        );
         manager.record_detection("AA:BB:CC:DD:EE:FF", -48, "btleplug", None, None);
 
         let devices = manager.get_all_devices();

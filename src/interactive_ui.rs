@@ -1,17 +1,16 @@
+#[allow(unused_imports)]
+use crate::bluetooth_features::{BluetoothFeature, BluetoothVersion};
+use crate::bluetooth_scanner::BluetoothDevice;
+use colored::Colorize;
 /// Interactive terminal UI for browsing Bluetooth devices
 /// Allows navigation with arrow keys
-
 use crossterm::{
+    cursor::MoveTo, // Added MoveTo
     event::{self, Event, KeyCode, KeyEvent},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-    cursor::{MoveTo}, // Added MoveTo
 };
 use std::io::{self, Write};
-use colored::Colorize;
-use crate::bluetooth_scanner::BluetoothDevice;
-#[allow(unused_imports)]
-use crate::bluetooth_features::{BluetoothVersion, BluetoothFeature};
 
 pub struct InteractiveUI {
     devices: Vec<BluetoothDevice>,
@@ -96,11 +95,21 @@ impl InteractiveUI {
         }
 
         // Draw header
-        println!("╔════════════════════════════════════════════════════════════════════════════════╗");
-        println!("║                  📱 BLUETOOTH DEVICE SCANNER - INTERACTIVE MODE                 ║");
-        println!("╠════════════════════════════════════════════════════════════════════════════════╣");
-        println!("║  Nawigacja: ↑↓ Strzałki | Enter: Szczegóły | Q: Wyjście                      ║");
-        println!("╠════════════════════════════════════════════════════════════════════════════════╣");
+        println!(
+            "╔════════════════════════════════════════════════════════════════════════════════╗"
+        );
+        println!(
+            "║                  📱 BLUETOOTH DEVICE SCANNER - INTERACTIVE MODE                 ║"
+        );
+        println!(
+            "╠════════════════════════════════════════════════════════════════════════════════╣"
+        );
+        println!(
+            "║  Nawigacja: ↑↓ Strzałki | Enter: Szczegóły | Q: Wyjście                      ║"
+        );
+        println!(
+            "╠════════════════════════════════════════════════════════════════════════════════╣"
+        );
 
         // Draw device list
         for (idx, device) in self.devices.iter().enumerate() {
@@ -115,16 +124,15 @@ impl InteractiveUI {
 
             let default_name = "<Unknown>".to_string();
             let name = device.name.as_ref().unwrap_or(&default_name);
-            
+
             let default_mfg = "?".to_string();
-            let mfg = device
-                .manufacturer_name
-                .as_ref()
-                .unwrap_or(&default_mfg);
+            let mfg = device.manufacturer_name.as_ref().unwrap_or(&default_mfg);
 
             println!(
                 "{}{}{}  [{:2}] {} | {} | {} dBm | {} ms | {}",
-                selected_bg, marker, reset,
+                selected_bg,
+                marker,
+                reset,
                 idx + 1,
                 &device.mac_address,
                 if name.len() > 20 {
@@ -138,12 +146,16 @@ impl InteractiveUI {
             );
         }
 
-        println!("╠════════════════════════════════════════════════════════════════════════════════╣");
+        println!(
+            "╠════════════════════════════════════════════════════════════════════════════════╣"
+        );
 
         // Draw details if requested
         if self.show_details && self.selected_index < self.devices.len() {
             let device = &self.devices[self.selected_index];
-            println!("║ SZCZEGÓŁY URZĄDZENIA                                                         ║");
+            println!(
+                "║ SZCZEGÓŁY URZĄDZENIA                                                         ║"
+            );
             println!("├────────────────────────────────────────────────────────────────────────────────┤");
             println!(
                 "║ MAC Address:        {} @ {:<40} ║",
@@ -191,16 +203,21 @@ impl InteractiveUI {
                     bt_version.full_name()
                 );
             }
-            
+
             if !device.supported_features.is_empty() {
-                println!("║ Obsługiwane cechy:                                                       ║");
+                println!(
+                    "║ Obsługiwane cechy:                                                       ║"
+                );
                 for (idx, feature) in device.supported_features.iter().enumerate() {
                     if idx < 3 {
                         println!("║   ✨ {:<56} ║", feature.name());
                     }
                 }
                 if device.supported_features.len() > 3 {
-                    println!("║   ... i {} więcej cech", device.supported_features.len() - 3);
+                    println!(
+                        "║   ... i {} więcej cech",
+                        device.supported_features.len() - 3
+                    );
                 }
             }
 
@@ -226,9 +243,10 @@ impl InteractiveUI {
         println!(
             "╚════════════════════════════════════════════════════════════════════════════════╝"
         );
-        println!("Razem urządzeń: {} | Wybrane: {}/{}", 
-            self.devices.len(), 
-            self.selected_index + 1, 
+        println!(
+            "Razem urządzeń: {} | Wybrane: {}/{}",
+            self.devices.len(),
+            self.selected_index + 1,
             self.devices.len()
         );
 
@@ -239,11 +257,11 @@ impl InteractiveUI {
 /// Convert RSSI to signal strength indicator
 fn rssi_to_strength(rssi: i8) -> (&'static str, &'static str) {
     match rssi {
-        -30..=0 => ("🟢", "Bardzo mocny"),    // Excellent
-        -67..=-31 => ("🟢", "Mocny"),          // Good
-        -70..=-68 => ("🟡", "Średni"),         // Fair
-        -80..=-71 => ("🟠", "Słaby"),          // Weak
-        _ => ("🔴", "Bardzo słaby"),            // Very weak
+        -30..=0 => ("🟢", "Bardzo mocny"), // Excellent
+        -67..=-31 => ("🟢", "Mocny"),      // Good
+        -70..=-68 => ("🟡", "Średni"),     // Fair
+        -80..=-71 => ("🟠", "Słaby"),      // Weak
+        _ => ("🔴", "Bardzo słaby"),       // Very weak
     }
 }
 
@@ -264,25 +282,22 @@ pub fn display_devices_simple(
     }
 
     let (to_show, overflow) = match max_rows {
-        Some(n) if n < devices.len() => (devices.iter().take(n).collect::<Vec<_>>(), Some(devices.len() - n)),
+        Some(n) if n < devices.len() => (
+            devices.iter().take(n).collect::<Vec<_>>(),
+            Some(devices.len() - n),
+        ),
         _ => (devices.iter().collect::<Vec<_>>(), None),
     };
 
     for device in to_show.iter() {
-        let name = device
-            .name
-            .as_deref()
-            .unwrap_or("<Unknown>");
-        let mfg = device
-            .manufacturer_name
-            .as_deref()
-            .unwrap_or("?");
+        let name = device.name.as_deref().unwrap_or("<Unknown>");
+        let mfg = device.manufacturer_name.as_deref().unwrap_or("?");
         let device_type = match device.device_type {
             crate::bluetooth_scanner::DeviceType::BleOnly => "BLE",
             crate::bluetooth_scanner::DeviceType::BrEdr => "BR/E",
             crate::bluetooth_scanner::DeviceType::DualMode => "DUAL",
         };
-        
+
         let (emoji, strength) = rssi_to_strength(device.rssi);
         let _services_count = device.services.len();
 
@@ -303,8 +318,6 @@ pub fn display_devices_simple(
         } else {
             format!("{:<19}", name)
         };
-
-
 
         execute!(stdout, MoveTo(0, current_y))?;
         writeln!(
@@ -328,7 +341,11 @@ pub fn display_devices_simple(
 
     if let Some(extra) = overflow {
         execute!(stdout, MoveTo(0, current_y))?;
-        writeln!(stdout, "{}", format!("... i jeszcze {} urządzeń", extra).bright_black())?;
+        writeln!(
+            stdout,
+            "{}",
+            format!("... i jeszcze {} urządzeń", extra).bright_black()
+        )?;
         current_y += 1;
     }
 
@@ -336,14 +353,24 @@ pub fn display_devices_simple(
     let devices_height = to_show.len() + overflow.is_some().then_some(1).unwrap_or(0);
     let clear_until = (start_y as usize + devices_height + 1) as u16;
     for y in current_y..clear_until {
-        execute!(stdout, MoveTo(0, y), crossterm::terminal::Clear(crossterm::terminal::ClearType::CurrentLine))?;
+        execute!(
+            stdout,
+            MoveTo(0, y),
+            crossterm::terminal::Clear(crossterm::terminal::ClearType::CurrentLine)
+        )?;
     }
-    
+
     execute!(stdout, MoveTo(0, current_y))?;
     writeln!(stdout, "{}", "╚══════════════════════════════════════════════════════════════════════════════════════════════════════╝".bright_blue())?;
     current_y += 1;
     execute!(stdout, MoveTo(0, current_y))?;
-    writeln!(stdout, "{}", format!("📊 Razem: {} urządzeń", devices.len()).bright_cyan().bold())?;
+    writeln!(
+        stdout,
+        "{}",
+        format!("📊 Razem: {} urządzeń", devices.len())
+            .bright_cyan()
+            .bold()
+    )?;
     current_y += 1;
     execute!(stdout, MoveTo(0, current_y))?;
     writeln!(stdout, "{}", "🟢 Mocny (>-67dB) │ 🟡 Średni (-70..-68dB) │ 🟠 Słaby (-80..-71dB) │ 🔴 Bardzo słaby (<-80dB)".bright_white())?;
@@ -357,11 +384,11 @@ pub fn display_devices_simple(
 pub fn check_bluetooth_permissions() -> bool {
     use log::warn;
     println!("🔍 Sprawdzanie uprawnień Bluetooth...");
-    
+
     // Try to detect if Windows has Bluetooth available
     // This is a simplified check - in production you'd use Windows APIs
     let has_bluetooth = true; // Assume available on Windows unless error
-    
+
     if has_bluetooth {
         println!("✓ Uprawnienia Bluetooth: OK");
         log::info!("✓ Bluetooth permissions verified");
@@ -389,9 +416,9 @@ pub fn check_bluetooth_permissions() -> bool {
 /// If no selection within 5 seconds, defaults to continuous mode
 pub fn show_scan_mode_menu() -> bool {
     use std::time::Duration;
-    
+
     clearscreen::clear().unwrap_or_default();
-    
+
     println!("╔════════════════════════════════════════════════════════════════╗");
     println!("║            🔵 Bluetooth Scanner - Scan Mode Selection            ║");
     println!("╚════════════════════════════════════════════════════════════════╝");
@@ -404,15 +431,15 @@ pub fn show_scan_mode_menu() -> bool {
     println!("  2. ⏰ Skanowanie co 5 minut");
     println!("     └─ Skanuje przez 30s, potem czeka 5 minut");
     println!();
-    
+
     // Enable raw mode for non-blocking input
     let _ = enable_raw_mode();
-    
+
     // Show countdown from 5 to 0 with input check
     for countdown in (0..=5).rev() {
         print!("\rWybór (1 lub 2): {} sekund ", countdown);
         std::io::stdout().flush().ok();
-        
+
         // Check for input with 1-second timeout
         if event::poll(Duration::from_secs(1)).ok().unwrap_or(false) {
             if let Ok(Event::Key(key)) = event::read() {
@@ -433,7 +460,7 @@ pub fn show_scan_mode_menu() -> bool {
             }
         }
     }
-    
+
     let _ = disable_raw_mode();
     println!("\n⏰ Upłynęło 5 sekund - autostart: Ciągłe skanowanie");
     std::thread::sleep(Duration::from_millis(1500));
@@ -446,14 +473,14 @@ pub fn display_countdown(mut minutes: u64, mut seconds: u64) {
     loop {
         print!("\r⏳ Następne skanowanie za: {:02}:{:02}", minutes, seconds);
         std::io::stdout().flush().ok();
-        
+
         if minutes == 0 && seconds == 0 {
             println!();
             break;
         }
-        
+
         std::thread::sleep(std::time::Duration::from_secs(1));
-        
+
         if seconds > 0 {
             seconds -= 1;
         } else if minutes > 0 {
@@ -469,9 +496,9 @@ pub fn display_countdown(mut minutes: u64, mut seconds: u64) {
 /// Display countdown timer that can be interrupted by shutdown flag
 /// min: minutes, sec: seconds, shutdown_flag: Arc<AtomicBool>
 pub fn display_countdown_interruptible(
-    mut minutes: u64, 
-    mut seconds: u64, 
-    shutdown_flag: std::sync::Arc<std::sync::atomic::AtomicBool>
+    mut minutes: u64,
+    mut seconds: u64,
+    shutdown_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) {
     loop {
         // Check for shutdown request
@@ -479,25 +506,25 @@ pub fn display_countdown_interruptible(
             println!("\n👋 Przerwano odliczanie - zamykanie...");
             break;
         }
-        
+
         print!("\r⏳ Następne skanowanie za: {:02}:{:02}", minutes, seconds);
         std::io::stdout().flush().ok();
-        
+
         if minutes == 0 && seconds == 0 {
             println!();
             break;
         }
-        
+
         std::thread::sleep(std::time::Duration::from_millis(500));
-        
+
         // Check again for shutdown between seconds
         if shutdown_flag.load(std::sync::atomic::Ordering::Relaxed) {
             println!("\n👋 Przerwano odliczanie - zamykanie...");
             break;
         }
-        
+
         std::thread::sleep(std::time::Duration::from_millis(500));
-        
+
         if seconds > 0 {
             seconds -= 1;
         } else if minutes > 0 {

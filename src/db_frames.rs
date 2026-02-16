@@ -2,12 +2,11 @@
 
 /// Database operations for raw Bluetooth frames and packets
 /// Stores complete advertising packets with metadata for analysis
-
 use chrono::{DateTime, Utc};
 
+use crate::raw_sniffer::{AdvertisingType, BluetoothFrame, BluetoothPhy};
 use rusqlite::{params, Connection, OptionalExtension, Result as SqliteResult};
 use std::collections::HashMap;
-use crate::raw_sniffer::{BluetoothFrame, BluetoothPhy, AdvertisingType};
 
 /// Initialize frame storage tables in the database
 pub fn init_frame_storage(conn: &Connection) -> SqliteResult<()> {
@@ -86,11 +85,7 @@ pub fn init_frame_storage(conn: &Connection) -> SqliteResult<()> {
 }
 
 /// Store a single Bluetooth frame
-pub fn insert_frame(
-    conn: &Connection,
-    device_id: i64,
-    frame: &BluetoothFrame,
-) -> SqliteResult<()> {
+pub fn insert_frame(conn: &Connection, device_id: i64, frame: &BluetoothFrame) -> SqliteResult<()> {
     let phy_str = format!("{}", frame.phy);
     let frame_type_str = format!("{}", frame.frame_type);
     let advertising_data_hex = hex::encode(&frame.advertising_data);
@@ -176,8 +171,7 @@ pub fn get_frames_by_mac(
             Ok(BluetoothFrame {
                 mac_address: row.get(0)?,
                 rssi: row.get(1)?,
-                advertising_data: hex::decode(row.get::<_, String>(2)?)
-                    .unwrap_or_default(),
+                advertising_data: hex::decode(row.get::<_, String>(2)?).unwrap_or_default(),
                 phy: parse_phy(&row.get::<_, String>(3)?),
                 channel: row.get(4)?,
                 frame_type: parse_frame_type(&row.get::<_, String>(5)?),
@@ -199,7 +193,7 @@ pub fn get_frames_by_time_range(
         "SELECT mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp
          FROM ble_advertisement_frames
          WHERE timestamp >= ? AND timestamp <= ?
-         ORDER BY timestamp DESC"
+         ORDER BY timestamp DESC",
     )?;
 
     let frames = stmt
@@ -207,8 +201,7 @@ pub fn get_frames_by_time_range(
             Ok(BluetoothFrame {
                 mac_address: row.get(0)?,
                 rssi: row.get(1)?,
-                advertising_data: hex::decode(row.get::<_, String>(2)?)
-                    .unwrap_or_default(),
+                advertising_data: hex::decode(row.get::<_, String>(2)?).unwrap_or_default(),
                 phy: parse_phy(&row.get::<_, String>(3)?),
                 channel: row.get(4)?,
                 frame_type: parse_frame_type(&row.get::<_, String>(5)?),
@@ -230,7 +223,7 @@ pub fn get_frames_by_type(
         "SELECT mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp
          FROM ble_advertisement_frames
          WHERE frame_type = ?
-         ORDER BY timestamp DESC LIMIT 1000"
+         ORDER BY timestamp DESC LIMIT 1000",
     )?;
 
     let frames = stmt
@@ -238,8 +231,7 @@ pub fn get_frames_by_type(
             Ok(BluetoothFrame {
                 mac_address: row.get(0)?,
                 rssi: row.get(1)?,
-                advertising_data: hex::decode(row.get::<_, String>(2)?)
-                    .unwrap_or_default(),
+                advertising_data: hex::decode(row.get::<_, String>(2)?).unwrap_or_default(),
                 phy: parse_phy(&row.get::<_, String>(3)?),
                 channel: row.get(4)?,
                 frame_type: parse_frame_type(&row.get::<_, String>(5)?),
@@ -253,9 +245,8 @@ pub fn get_frames_by_type(
 
 /// Count frames for a device
 pub fn count_frames_for_device(conn: &Connection, device_id: i64) -> SqliteResult<i64> {
-    let mut stmt = conn.prepare(
-        "SELECT COUNT(*) FROM ble_advertisement_frames WHERE device_id = ?"
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT COUNT(*) FROM ble_advertisement_frames WHERE device_id = ?")?;
 
     stmt.query_row([device_id], |row| row.get(0))
 }
@@ -286,7 +277,7 @@ pub fn insert_raw_packets_from_scan(
     let mut insert_stmt = conn.prepare(
         "INSERT INTO ble_advertisement_frames
          (device_id, mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )?;
     let mut missing_device_count = 0;
     let mut inserted_count = 0;
@@ -346,19 +337,26 @@ pub fn insert_parsed_raw_packets(
         return Ok(());
     }
 
-    log::info!("💾 Inserting {} parsed raw packets to database", raw_packets.len());
+    log::info!(
+        "💾 Inserting {} parsed raw packets to database",
+        raw_packets.len()
+    );
 
     let mut stmt = conn.prepare(
         "INSERT INTO ble_advertisement_frames
          (mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp)
-         VALUES (?, ?, ?, ?, ?, ?, ?)"
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
     )?;
 
     let now = chrono::Local::now().to_rfc3339();
 
     for packet in raw_packets {
         let advertising_data_hex = &packet.manufacturer_data_hex;
-        let frame_type = if packet.connectable { "ADV_IND" } else { "ADV_NONCONN_IND" };
+        let frame_type = if packet.connectable {
+            "ADV_IND"
+        } else {
+            "ADV_NONCONN_IND"
+        };
 
         stmt.execute(params![
             &packet.mac_address,
@@ -370,13 +368,18 @@ pub fn insert_parsed_raw_packets(
             now,
         ])?;
 
-        log::debug!("📦 Inserted packet: {} RSSI:{} Company:{:?}",
-                   packet.mac_address,
-                   packet.rssi,
-                   packet.company_name);
+        log::debug!(
+            "📦 Inserted packet: {} RSSI:{} Company:{:?}",
+            packet.mac_address,
+            packet.rssi,
+            packet.company_name
+        );
     }
 
-    log::info!("✅ Successfully inserted {} parsed raw packets", raw_packets.len());
+    log::info!(
+        "✅ Successfully inserted {} parsed raw packets",
+        raw_packets.len()
+    );
     Ok(())
 }
 
@@ -418,7 +421,7 @@ pub fn store_packet_statistics(
         "INSERT INTO raw_packet_statistics
          (scan_session_id, total_packets, unique_macs, connectable_count,
           non_connectable_count, with_tx_power, with_company_data, min_rssi, max_rssi, avg_rssi)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )?;
 
     stmt.execute(params![
@@ -449,7 +452,7 @@ pub fn get_raw_packets_by_mac(
          FROM ble_advertisement_frames
          WHERE mac_address = ?
          ORDER BY timestamp DESC
-         LIMIT ?"
+         LIMIT ?",
     )?;
 
     let packets = stmt.query_map(params![mac_address, limit as i32], |row| {
@@ -470,12 +473,10 @@ pub fn get_raw_packets_by_mac(
 }
 
 /// Get packet statistics summary
-pub fn get_packet_statistics_summary(
-    conn: &Connection,
-) -> SqliteResult<Option<(i32, i32, f64)>> {
+pub fn get_packet_statistics_summary(conn: &Connection) -> SqliteResult<Option<(i32, i32, f64)>> {
     let mut stmt = conn.prepare(
         "SELECT SUM(total_packets), COUNT(DISTINCT scan_session_id), AVG(avg_rssi)
-         FROM raw_packet_statistics"
+         FROM raw_packet_statistics",
     )?;
 
     let result = stmt.query_row([], |row| {

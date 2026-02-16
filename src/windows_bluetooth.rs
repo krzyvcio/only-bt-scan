@@ -25,9 +25,7 @@ pub mod windows_bt {
         }
 
         /// Enumerate all Bluetooth devices on Windows
-        pub async fn enumerate_devices(
-            &mut self,
-        ) -> Result<Vec<BluetoothDevice>, String> {
+        pub async fn enumerate_devices(&mut self) -> Result<Vec<BluetoothDevice>, String> {
             info!("🪟 Windows Bluetooth: Enumerating devices via native API");
 
             let mut result_devices = Vec::new();
@@ -63,7 +61,8 @@ pub mod windows_bt {
                                     let now = std::time::SystemTime::now()
                                         .duration_since(std::time::SystemTime::UNIX_EPOCH)
                                         .unwrap_or_default()
-                                        .as_nanos() as i64;
+                                        .as_nanos()
+                                        as i64;
 
                                     debug!("Found paired device: {} ({})", mac, device_name);
 
@@ -99,26 +98,23 @@ pub mod windows_bt {
             if result_devices.is_empty() {
                 debug!("No paired devices found via Windows Bluetooth API");
             } else {
-                info!("✓ Windows API found {} paired devices", result_devices.len());
+                info!(
+                    "✓ Windows API found {} paired devices",
+                    result_devices.len()
+                );
             }
 
             Ok(result_devices)
         }
 
         /// Get RSSI for a specific device
-        pub async fn get_device_rssi(
-            &self,
-            mac_address: &str,
-        ) -> Result<i8, String> {
+        pub async fn get_device_rssi(&self, mac_address: &str) -> Result<i8, String> {
             debug!("Querying RSSI for {} via Windows API", mac_address);
             Err("Direct RSSI query not yet implemented".to_string())
         }
 
         /// Check if device is paired
-        pub async fn is_device_paired(
-            &self,
-            mac_address: &str,
-        ) -> Result<bool, String> {
+        pub async fn is_device_paired(&self, mac_address: &str) -> Result<bool, String> {
             debug!("Checking pairing status for {}", mac_address);
             Ok(false)
         }
@@ -134,19 +130,13 @@ pub mod windows_bt {
         }
 
         /// Connect to device
-        pub async fn connect_device(
-            &self,
-            mac_address: &str,
-        ) -> Result<(), String> {
+        pub async fn connect_device(&self, mac_address: &str) -> Result<(), String> {
             info!("🔗 Connecting to {} via Windows Bluetooth", mac_address);
             Ok(())
         }
 
         /// Disconnect device
-        pub async fn disconnect_device(
-            &self,
-            mac_address: &str,
-        ) -> Result<(), String> {
+        pub async fn disconnect_device(&self, mac_address: &str) -> Result<(), String> {
             info!(
                 "🔌 Disconnecting from {} via Windows Bluetooth",
                 mac_address
@@ -155,10 +145,7 @@ pub mod windows_bt {
         }
 
         /// Get device information
-        pub async fn get_device_info(
-            &self,
-            mac_address: &str,
-        ) -> Result<BluetoothDevice, String> {
+        pub async fn get_device_info(&self, mac_address: &str) -> Result<BluetoothDevice, String> {
             debug!("Getting device info for {}", mac_address);
             Err("Device info lookup not yet implemented".to_string())
         }

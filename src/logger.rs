@@ -22,7 +22,7 @@ pub fn init_logger(log_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut guard = LOG_FILE.lock().unwrap();
     *guard = Some(writer);
 
-    log::info!("Logger initialized - logging to file: {}", log_path);
+    // Don't call log::info! here - would create infinite loop
     Ok(())
 }
 
@@ -40,13 +40,13 @@ pub fn log_to_file(level: &str, message: &str) {
 pub fn log_error(message: &str) {
     let colored = format!("{}", message.red());
     log_to_file("ERROR", &colored);
-    log::error!("{}", message);
+    // Don't call log::error! - only write to file
 }
 
 pub fn log_warn(message: &str) {
     let colored = format!("{}", message.yellow());
     log_to_file("WARN", &colored);
-    log::warn!("{}", message);
+    // Don't call log::warn! - only write to file
 }
 
 pub fn log_warn_with_context(context: &str, message: &str) {
@@ -57,13 +57,13 @@ pub fn log_warn_with_context(context: &str, message: &str) {
 pub fn log_info(message: &str) {
     let colored = format!("{}", message.green());
     log_to_file("INFO", &colored);
-    log::info!("{}", message);
+    // Don't call log::info! - only write to file
 }
 
 pub fn log_debug(message: &str) {
     let colored = format!("{}", message.cyan());
     log_to_file("DEBUG", &colored);
-    log::debug!("{}", message);
+    // Don't call log::debug! - only write to file
 }
 
 pub fn log_panic(message: &str) {
@@ -105,14 +105,13 @@ pub fn get_log_path() -> String {
 pub fn log_critical(message: &str) {
     let colored = format!("{}", message.red().bold());
     log_to_file("CRITICAL", &colored);
-    log::error!("{}", colored);
     eprintln!("{}", colored);
 }
 
 pub fn log_success(message: &str) {
     let colored = format!("{}", message.green().bold());
     log_to_file("SUCCESS", &colored);
-    log::info!("{}", message);
+    // Don't call log::info! - only write to file
 }
 
 pub fn log_operation_start(operation: &str) {
@@ -133,7 +132,10 @@ pub fn log_operation_end(operation: &str, success: bool) {
 pub fn log_database_operation(operation: &str, table: &str, result: Result<usize, String>) {
     match result {
         Ok(count) => {
-            let msg = format!("Database {}: {} rows affected in table '{}'", operation, count, table);
+            let msg = format!(
+                "Database {}: {} rows affected in table '{}'",
+                operation, count, table
+            );
             log_info(&msg);
         }
         Err(e) => {
@@ -144,13 +146,18 @@ pub fn log_database_operation(operation: &str, table: &str, result: Result<usize
 }
 
 pub fn log_scan_metrics(devices_found: usize, packets_captured: usize, scan_duration_ms: u64) {
-    let msg = format!("Scan metrics: {} devices, {} packets, {}ms duration",
-                     devices_found, packets_captured, scan_duration_ms);
+    let msg = format!(
+        "Scan metrics: {} devices, {} packets, {}ms duration",
+        devices_found, packets_captured, scan_duration_ms
+    );
     log_info(&msg);
 }
 
 pub fn log_bluetooth_event(event_type: &str, device_mac: &str, details: &str) {
-    let msg = format!("BT Event [{}] Device {}: {}", event_type, device_mac, details);
+    let msg = format!(
+        "BT Event [{}] Device {}: {}",
+        event_type, device_mac, details
+    );
     log_info(&msg);
 }
 

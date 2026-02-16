@@ -1,10 +1,9 @@
+use crate::db;
+use chrono::Local;
 /// HTML Report Generator for Bluetooth Scanner
 /// Creates comprehensive HTML reports with all detected devices and RAW packets
-
-use std::fs::{File, read_to_string};
+use std::fs::{read_to_string, File};
 use std::io::Write;
-use chrono::Local;
-use crate::db;
 
 /// Format milliseconds to HH:MM:SS format
 fn format_duration_human(ms: u64) -> String {
@@ -13,7 +12,7 @@ fn format_duration_human(ms: u64) -> String {
     let minutes = (total_secs % 3600) / 60;
     let seconds = total_secs % 60;
     let millis = ms % 1000;
-    
+
     if hours > 0 {
         format!("{:02}:{:02}:{:02}.{:03}h", hours, minutes, seconds, millis)
     } else if minutes > 0 {
@@ -24,28 +23,40 @@ fn format_duration_human(ms: u64) -> String {
 }
 
 /// Generate HTML report with all scanned devices and RAW packet logs
-pub fn generate_html_report(raw_packet_filename: &str, scan_duration_ms: u64) -> Result<(), Box<dyn std::error::Error>> {
+pub fn generate_html_report(
+    raw_packet_filename: &str,
+    scan_duration_ms: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
     let timestamp = Local::now().format("%Y-%m-%d_%H-%M-%S");
     let report_filename = format!("{}_raport.html", timestamp);
-    
+
     println!("📊 Generating HTML report: {}", report_filename);
-    
+
     // Load all devices from database
     let devices = db::get_all_devices()?;
     let device_count = devices.len();
-    
+
     // Load RAW packet logs
     let raw_packets_content = read_to_string(raw_packet_filename)
         .unwrap_or_else(|_| String::from("No RAW packet data available"));
-    
+
     // Generate HTML
-    let html = generate_html_content(&devices, &raw_packets_content, device_count, scan_duration_ms);
-    
+    let html = generate_html_content(
+        &devices,
+        &raw_packets_content,
+        device_count,
+        scan_duration_ms,
+    );
+
     // Write to file
     let mut file = File::create(&report_filename)?;
     file.write_all(html.as_bytes())?;
-    
-    println!("✅ HTML report created: {} (Scan duration: {})", report_filename, format_duration_human(scan_duration_ms));
+
+    println!(
+        "✅ HTML report created: {} (Scan duration: {})",
+        report_filename,
+        format_duration_human(scan_duration_ms)
+    );
     Ok(())
 }
 
@@ -57,23 +68,26 @@ fn generate_html_content(
 ) -> String {
     let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
     let scan_time_formatted = format_duration_human(scan_duration_ms);
-    
+
     // Generate device cards
-    let device_cards: String = devices.iter().map(|device| {
-        let rssi_class = if device.rssi >= -50 {
-            "rssi-excellent"
-        } else if device.rssi >= -70 {
-            "rssi-good"
-        } else if device.rssi >= -85 {
-            "rssi-fair"
-        } else {
-            "rssi-poor"
-        };
-        
-        let manufacturer = device.manufacturer_name.as_deref().unwrap_or("Unknown");
-        let device_name = device.name.as_deref().unwrap_or("Unnamed Device");
-        
-        format!(r#"
+    let device_cards: String = devices
+        .iter()
+        .map(|device| {
+            let rssi_class = if device.rssi >= -50 {
+                "rssi-excellent"
+            } else if device.rssi >= -70 {
+                "rssi-good"
+            } else if device.rssi >= -85 {
+                "rssi-fair"
+            } else {
+                "rssi-poor"
+            };
+
+            let manufacturer = device.manufacturer_name.as_deref().unwrap_or("Unknown");
+            let device_name = device.name.as_deref().unwrap_or("Unnamed Device");
+
+            format!(
+                r#"
         <div class="device-card">
             <div class="device-header">
                 <h3>📱 {}</h3>
@@ -98,21 +112,23 @@ fn generate_html_content(
                 </div>
             </div>
         </div>
-        "#, 
-        device_name,
-        rssi_class,
-        device.rssi,
-        device.mac_address,
-        manufacturer,
-        device.first_seen.format("%Y-%m-%d %H:%M:%S"),
-        device.last_seen.format("%Y-%m-%d %H:%M:%S")
-        )
-    }).collect();
-    
+        "#,
+                device_name,
+                rssi_class,
+                device.rssi,
+                device.mac_address,
+                manufacturer,
+                device.first_seen.format("%Y-%m-%d %H:%M:%S"),
+                device.last_seen.format("%Y-%m-%d %H:%M:%S")
+            )
+        })
+        .collect();
+
     // Escape HTML in RAW packets for safe display
     let raw_packets_escaped = html_escape(raw_packets);
-    
-    format!(r#"<!DOCTYPE html>
+
+    format!(
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">

@@ -66,7 +66,10 @@ fn main() {
 AA:BB:CC:DD:EE:FF "TestDevice" -75dB tx=5 Connectable Paired company-id=0x004C manuf-data=020106 (Apple)
 11:22:33:44:55:66 "GoogleDevice" -90dB tx=n/a Non-Connectable Non-Paired company-id=0x0059 manuf-data=020106030334A2A4 (Google)"#;
 
-    println!("\n📊 Batch Input ({} packets):", raw_packet_data.lines().count());
+    println!(
+        "\n📊 Batch Input ({} packets):",
+        raw_packet_data.lines().count()
+    );
     for (idx, line) in raw_packet_data.lines().enumerate() {
         println!("   [{}] {}", idx + 1, line);
     }
@@ -78,7 +81,11 @@ AA:BB:CC:DD:EE:FF "TestDevice" -75dB tx=5 Connectable Paired company-id=0x004C m
     // let stats = processor.get_statistics();
 
     let num_packets = raw_packet_data.lines().count();
-    let unique_macs = vec!["14:0E:90:A4:B3:90", "AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"];
+    let unique_macs = vec![
+        "14:0E:90:A4:B3:90",
+        "AA:BB:CC:DD:EE:FF",
+        "11:22:33:44:55:66",
+    ];
 
     println!("\n✅ Batch Processing Complete!");
     println!("   Total Packets: {}", num_packets);
@@ -148,13 +155,19 @@ AA:BB:CC:DD:EE:FF "TestDevice" -75dB tx=5 Connectable Paired company-id=0x004C m
     ];
 
     println!("\n📱 Device Summary:");
-    println!("{:<20} {:<15} {:<12} {:<10}", "MAC Address", "Company", "Connectable", "Paired");
+    println!(
+        "{:<20} {:<15} {:<12} {:<10}",
+        "MAC Address", "Company", "Connectable", "Paired"
+    );
     println!("{:-<20} {:-<15} {:-<12} {:-<10}", "", "", "", "");
 
     for (mac, company, connectable, paired) in devices {
         let conn_str = if connectable { "Yes" } else { "No" };
         let pair_str = if paired { "Yes" } else { "No" };
-        println!("{:<20} {:<15} {:<12} {:<10}", mac, company, conn_str, pair_str);
+        println!(
+            "{:<20} {:<15} {:<12} {:<10}",
+            mac, company, conn_str, pair_str
+        );
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════

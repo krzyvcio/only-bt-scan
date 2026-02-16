@@ -1,5 +1,5 @@
 /// Configuration Parameters - Hardcoded values for signal analysis
-/// 
+///
 /// These parameters control RSSI filtering, temporal analysis, and packet deduplication
 
 /// ═══════════════════════════════════════════════════════════════════════════════
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_rssi_threshold() {
-        assert!(should_accept_rssi(-70));  // Good signal
+        assert!(should_accept_rssi(-70)); // Good signal
         assert!(!should_accept_rssi(-80)); // Below threshold
     }
 
@@ -116,7 +116,7 @@ mod tests {
         let excellent = rssi_to_signal_quality(-30);
         let good = rssi_to_signal_quality(-60);
         let weak = rssi_to_signal_quality(-85);
-        
+
         assert!(excellent > good);
         assert!(good > weak);
     }
@@ -125,7 +125,7 @@ mod tests {
     fn test_duplicate_detection() {
         let t1 = 1000000;
         let t2 = 1000050; // 50ms later
-        
+
         assert!(is_duplicate_packet(t1, t2)); // Within 100ms window
         assert!(!is_duplicate_packet(t1, t1 + 200)); // Outside 100ms window
     }
