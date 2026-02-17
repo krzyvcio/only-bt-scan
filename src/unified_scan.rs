@@ -11,7 +11,7 @@ use crate::data_models::RawPacketModel;
 use crate::device_events::{BluetoothDeviceEvent, DeviceEventListener};
 use crate::native_scanner::NativeBluetoothScanner;
 use crate::scanner_integration::ScannerWithTracking;
-use log::{debug, info};
+use log::info;
 use std::sync::Arc;
 /// Main scanning engine combining all subsystems
 pub struct UnifiedScanEngine {

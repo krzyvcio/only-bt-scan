@@ -256,7 +256,7 @@ pub mod windows_bt {
 
 #[cfg(not(target_os = "windows"))]
 pub mod windows_bt {
-    use crate::bluetooth_scanner::{BluetoothDevice, ServiceInfo};
+    use crate::bluetooth_scanner::BluetoothDevice;
 
     pub struct WindowsBluetoothManager;
 

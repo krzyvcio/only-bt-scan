@@ -83,6 +83,12 @@ CLEANUP_DAYS=30
 cargo build
 ```
 
+### Co przyspiesza kompilacje
+- Profil dev ma wlaczone incremental i obnizony debug: patrz [Cargo.toml](Cargo.toml).
+- Ustawiono opt-level=1 dla szybszych, sensownych binarek dev.
+- Release ma lto=thin i codegen-units=16, co przyspiesza linkowanie.
+- Do szybkiego sprawdzenia bez budowania binarki: `cargo check`.
+
 ### Release Build (optimized)
 ```bash
 cargo build --release

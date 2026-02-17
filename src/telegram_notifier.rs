@@ -450,7 +450,7 @@ fn get_raw_packets_for_device(
     mac_address: &str,
     minutes: i64,
 ) -> Result<Vec<RawPacketInfo>, Box<dyn std::error::Error>> {
-    let time_filter = format!("-{} minutes", minutes);
+    let _time_filter = format!("-{} minutes", minutes);
 
     let query = format!(
         "SELECT timestamp, rssi, advertising_data, phy, channel, frame_type
@@ -500,7 +500,7 @@ fn get_devices_from_last_minutes(
     conn: &rusqlite::Connection,
     minutes: i64,
 ) -> Result<Vec<DeviceReport>, Box<dyn std::error::Error>> {
-    let time_filter = format!("-{} minutes", minutes);
+    let _time_filter = format!("-{} minutes", minutes);
 
     let query = format!(
         "SELECT 
@@ -593,16 +593,19 @@ fn update_last_report_time(conn: &rusqlite::Connection) -> Result<(), rusqlite::
 
 pub async fn run_periodic_report_task() -> Result<(), String> {
     eprintln!("[TELEGRAM] run_periodic_report_task started");
-    
+
     if !is_enabled() {
         eprintln!("[TELEGRAM] Not enabled, exiting");
         return Ok(());
     }
 
     eprintln!("[TELEGRAM] Enabled, entering loop");
-    
+
     loop {
-        eprintln!("[TELEGRAM] Loop iteration, sleeping for {} seconds", PERIODIC_REPORT_INTERVAL_SECS);
+        eprintln!(
+            "[TELEGRAM] Loop iteration, sleeping for {} seconds",
+            PERIODIC_REPORT_INTERVAL_SECS
+        );
         tokio::time::sleep(tokio::time::Duration::from_secs(
             PERIODIC_REPORT_INTERVAL_SECS,
         ))
@@ -1029,7 +1032,7 @@ fn generate_enhanced_html_report(
     if packets.is_empty() {
         html.push_str("<p class=\"empty\">No packets captured in this period</p>");
     } else {
-        for (mac, timestamp, rssi, ad_data, phy, channel, frame_type, name, first_seen) in
+        for (mac, timestamp, rssi, ad_data, phy, channel, frame_type, name, _first_seen) in
             packets.iter().take(50)
         {
             let rssi_class = if *rssi >= -50 {
