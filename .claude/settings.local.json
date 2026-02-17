@@ -8,7 +8,8 @@
       "WebFetch(domain:www.bluetooth.com)",
       "WebFetch(domain:en.wikipedia.org)",
       "WebFetch(domain:www.cnx-software.com)",
-      "Bash(cargo run:*)"
+      "Bash(cargo run:*)",
+      "Bash(cargo build:*)"
     ]
   }
 }
