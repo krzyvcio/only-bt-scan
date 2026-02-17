@@ -10,19 +10,37 @@ use crate::data_models::RawPacketModel;
 use std::collections::HashMap;
 
 /// Tracks packet order and deduplication for a single device
+///
+/// Maintains packet sequence, RSSI tracking, and latency calculations
+/// for packets from a specific MAC address.
 #[derive(Debug, Clone)]
 pub struct DevicePacketTracker {
+    /// MAC address of the tracked device
     pub mac_address: String,
-    pub packet_sequence: Vec<u64>,         // Ordered packet IDs
-    pub last_packet_time_ms: u64,          // Last seen timestamp (ms)
-    pub packet_rssi_map: HashMap<u64, i8>, // packet_id -> RSSI
+    /// Ordered sequence of accepted packet IDs
+    pub packet_sequence: Vec<u64>,
+    /// Timestamp of the last accepted packet (in milliseconds)
+    pub last_packet_time_ms: u64,
+    /// Map of packet_id to RSSI value
+    pub packet_rssi_map: HashMap<u64, i8>,
+    /// Total packets received (including filtered)
     pub total_packets: u64,
+    /// Total packets filtered by RSSI threshold
     pub total_filtered: u64,
+    /// Total duplicate packets rejected
     pub total_duplicates: u64,
-    pub packet_latencies_ms: HashMap<u64, u64>, // packet_id -> latency from previous packet
+    /// Map of packet_id to latency from previous packet (in ms)
+    pub packet_latencies_ms: HashMap<u64, u64>,
 }
 
 impl DevicePacketTracker {
+    /// Creates a new tracker for a device with the given MAC address.
+    ///
+    /// # Arguments
+    /// * `mac_address` - The MAC address of the device to track
+    ///
+    /// # Returns
+    /// A new `DevicePacketTracker` instance
     pub fn new(mac_address: String) -> Self {
         Self {
             mac_address,
@@ -37,7 +55,16 @@ impl DevicePacketTracker {
     }
 
     /// Add packet if it passes filters and deduplication
-    /// Returns (accepted, latency_ms) - latency is None for first packet
+    ///
+    /// Applies RSSI threshold filtering and deduplication logic.
+    /// Returns whether the packet was accepted along with its latency.
+    ///
+    /// # Arguments
+    /// * `packet` - Reference to the raw packet to process
+    ///
+    /// # Returns
+    /// A tuple of `(accepted: bool, latency_ms: Option<u64>)` where latency
+    /// is `None` for the first packet from this device
     pub fn add_packet(&mut self, packet: &RawPacketModel) -> (bool, Option<u64>) {
         self.total_packets += 1;
 
@@ -72,11 +99,20 @@ impl DevicePacketTracker {
     }
 
     /// Get latency for a specific packet
+    ///
+    /// # Arguments
+    /// * `packet_id` - The ID of the packet to look up
+    ///
+    /// # Returns
+    /// `Some(latency_ms)` if the packet exists, `None` otherwise
     pub fn get_packet_latency(&self, packet_id: u64) -> Option<u64> {
         self.packet_latencies_ms.get(&packet_id).copied()
     }
 
     /// Get all latencies for this device
+    ///
+    /// # Returns
+    /// A vector of all latency values in milliseconds
     pub fn get_all_latencies(&self) -> Vec<u64> {
         self.packet_latencies_ms.values().copied().collect()
     }
@@ -101,11 +137,17 @@ impl DevicePacketTracker {
     }
 
     /// Get packet sequence as ordered vector of packet IDs
+    ///
+    /// # Returns
+    /// A slice containing the ordered packet IDs
     pub fn get_sequence(&self) -> &[u64] {
         &self.packet_sequence
     }
 
-    /// Get statistics
+    /// Get statistics for this device's packet tracking
+    ///
+    /// # Returns
+    /// A `PacketStats` struct containing tracking statistics
     pub fn get_stats(&self) -> PacketStats {
         PacketStats {
             total_received: self.total_packets,
@@ -122,14 +164,24 @@ impl DevicePacketTracker {
 }
 
 /// Global packet ordering tracker (across all devices)
+///
+/// Maintains tracking state for all devices and provides global
+/// packet ordering by timestamp.
 #[derive(Debug)]
 pub struct GlobalPacketTracker {
+    /// Map of MAC addresses to their individual device trackers
     pub device_trackers: HashMap<String, DevicePacketTracker>,
-    pub global_sequence: Vec<(String, u64, u64)>, // (mac_address, packet_id, timestamp_ms)
+    /// Global sequence of all accepted packets as (mac, packet_id, timestamp_ms)
+    pub global_sequence: Vec<(String, u64, u64)>,
+    /// Total count of accepted packets
     pub packet_count: u64,
 }
 
 impl GlobalPacketTracker {
+    /// Creates a new global packet tracker with empty state.
+    ///
+    /// # Returns
+    /// A new `GlobalPacketTracker` instance
     pub fn new() -> Self {
         Self {
             device_trackers: HashMap::new(),
@@ -139,6 +191,15 @@ impl GlobalPacketTracker {
     }
 
     /// Add packet globally
+    ///
+    /// Processes a packet through the appropriate device tracker and
+    /// adds it to the global sequence if accepted.
+    ///
+    /// # Arguments
+    /// * `packet` - The raw packet to process (consumed)
+    ///
+    /// # Returns
+    /// A `PacketAddResult` indicating whether the packet was accepted or rejected
     pub fn add_packet(&mut self, mut packet: RawPacketModel) -> PacketAddResult {
         let mac_address = packet.mac_address.clone();
         let packet_id = packet.packet_id;
@@ -177,6 +238,11 @@ impl GlobalPacketTracker {
     }
 
     /// Get all packets in global order (by timestamp)
+    ///
+    /// Returns a sorted copy of the global packet sequence.
+    ///
+    /// # Returns
+    /// A vector of tuples (mac_address, packet_id, timestamp_ms) sorted by timestamp
     pub fn get_global_sequence(&self) -> Vec<(String, u64, u64)> {
         let mut sorted = self.global_sequence.clone();
         sorted.sort_by_key(|&(_, _, ts)| ts);
@@ -184,6 +250,12 @@ impl GlobalPacketTracker {
     }
 
     /// Get device-specific packet sequence
+    ///
+    /// # Arguments
+    /// * `mac_address` - The MAC address to look up
+    ///
+    /// # Returns
+    /// `Some(Vec<u64>)` if device exists, `None` otherwise
     pub fn get_device_sequence(&self, mac_address: &str) -> Option<Vec<u64>> {
         self.device_trackers
             .get(mac_address)
@@ -191,6 +263,11 @@ impl GlobalPacketTracker {
     }
 
     /// Get overall statistics
+    ///
+    /// Aggregates statistics from all device trackers.
+    ///
+    /// # Returns
+    /// A `GlobalPacketStats` struct with aggregated data
     pub fn get_global_stats(&self) -> GlobalPacketStats {
         let total_received: u64 = self.device_trackers.values().map(|t| t.total_packets).sum();
         let total_filtered: u64 = self
@@ -220,38 +297,63 @@ impl GlobalPacketTracker {
 }
 
 /// Result of adding a packet
+///
+/// Indicates whether a packet was accepted or rejected, with relevant details.
 #[derive(Debug, Clone)]
 pub enum PacketAddResult {
+    /// Packet was accepted for tracking
     Accepted {
+        /// Unique packet identifier
         packet_id: u64,
+        /// MAC address of the device
         device_mac: String,
+        /// Position in the device's packet sequence
         sequence_position: usize,
     },
+    /// Packet was rejected by filters
     Rejected {
+        /// Unique packet identifier
         packet_id: u64,
+        /// MAC address of the device
         device_mac: String,
+        /// Human-readable reason for rejection
         reason: String,
     },
 }
 
 /// Statistics for a device
+///
+/// Contains packet tracking statistics for a single device.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PacketStats {
+    /// Total packets received (including filtered)
     pub total_received: u64,
+    /// Total packets accepted after filtering
     pub total_accepted: u64,
+    /// Total packets filtered by RSSI threshold
     pub total_filtered: u64,
+    /// Total duplicate packets rejected
     pub total_duplicates: u64,
+    /// Acceptance rate as percentage
     pub acceptance_rate: f64,
 }
 
 /// Global statistics
+///
+/// Contains aggregated packet tracking statistics across all devices.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GlobalPacketStats {
+    /// Number of unique devices tracked
     pub unique_devices: usize,
+    /// Total packets received across all devices
     pub total_packets_received: u64,
+    /// Total packets accepted across all devices
     pub total_packets_accepted: u64,
+    /// Total packets filtered by RSSI
     pub total_filtered: u64,
+    /// Total duplicate packets rejected
     pub total_duplicates: u64,
+    /// Overall acceptance rate as percentage
     pub acceptance_rate: f64,
 }
 

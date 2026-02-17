@@ -13,27 +13,49 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Parsed raw packet from text format
+///
+/// Contains all extracted fields from a raw packet line including MAC address,
+/// RSSI, device name, company information, and manufacturer data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawPacketData {
+    /// MAC address in uppercase colon-separated format (e.g., "AA:BB:CC:DD:EE:FF")
     pub mac_address: String,
+    /// Device name advertised in the packet (if present)
     pub device_name: Option<String>,
+    /// Received Signal Strength Indicator in dBm (negative value)
     pub rssi: i8,
+    /// Transmit power level in dBm (if advertised)
     pub tx_power: Option<i8>,
+    /// Whether the device accepts connections
     pub connectable: bool,
+    /// Whether the device is paired
     pub paired: bool,
+    /// Company identifier assigned by Bluetooth SIG (if present)
     pub company_id: Option<u16>,
+    /// Human-readable company name (if available)
     pub company_name: Option<String>,
+    /// Raw manufacturer-specific data as byte vector
     pub manufacturer_data: Vec<u8>,
+    /// Hexadecimal string representation of manufacturer data
     pub manufacturer_data_hex: String,
 }
 
 /// Parser for raw packet text format
+///
+/// Uses regex patterns to extract fields from log-formatted packet data.
+/// Each instance contains compiled regex patterns for performance.
 pub struct RawPacketParser {
+    /// Regex pattern for MAC address (XX:XX:XX:XX:XX:XX)
     mac_regex: Regex,
+    /// Regex pattern for RSSI value (-XXdB)
     rssi_regex: Regex,
+    /// Regex pattern for TX power (tx=XXdBm or tx=n/a)
     tx_regex: Regex,
+    /// Regex pattern for company ID (company-id=0xXXXX)
     company_id_regex: Regex,
+    /// Regex pattern for manufacturer data (manuf-data=HEXSTRING)
     manuf_data_regex: Regex,
+    /// Regex pattern for company name in parentheses
     company_name_regex: Regex,
 }
 
@@ -44,6 +66,10 @@ impl Default for RawPacketParser {
 }
 
 impl RawPacketParser {
+    /// Creates a new RawPacketParser with compiled regex patterns.
+    ///
+    /// # Returns
+    /// A new parser instance ready to process packet lines.
     pub fn new() -> Self {
         Self {
             // MAC address pattern: XX:XX:XX:XX:XX:XX
@@ -67,6 +93,14 @@ impl RawPacketParser {
     }
 
     /// Parse single raw packet line
+    ///
+    /// Extracts all fields from a single line of packet log data.
+    ///
+    /// # Arguments
+    /// * `line` - A string slice containing the raw packet text
+    ///
+    /// # Returns
+    /// `Some(RawPacketData)` if parsing succeeds, `None` if the line format is invalid
     pub fn parse_packet(&self, line: &str) -> Option<RawPacketData> {
         // Extract MAC address
         let mac_address = self
@@ -161,6 +195,14 @@ impl RawPacketParser {
     }
 
     /// Parse multiple packet lines
+    ///
+    /// Parses all lines from the input string, filtering out empty lines.
+    ///
+    /// # Arguments
+    /// * `input` - A string slice containing multiple packet lines separated by newlines
+    ///
+    /// # Returns
+    /// A vector of successfully parsed `RawPacketData` structs
     pub fn parse_packets(&self, input: &str) -> Vec<RawPacketData> {
         input
             .lines()
@@ -175,6 +217,16 @@ impl RawPacketParser {
     }
 
     /// Convert parsed packet to RawPacketModel for database storage
+    ///
+    /// Transforms a RawPacketData into a RawPacketModel suitable for database insertion.
+    /// This includes creating AD structures and generating timestamps.
+    ///
+    /// # Arguments
+    /// * `packet` - A reference to the parsed `RawPacketData`
+    /// * `packet_id` - Unique identifier for this packet
+    ///
+    /// # Returns
+    /// A `RawPacketModel` ready for database storage
     pub fn to_raw_packet_model(&self, packet: &RawPacketData, packet_id: u64) -> RawPacketModel {
         let timestamp = Utc::now();
         let timestamp_ms = (chrono::Local::now().timestamp_millis()) as u64;
@@ -266,9 +318,15 @@ impl RawPacketParser {
 }
 
 /// Batch processor for raw packets
+///
+/// Provides utilities for processing multiple raw packets including
+/// deduplication, statistics generation, and conversion to database models.
 pub struct RawPacketBatchProcessor {
+    /// Internal parser instance
     parser: RawPacketParser,
+    /// Collected parsed packets
     packets: Vec<RawPacketData>,
+    /// Processed packet models ready for database
     packet_models: Vec<RawPacketModel>,
 }
 
@@ -279,6 +337,10 @@ impl Default for RawPacketBatchProcessor {
 }
 
 impl RawPacketBatchProcessor {
+    /// Creates a new empty batch processor.
+    ///
+    /// # Returns
+    /// A new `RawPacketBatchProcessor` instance
     pub fn new() -> Self {
         Self {
             parser: RawPacketParser::new(),
@@ -288,17 +350,33 @@ impl RawPacketBatchProcessor {
     }
 
     /// Add raw packet text for processing
+    ///
+    /// Parses the text and adds all valid packets to the batch.
+    ///
+    /// # Arguments
+    /// * `text` - Raw packet text containing one or more packet lines
     pub fn add_raw_text(&mut self, text: &str) {
         let parsed = self.parser.parse_packets(text);
         self.packets.extend(parsed);
     }
 
     /// Add a single pre-parsed packet
+    ///
+    /// Adds an already-parsed RawPacketData to the batch queue.
+    ///
+    /// # Arguments
+    /// * `packet` - The parsed packet data to add
     pub fn add_packet(&mut self, packet: RawPacketData) {
         self.packets.push(packet);
     }
 
     /// Process all packets and convert to models
+    ///
+    /// Converts all queued packets into RawPacketModel instances suitable
+    /// for database storage. Clears any previously processed models.
+    ///
+    /// # Returns
+    /// A vector of processed `RawPacketModel` structs
     pub fn process_all(&mut self) -> Vec<RawPacketModel> {
         self.packet_models.clear();
 
@@ -311,6 +389,12 @@ impl RawPacketBatchProcessor {
     }
 
     /// Get deduplicated packets by MAC address (keeps most recent)
+    ///
+    /// Removes duplicate packets based on MAC address, keeping only the most recent
+    /// occurrence of each unique device.
+    ///
+    /// # Returns
+    /// A vector of unique `RawPacketModel` structs (one per MAC address)
     pub fn deduplicate_by_mac(&self) -> Vec<RawPacketModel> {
         let mut dedup: HashMap<String, RawPacketModel> = HashMap::new();
 
@@ -322,6 +406,12 @@ impl RawPacketBatchProcessor {
     }
 
     /// Get statistics about parsed packets
+    ///
+    /// Calculates aggregate statistics including counts, RSSI values,
+    /// and connectability information.
+    ///
+    /// # Returns
+    /// A `RawPacketStatistics` struct containing aggregated data
     pub fn get_statistics(&self) -> RawPacketStatistics {
         let total_packets = self.packets.len();
         let unique_macs = self
@@ -364,33 +454,52 @@ impl RawPacketBatchProcessor {
     }
 
     /// Clear all data
+    ///
+    /// Removes all packets and processed models from the batch processor.
     pub fn clear(&mut self) {
         self.packets.clear();
         self.packet_models.clear();
     }
 
     /// Get a slice of the raw packet data
+    ///
+    /// # Returns
+    /// A slice of all collected `RawPacketData` structs
     pub fn packets(&self) -> &[RawPacketData] {
         &self.packets
     }
 
     /// Get a slice of the processed packet models
+    ///
+    /// # Returns
+    /// A slice of all processed `RawPacketModel` structs
     pub fn packet_models(&self) -> &[RawPacketModel] {
         &self.packet_models
     }
 }
 
 /// Statistics about parsed packets
+///
+/// Contains aggregate statistics calculated from a batch of parsed packets.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawPacketStatistics {
+    /// Total number of packets parsed
     pub total_packets: usize,
+    /// Number of unique MAC addresses
     pub unique_macs: usize,
+    /// Count of connectable devices
     pub connectable_count: usize,
+    /// Count of non-connectable devices
     pub non_connectable_count: usize,
+    /// Count of packets with TX power information
     pub with_tx_power: usize,
+    /// Count of packets with company data
     pub with_company_data: usize,
+    /// Minimum RSSI value observed
     pub min_rssi: i8,
+    /// Maximum RSSI value observed
     pub max_rssi: i8,
+    /// Average RSSI value
     pub avg_rssi: f64,
 }
 

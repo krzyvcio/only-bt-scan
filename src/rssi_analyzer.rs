@@ -11,6 +11,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 /// Configuration parameters for RSSI analysis
+///
+/// Tuning parameters for the RSSI trend detection algorithm:
+/// - Window size: Number of samples to keep for analysis
+/// - EMA alpha: Smoothing factor (higher = more responsive to changes)
+/// - Slope epsilon: Threshold for trend detection
+/// - Variance epsilon: Threshold for motion detection
+/// - Min samples: Minimum samples before making predictions
 #[derive(Clone, Copy, Debug)]
 pub struct AnalysisConfig {
     /// Window size for trend analysis (number of samples)
@@ -38,6 +45,8 @@ impl Default for AnalysisConfig {
 }
 
 /// Single RSSI measurement
+///
+/// Represents a single point in the RSSI time series.
 #[derive(Clone, Copy, Debug)]
 pub struct Sample {
     /// Timestamp in seconds (from start or Unix epoch)
@@ -47,6 +56,12 @@ pub struct Sample {
 }
 
 /// Trend classification
+///
+/// Direction of device movement relative to scanner:
+/// - `Approaching`: RSSI increasing (device getting closer)
+/// - `Leaving`: RSSI decreasing (device moving away)
+/// - `Stable`: RSSI relatively constant
+/// - `Unknown`: Not enough data to determine
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Trend {
@@ -72,6 +87,11 @@ impl std::fmt::Display for Trend {
 }
 
 /// Motion classification
+///
+/// Whether device is stationary or in motion:
+/// - `Still`: Low variance in RSSI (device stationary)
+/// - `Moving`: High variance or trend changes (device moving)
+/// - `Unknown`: Not enough data to determine
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Motion {
@@ -94,6 +114,14 @@ impl std::fmt::Display for Motion {
 }
 
 /// Complete state of a device at a point in time
+///
+/// Computed analysis results from RSSI time series:
+/// - `trend`: Movement direction (approaching/leaving/stable)
+/// - `motion`: Whether device is still or moving
+/// - `slope`: Rate of RSSI change in dB/sec
+/// - `variance`: Signal stability in dB²
+/// - `rssi`: Current smoothed RSSI in dBm
+/// - `sample_count`: Number of samples used for analysis
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct DeviceState {
     pub trend: Trend,
@@ -105,6 +133,16 @@ pub struct DeviceState {
 }
 
 /// Real-time tracking for a single device
+///
+/// Maintains sliding window of RSSI samples and computes
+/// trend/motion analysis on each update.
+///
+/// Fields:
+/// - `id`: MAC address of tracked device
+/// - `window`: Sliding window of recent RSSI samples
+/// - `last_rssi_smooth`: Last EMA-smoothed RSSI value
+/// - `config`: Analysis configuration parameters
+/// - `last_update`: Timestamp of last sample
 pub struct DeviceTracker {
     pub id: String, // MAC address
     pub window: VecDeque<Sample>,
@@ -115,6 +153,13 @@ pub struct DeviceTracker {
 
 impl DeviceTracker {
     /// Create new tracker for a device
+    ///
+    /// # Arguments
+    /// * `id` - MAC address or unique identifier for device
+    /// * `config` - Analysis configuration parameters
+    ///
+    /// # Returns
+    /// New DeviceTracker instance
     pub fn new(id: String, config: AnalysisConfig) -> Self {
         Self {
             id,
@@ -126,6 +171,19 @@ impl DeviceTracker {
     }
 
     /// Update tracker with new RSSI measurement
+    ///
+    /// Processes new RSSI sample through the analysis pipeline:
+    /// 1. Apply EMA smoothing
+    /// 2. Convert timestamp to relative seconds
+    /// 3. Add to sliding window (evict oldest if full)
+    /// 4. Compute current device state
+    ///
+    /// # Arguments
+    /// * `rssi` - Raw RSSI measurement in dBm
+    /// * `timestamp` - When measurement was taken
+    ///
+    /// # Returns
+    /// Computed DeviceState with trend, motion, and statistics
     pub fn update(&mut self, rssi: i8, timestamp: DateTime<Utc>) -> DeviceState {
         let rssi_f = rssi as f64;
 
@@ -160,6 +218,12 @@ impl DeviceTracker {
     }
 
     /// Compute current device state
+    ///
+    /// Analyzes sliding window to determine trend and motion.
+    /// Requires minimum samples configured in AnalysisConfig.
+    ///
+    /// # Returns
+    /// DeviceState with computed trend, motion, slope, variance
     fn compute_state(&self) -> DeviceState {
         let sample_count = self.window.len();
 
@@ -209,6 +273,15 @@ impl DeviceTracker {
 }
 
 /// Compute linear regression slope
+///
+/// Uses least squares to find rate of RSSI change over time.
+/// Positive = approaching, Negative = leaving.
+///
+/// # Arguments
+/// * `samples` - Deque of Sample points
+///
+/// # Returns
+/// Slope in dB/sec
 fn compute_slope(samples: &VecDeque<Sample>) -> f64 {
     let n = samples.len() as f64;
 
@@ -233,6 +306,15 @@ fn compute_slope(samples: &VecDeque<Sample>) -> f64 {
 }
 
 /// Compute variance of RSSI values
+///
+/// Measures signal stability - higher variance indicates
+/// more fluctuation in signal strength.
+///
+/// # Arguments
+/// * `samples` - Deque of Sample points
+///
+/// # Returns
+/// Variance of RSSI values
 fn compute_variance(samples: &VecDeque<Sample>) -> f64 {
     let n = samples.len() as f64;
     if n == 0.0 {

@@ -4,87 +4,165 @@ use crate::advertising_parser::ParsedAdvertisingPacket;
 use serde::{Deserialize, Serialize};
 
 /// Detected beacon type and data
+///
+/// Represents the type of beacon protocol detected in advertising data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BeaconType {
+    /// Apple iBeacon format
     IBeacon(IBeaconData),
+    /// Google Eddystone format (UID, URL, TLM, or EID)
     Eddystone(EddystoneData),
+    /// AltBeacon format
     AltBeacon(AltBeaconData),
+    /// Unknown or unrecognized beacon format
     Unknown,
 }
 
 /// iBeacon format (Apple proximity beacon)
+///
+/// Apple's beacon format for proximity sensing and indoor positioning.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IBeaconData {
+    /// 128-bit UUID identifying the beacon region
     pub uuid: String,
+    /// Major value for group identification (0-65535)
     pub major: u16,
+    /// Minor value for individual beacon identification (0-65535)
     pub minor: u16,
+    /// TX power measured at 1 meter (calibrated RSSI)
     pub tx_power: i8,
+    /// Measured TX power from advertising packet (if different)
     pub measured_power: Option<i8>,
 }
 
 /// Eddystone beacon formats
+///
+/// Google's beacon protocol supporting UID, URL, TLM, and EID frames.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EddystoneData {
+    /// UID frame - 10-byte namespace + 6-byte instance ID
     UID {
+        /// 10-byte namespace identifier
         namespace_id: [u8; 10],
+        /// 6-byte instance identifier
         instance_id: [u8; 6],
+        /// TX power at 0m in dBm
         tx_power: i8,
     },
+    /// URL frame - compressed URL with scheme
     URL {
+        /// Decoded URL string
         url: String,
+        /// TX power at 0m in dBm
         tx_power: i8,
     },
+    /// TLM frame - telemetry data (battery, temperature, counts)
     TLM {
+        /// TLM version byte
         version: u8,
+        /// Battery voltage in mV
         battery_voltage: u16,
+        /// Beacon temperature in Celsius
         temperature: i8,
+        /// Number of advertisement frames since power-on
         pdu_count: u32,
+        /// Time since power-on in milliseconds
         uptime_millis: u32,
     },
+    /// EID frame - encrypted ephemeral identifier
     EID {
+        /// 8-byte encrypted identifier
         eid: [u8; 8],
+        /// TX power at 0m in dBm
         tx_power: i8,
     },
 }
 
 /// AltBeacon format
+///
+/// Open beacon format designed for proximity beacon applications.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AltBeaconData {
+    /// Manufacturer ID assigned by Bluetooth SIG
     pub manufacturer_id: u16,
+    /// AltBeacon code (0xBEAC)
     pub beacon_code: u16,
+    /// 20-byte beacon identifier
     pub uuid: String,
+    /// Major value
     pub major: u16,
+    /// Minor value
     pub minor: u16,
+    /// TX power at 0m in dBm
     pub tx_power: i8,
+    /// Reserved for future use
     pub reserved: u8,
 }
 
 /// Apple Continuity protocols
+///
+/// Apple's proprietary protocols for device handoff, AirDrop, and proximity features.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AppleContinuity {
-    Handoff { sequence_number: u32, auth_tag: u32 },
-    AirDrop { hash: Vec<u8> },
-    Nearby { action: u8, hash: Vec<u8> },
+    /// Handoff - continue tasks from iPhone to Mac/iPad
+    Handoff {
+        /// Sequence number for message ordering
+        sequence_number: u32,
+        /// Authentication tag for verification
+        auth_tag: u32,
+    },
+    /// AirDrop - file sharing proximity detection
+    AirDrop {
+        /// Hash identifier for discovery
+        hash: Vec<u8>,
+    },
+    /// Nearby - proximity-based actions (Keys, AirPods, etc.)
+    Nearby {
+        /// Action code indicating the type of nearby event
+        action: u8,
+        /// Hash identifier
+        hash: Vec<u8>,
+    },
+    /// Unrecognized Apple Continuity type
     Unknown,
 }
 
 /// Google Fast Pair info
+///
+/// Google's protocol for simplified Bluetooth device pairing with Android.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GoogleFastPair {
+    /// 20-bit model identifier for the device
     pub model_id: u32,
+    /// Flags byte with capability information
     pub flags: u8,
+    /// Battery level percentage (if available)
     pub battery_level: Option<u8>,
+    /// Whether to show UI indication for pairing
     pub is_show_ui_indication: bool,
 }
 
 /// Microsoft Swift Pair info
+///
+/// Microsoft's protocol for simplified Bluetooth device pairing with Windows.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MicrosoftSwiftPair {
+    /// TLV format version
     pub tlv_version: u8,
+    /// Parsed TLV data as vector of (type, value) tuples
     pub tlv_data: Vec<(u8, Vec<u8>)>,
 }
 
 /// Parse vendor-specific protocols from advertising packet
+///
+/// Detects and parses various vendor protocols embedded in the advertising data,
+/// including iBeacon, Eddystone, Apple Continuity, Google Fast Pair, and Microsoft Swift Pair.
+///
+/// # Arguments
+/// * `packet` - Reference to a parsed advertising packet
+///
+/// # Returns
+/// A vector of detected `VendorProtocol` enums (may be empty)
 pub fn parse_vendor_protocols(packet: &ParsedAdvertisingPacket) -> Vec<VendorProtocol> {
     let mut protocols = Vec::new();
 
@@ -121,13 +199,22 @@ pub fn parse_vendor_protocols(packet: &ParsedAdvertisingPacket) -> Vec<VendorPro
     protocols
 }
 
+/// Detected vendor protocol in advertising data
+///
+/// Enum representing any vendor-specific protocol detected in a BLE advertisement.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum VendorProtocol {
+    /// Apple iBeacon
     IBeacon(IBeaconData),
+    /// Google Eddystone (UID, URL, TLM, or EID)
     Eddystone(EddystoneData),
+    /// AltBeacon
     AltBeacon(AltBeaconData),
+    /// Apple Continuity (Handoff, AirDrop, Nearby)
     AppleContinuity(AppleContinuity),
+    /// Google Fast Pair
     GoogleFastPair(GoogleFastPair),
+    /// Microsoft Swift Pair
     MicrosoftSwiftPair(MicrosoftSwiftPair),
 }
 

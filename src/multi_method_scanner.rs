@@ -23,7 +23,43 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::task::JoinSet;
 
-/// Complete device info merged from all detection methods
+/// Complete device information merged from all detection methods.
+///
+/// This struct aggregates data from multiple scanning methods to provide
+/// a comprehensive view of each discovered device. Devices detected by
+/// multiple methods have higher confidence.
+///
+/// # Fields
+/// - `mac_address`: Unique device MAC address
+/// - `device_name`: Device name from advertising data
+/// - `detected_by_*`: Boolean flags for each detection method
+/// - `detection_methods_count`: Number of methods that found this device
+/// - `rssi`: Signal strength in dBm
+/// - `tx_power`: Transmit power from advertising data
+/// - `phy`: Physical layer type (1M, 2M, Coded)
+/// - `channel`: Advertising channel used
+/// - `manufacturer_id`: Company identifier
+/// - `manufacturer_name`: Human-readable manufacturer name
+/// - `device_type`: Type of device
+/// - `device_class`: Bluetooth device class
+/// - `advertised_services`: List of service UUIDs
+/// - `security_flags`: Security information
+/// - `pairing_capable`: Whether pairing is supported
+/// - `le_audio_capable`: Whether LE Audio is supported
+/// - `vendor_protocol`: Vendor-specific protocol detected
+/// - `l2cap_channels`: Available L2CAP channels
+/// - `raw_manufacturing_data`: Raw manufacturer data bytes
+/// - `ad_flags`: Parsed advertising flags
+/// - `ad_local_name`: Parsed local name
+/// - `ad_tx_power`: Parsed TX power level
+/// - `ad_appearance`: Parsed appearance value
+/// - `ad_service_uuids`: Parsed service UUIDs
+/// - `ad_manufacturer_data`: Parsed manufacturer data
+/// - `ad_service_data`: Parsed service data
+/// - `first_detected`: Timestamp of first detection
+/// - `last_detected`: Timestamp of last detection
+/// - `detection_count`: Number of times detected
+/// - `packet_count`: Number of packets received
 #[derive(Debug, Clone)]
 pub struct UnifiedDevice {
     // === Identification ===
@@ -80,6 +116,13 @@ pub struct UnifiedDevice {
 }
 
 impl UnifiedDevice {
+    /// Creates a new UnifiedDevice with the given MAC address.
+    ///
+    /// # Arguments
+    /// * `mac` - MAC address of the device
+    ///
+    /// # Returns
+    /// A new UnifiedDevice with default values
     pub fn new(mac: String) -> Self {
         Self {
             mac_address: mac,
@@ -136,12 +179,23 @@ impl UnifiedDevice {
         .count();
     }
 
-    /// Get detection confidence (0-7, # of methods that detected it)
+    /// Gets detection confidence (0-7) based on number of methods that found it.
+    ///
+    /// Higher confidence indicates more reliable detection since the device
+    /// was found by multiple independent scanning methods.
+    ///
+    /// # Returns
+    /// Number of detection methods (0-7) that successfully found this device
     pub fn detection_confidence(&self) -> usize {
         self.detection_methods_count
     }
 
-    /// Pretty-print detection methods used
+    /// Returns a human-readable string listing all detection methods used.
+    ///
+    /// Format: "[method1|method2|...]"
+    ///
+    /// # Returns
+    /// String representation of detection methods
     pub fn detection_methods_str(&self) -> String {
         let mut methods = Vec::new();
         if self.detected_by_btleplug {
@@ -169,7 +223,11 @@ impl UnifiedDevice {
         format!("[{}]", methods.join("|"))
     }
 
-    /// Parse and store advertising data
+    /// Parses raw manufacturer data into structured advertising fields.
+    ///
+    /// Extracts and stores flags, local name, TX power, appearance,
+    /// service UUIDs, manufacturer data, and service data from
+    /// raw_manufacturing_data.
     pub fn parse_advertising_data(&mut self) {
         if self.raw_manufacturing_data.is_empty() {
             return;
@@ -241,12 +299,24 @@ impl UnifiedDevice {
 }
 
 /// Multi-Method Scanner Coordinator
+///
+/// Coordinates multiple Bluetooth scanning methods running in parallel
+/// to maximize device detection coverage. Each method may discover
+/// different devices, so running all methods increases discovery rate.
+///
+/// # Fields
+/// - `devices`: HashMap of discovered devices keyed by MAC address
+/// - `is_scanning`: Whether a scan is currently in progress
 pub struct MultiMethodScanner {
     devices: Arc<Mutex<HashMap<String, UnifiedDevice>>>,
     is_scanning: bool,
 }
 
 impl MultiMethodScanner {
+    /// Creates a new MultiMethodScanner.
+    ///
+    /// # Returns
+    /// A new MultiMethodScanner with empty device list
     pub fn new() -> Self {
         Self {
             devices: Arc::new(Mutex::new(HashMap::new())),
@@ -254,7 +324,22 @@ impl MultiMethodScanner {
         }
     }
 
-    /// Start ALL scanning methods in parallel
+    /// Starts ALL scanning methods in parallel for comprehensive discovery.
+    ///
+    /// Runs up to 7 different scanning methods concurrently:
+    /// 1. btleplug standard scanning (all platforms)
+    /// 2. Windows HCI raw packets (Windows only)
+    /// 3. Windows Bluetooth API (Windows only)
+    /// 4. Real-time HCI capture
+    /// 5. Vendor-specific protocol detection
+    /// 6. Android BLE bridge (Android only)
+    /// 7. CoreBluetooth (macOS/iOS only)
+    ///
+    /// Each method runs in its own task and results are merged by MAC address.
+    ///
+    /// # Returns
+    /// * `Ok(())` - Scan completed successfully
+    /// * `Err(Box<dyn std::error::Error>)` - Error during scanning
     pub async fn start_comprehensive_scan(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         info!("🚀 Starting Multi-Method Comprehensive BLE Scanner");
         info!("   Using ALL available detection methods in parallel...");
@@ -1076,7 +1161,13 @@ impl MultiMethodScanner {
     // DEVICE MANAGEMENT
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    /// Get or create device entry
+    /// Gets or creates a device entry for the given MAC address.
+    ///
+    /// # Arguments
+    /// * `mac` - MAC address to look up
+    ///
+    /// # Returns
+    /// Arc-wrapped Mutex containing the UnifiedDevice
     pub fn get_or_create_device(&self, mac: &str) -> Arc<Mutex<UnifiedDevice>> {
         let mut devices_lock = self.devices.lock().unwrap();
         devices_lock
@@ -1086,7 +1177,13 @@ impl MultiMethodScanner {
         Arc::new(Mutex::new(devices_lock.get(mac).unwrap().clone()))
     }
 
-    /// Get all discovered devices sorted by confidence
+    /// Gets all discovered devices sorted by detection confidence.
+    ///
+    /// Devices found by more methods appear first, followed by
+    /// those with more packets received.
+    ///
+    /// # Returns
+    /// Vector of UnifiedDevice sorted by confidence (highest first)
     pub fn get_devices_by_confidence(&self) -> Vec<UnifiedDevice> {
         let devices_lock = self.devices.lock().unwrap();
         let mut devices: Vec<_> = devices_lock.values().cloned().collect();
@@ -1098,7 +1195,14 @@ impl MultiMethodScanner {
         devices
     }
 
-    /// Get devices detected by specific method
+    /// Gets devices detected by a specific scanning method.
+    ///
+    /// # Arguments
+    /// * `method` - Method name: "btleplug", "hci_raw", "windows_api",
+    ///              "hci_realtime", "vendor", "android", or "corebluetooth"
+    ///
+    /// # Returns
+    /// Vector of devices found by that method
     pub fn get_devices_by_method(&self, method: &str) -> Vec<UnifiedDevice> {
         let devices_lock = self.devices.lock().unwrap();
         devices_lock
@@ -1117,7 +1221,14 @@ impl MultiMethodScanner {
             .collect()
     }
 
-    /// Get devices detected by ONLY one method (unique finds)
+    /// Gets devices detected by ONLY one method (unique discoveries).
+    ///
+    /// These are devices that were found by just a single scanning method,
+    /// representing potentially unique discoveries that might be missed
+    /// by other scanning approaches.
+    ///
+    /// # Returns
+    /// Vector of devices detected by exactly one method
     pub fn get_unique_devices(&self) -> Vec<UnifiedDevice> {
         self.devices
             .lock()
@@ -1128,7 +1239,11 @@ impl MultiMethodScanner {
             .collect()
     }
 
-    /// Print comprehensive discovery summary
+    /// Prints a comprehensive summary of discovered devices.
+    ///
+    /// Displays total devices, breakdown by detection method count,
+    /// method coverage statistics, and top devices by confidence.
+    /// Uses colored output for terminal display.
     pub fn print_discovery_summary(&self) {
         let devices = self.get_devices_by_confidence();
 
@@ -1237,7 +1352,13 @@ impl MultiMethodScanner {
         );
     }
 
-    /// Stop scanning
+    /// Stops the ongoing comprehensive scan.
+    ///
+    /// Sets the scanning state to false and prints the discovery summary.
+    ///
+    /// # Returns
+    /// * `Ok(())` - Scan stopped successfully
+    /// * `Err(Box<dyn std::error::Error>)` - Error stopping scan
     pub async fn stop_scan(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         info!("🛑 Stopping comprehensive scan");
         self.is_scanning = false;

@@ -6,24 +6,44 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Complete parsed advertising packet
+///
+/// Contains all parsed fields from a BLE advertising packet including
+/// services, manufacturer data, device name, and other AD structures.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedAdvertisingPacket {
+    /// MAC address of the advertising device
     pub mac_address: String,
+    /// Received Signal Strength Indicator in dBm
     pub rssi: i8,
+    /// Advertising flags (LE Limited/General Discoverable, BR/EDR support)
     pub flags: Option<AdvertisingFlags>,
+    /// Full local name advertised by device
     pub local_name: Option<String>,
+    /// Shortened local name
     pub short_name: Option<String>,
+    /// Transmit power level in dBm
     pub tx_power: Option<i8>,
+    /// Device appearance category (e.g., watch, heart rate monitor)
     pub appearance: Option<u16>,
+    /// List of 16-bit service UUIDs
     pub services_16bit: Vec<u16>,
+    /// List of 128-bit service UUIDs as strings
     pub services_128bit: Vec<String>,
+    /// List of 32-bit service UUIDs
     pub services_32bit: Vec<u32>,
+    /// Service data keyed by 16-bit UUID
     pub service_data_16: HashMap<u16, Vec<u8>>,
+    /// Service data keyed by 128-bit UUID string
     pub service_data_128: HashMap<String, Vec<u8>>,
+    /// Service data keyed by 32-bit UUID
     pub service_data_32: HashMap<u32, Vec<u8>>,
+    /// Manufacturer data keyed by company ID
     pub manufacturer_data: HashMap<u16, Vec<u8>>,
+    /// All parsed AD structures in order
     pub ad_structures: Vec<ParsedAdStructure>,
+    /// Whether this is a scan response packet
     pub is_scan_response: bool,
+    /// Whether this is extended advertising (BT 5.0+)
     pub is_extended_advertising: bool,
 }
 
@@ -52,16 +72,30 @@ impl Default for ParsedAdvertisingPacket {
 }
 
 /// Advertising flags (AD Type 0x01)
+///
+/// Bit flags indicating the discoverability and capability of the device.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct AdvertisingFlags {
+    /// LE Limited Discoverable Mode
     pub le_limited_discoverable: bool,
+    /// LE General Discoverable Mode
     pub le_general_discoverable: bool,
+    /// BR/EDR Not Supported (LE-only device)
     pub br_edr_not_supported: bool,
+    /// Simultaneous LE and BR/EDR (Controller)
     pub simultaneous_le_and_br_edr_controller: bool,
+    /// Simultaneous LE and BR/EDR (Host)
     pub simultaneous_le_and_br_edr_host: bool,
 }
 
 impl AdvertisingFlags {
+    /// Creates AdvertisingFlags from a single byte.
+    ///
+    /// # Arguments
+    /// * `byte` - The raw flags byte from the advertising packet
+    ///
+    /// # Returns
+    /// An AdvertisingFlags struct with parsed bit fields
     pub fn from_byte(byte: u8) -> Self {
         Self {
             le_limited_discoverable: (byte & 0x01) != 0,
@@ -74,15 +108,32 @@ impl AdvertisingFlags {
 }
 
 /// Single parsed AD structure with detailed information
+///
+/// Represents one advertising data structure from the packet.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedAdStructure {
+    /// AD Type byte (e.g., 0x09 for Complete Local Name)
     pub ad_type: u8,
+    /// Human-readable type name
     pub type_name: String,
+    /// Raw data bytes
     pub data: Vec<u8>,
+    /// Human-readable description of the data
     pub description: String,
 }
 
 /// Parse complete advertising packet
+///
+/// Main entry point for parsing raw advertising data into a structured packet.
+///
+/// # Arguments
+/// * `mac_address` - The MAC address of the advertising device
+/// * `rssi` - Received Signal Strength Indicator in dBm
+/// * `raw_data` - Raw advertising data bytes
+/// * `is_scan_response` - Whether this is a scan response packet
+///
+/// # Returns
+/// A fully parsed `ParsedAdvertisingPacket` with all extracted fields
 pub fn parse_advertising_packet(
     mac_address: &str,
     rssi: i8,

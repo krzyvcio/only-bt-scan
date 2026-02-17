@@ -8,13 +8,27 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 /// Aggregated snapshot of all device states
+///
+/// Contains timestamp and list of all device RSSI information
+/// at a point in time. Useful for JSON serialization/APIs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalRssiSnapshot {
+    /// Timestamp when snapshot was taken
     pub timestamp: DateTime<Utc>,
+    /// List of per-device RSSI information
     pub devices: Vec<DeviceRssiInfo>,
 }
 
 /// Per-device RSSI trend information
+///
+/// Compact representation of device state for API/serialization:
+/// - `mac`: MAC address
+/// - `rssi`: Current smoothed RSSI
+/// - `trend`: Movement direction (string)
+/// - `motion`: Still/moving (string)
+/// - `slope`: Rate of RSSI change
+/// - `variance`: Signal stability measure
+/// - `sample_count`: Number of samples analyzed
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceRssiInfo {
     pub mac: String,
@@ -27,6 +41,11 @@ pub struct DeviceRssiInfo {
 }
 
 /// Global manager for all device RSSI trackers
+///
+/// Thread-safe manager that maintains DeviceTracker instances
+/// for all discovered BLE devices. Provides filtering by trend/motion.
+///
+/// Uses Arc<Mutex<>> for safe concurrent access from async tasks.
 pub struct GlobalRssiManager {
     trackers: Arc<Mutex<HashMap<String, DeviceTracker>>>,
     config: AnalysisConfig,
@@ -34,6 +53,12 @@ pub struct GlobalRssiManager {
 
 impl GlobalRssiManager {
     /// Create a new global manager
+    ///
+    /// # Arguments
+    /// * `config` - Analysis configuration parameters
+    ///
+    /// # Returns
+    /// Arc-wrapped GlobalRssiManager
     pub fn new(config: AnalysisConfig) -> Arc<Self> {
         Arc::new(Self {
             trackers: Arc::new(Mutex::new(HashMap::new())),
@@ -42,11 +67,24 @@ impl GlobalRssiManager {
     }
 
     /// Create with default config
+    ///
+    /// # Returns
+    /// Arc-wrapped GlobalRssiManager with default AnalysisConfig
     pub fn default() -> Arc<Self> {
         Self::new(AnalysisConfig::default())
     }
 
     /// Update RSSI for a device (creates tracker if needed)
+    ///
+    /// Adds new RSSI measurement for device, creating tracker if first observation.
+    ///
+    /// # Arguments
+    /// * `mac` - MAC address of device
+    /// * `rssi` - RSSI measurement in dBm
+    /// * `timestamp` - When measurement was taken
+    ///
+    /// # Returns
+    /// Computed DeviceState after adding sample
     pub fn update_rssi(&self, mac: &str, rssi: i8, timestamp: DateTime<Utc>) -> DeviceState {
         let mut trackers = self.trackers.lock().unwrap();
 
@@ -58,6 +96,12 @@ impl GlobalRssiManager {
     }
 
     /// Get current state for a specific device
+    ///
+    /// # Arguments
+    /// * `mac` - MAC address to look up
+    ///
+    /// # Returns
+    /// Some(DeviceState) if device tracked, None otherwise
     pub fn get_device_state(&self, mac: &str) -> Option<DeviceState> {
         let trackers = self.trackers.lock().unwrap();
         trackers.get(mac).map(|t| {
@@ -68,6 +112,9 @@ impl GlobalRssiManager {
     }
 
     /// Get all device states
+    ///
+    /// # Returns
+    /// Vector of (MAC, DeviceState) tuples for all tracked devices
     pub fn get_all_states(&self) -> Vec<(String, DeviceState)> {
         let trackers = self.trackers.lock().unwrap();
         trackers
@@ -80,6 +127,11 @@ impl GlobalRssiManager {
     }
 
     /// Get snapshot of all devices
+    ///
+    /// Creates aggregated snapshot suitable for JSON serialization.
+    ///
+    /// # Returns
+    /// GlobalRssiSnapshot with all device RSSI info
     pub fn get_snapshot(&self) -> GlobalRssiSnapshot {
         let devices = self
             .get_all_states()
@@ -102,6 +154,12 @@ impl GlobalRssiManager {
     }
 
     /// Get devices filtering by trend
+    ///
+    /// # Arguments
+    /// * `trend` - Trend to filter by
+    ///
+    /// # Returns
+    /// Vector of (MAC, DeviceState) matching the trend
     pub fn get_by_trend(&self, trend: Trend) -> Vec<(String, DeviceState)> {
         self.get_all_states()
             .into_iter()
@@ -110,6 +168,12 @@ impl GlobalRssiManager {
     }
 
     /// Get devices filtering by motion
+    ///
+    /// # Arguments
+    /// * `motion` - Motion state to filter by
+    ///
+    /// # Returns
+    /// Vector of (MAC, DeviceState) matching the motion state
     pub fn get_by_motion(&self, motion: Motion) -> Vec<(String, DeviceState)> {
         self.get_all_states()
             .into_iter()
@@ -118,37 +182,64 @@ impl GlobalRssiManager {
     }
 
     /// Get devices that are approaching
+    ///
+    /// # Returns
+    /// Vector of (MAC, DeviceState) with Approaching trend
     pub fn get_approaching(&self) -> Vec<(String, DeviceState)> {
         self.get_by_trend(Trend::Approaching)
     }
 
     /// Get devices that are leaving
+    ///
+    /// # Returns
+    /// Vector of (MAC, DeviceState) with Leaving trend
     pub fn get_leaving(&self) -> Vec<(String, DeviceState)> {
         self.get_by_trend(Trend::Leaving)
     }
 
     /// Get devices that are still
+    ///
+    /// # Returns
+    /// Vector of (MAC, DeviceState) with Still motion
     pub fn get_still(&self) -> Vec<(String, DeviceState)> {
         self.get_by_motion(Motion::Still)
     }
 
     /// Get devices that are moving
+    ///
+    /// # Returns
+    /// Vector of (MAC, DeviceState) with Moving motion
     pub fn get_moving(&self) -> Vec<(String, DeviceState)> {
         self.get_by_motion(Motion::Moving)
     }
 
     /// Clear all trackers (reset)
+    ///
+    /// Removes all tracked devices and their RSSI history.
     pub fn clear(&self) {
         self.trackers.lock().unwrap().clear();
     }
 
     /// Get number of tracked devices
+    ///
+    /// # Returns
+    /// Count of devices currently being tracked
     pub fn device_count(&self) -> usize {
         self.trackers.lock().unwrap().len()
     }
 }
 
 /// Helper to compute state from tracker (immutable access)
+///
+/// Recomputes device state from tracker's window without mutation.
+/// Used for read-only state queries.
+///
+/// # Arguments
+/// * `tracker` - DeviceTracker to analyze
+/// * `config` - Analysis configuration
+///
+/// # Returns
+/// Computed DeviceState
 fn compute_device_state_from_tracker(
     tracker: &DeviceTracker,
     config: &AnalysisConfig,
@@ -199,6 +290,14 @@ fn compute_device_state_from_tracker(
 }
 
 /// Compute slope from window (helper)
+///
+/// Linear regression to find RSSI rate of change.
+///
+/// # Arguments
+/// * `window` - Deque of RSSI samples
+///
+/// # Returns
+/// Slope in dB/sec
 fn compute_slope_from_window(
     window: &std::collections::VecDeque<crate::rssi_analyzer::Sample>,
 ) -> f64 {
@@ -225,6 +324,14 @@ fn compute_slope_from_window(
 }
 
 /// Compute variance from window (helper)
+///
+/// Measures signal stability in RSSI time series.
+///
+/// # Arguments
+/// * `window` - Deque of RSSI samples
+///
+/// # Returns
+/// Variance of RSSI values
 fn compute_variance_from_window(
     window: &std::collections::VecDeque<crate::rssi_analyzer::Sample>,
 ) -> f64 {
