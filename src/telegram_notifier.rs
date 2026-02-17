@@ -3,8 +3,8 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::env;
 
-const PERIODIC_REPORT_INTERVAL_SECS: u64 = 60;
-const DEVICES_HISTORY_WINDOW_SECS: i64 = 60;
+const PERIODIC_REPORT_INTERVAL_SECS: u64 = 900; // 15 minutes
+const DEVICES_HISTORY_WINDOW_SECS: i64 = 900; // 15 minutes
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelegramConfig {
@@ -652,7 +652,7 @@ pub async fn run_periodic_report_task() -> Result<(), String> {
 }
 
 pub async fn send_periodic_report() -> Result<(), String> {
-    log::info!("[Telegram] 📤 Sending periodic report (every 1 minute)...");
+    log::info!("[Telegram] 📤 Sending periodic report (every 15 minutes)...");
 
     // Run DB operations in spawn_blocking with retry logic
     let devices = with_db_retry(|| {

@@ -506,7 +506,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
         });
 
         // Spawn telegram periodic report task in separate thread with own Tokio runtime
-        log::info!("[Telegram] Spawning periodic report task (every 1 minute)");
+        log::info!("[Telegram] Spawning periodic report task (every 15 minutes)");
         let shutdown_telegram = shutdown_in_progress.clone();
         std::thread::spawn(move || {
             eprintln!("[TELEGRAM] Thread started, creating Tokio runtime...");
@@ -516,7 +516,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
                 .expect("Failed to create Tokio runtime for Telegram");
             eprintln!("[TELEGRAM] Runtime created, starting periodic task...");
             rt.block_on(async {
-                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(900)); // 15 minutes
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 
                 loop {
