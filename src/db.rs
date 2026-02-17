@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Result as SqliteResult};
 use serde::{Deserialize, Serialize};
 
+use crate::db_frames;
+
 const DB_PATH: &str = "bluetooth_scan.db";
 
 /// Parsed BLE Advertisement Data struktura
@@ -619,6 +621,9 @@ pub fn init_database() -> SqliteResult<()> {
         "CREATE INDEX IF NOT EXISTS idx_device_telemetry_mac ON device_telemetry_history(device_mac)",
         [],
     )?;
+
+    // Initialize frame storage tables (ble_advertisement_frames, frame_statistics)
+    db_frames::init_frame_storage(&conn)?;
 
     Ok(())
 }

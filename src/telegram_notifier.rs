@@ -597,22 +597,34 @@ pub async fn run_periodic_report_task() -> Result<(), String> {
 }
 
 async fn send_periodic_report() -> Result<(), String> {
+    log::info!("[Telegram] Checking if periodic report should be sent...");
+    
     let conn = rusqlite::Connection::open("bluetooth_scan.db").map_err(|e| e.to_string())?;
 
     match should_send_report(&conn) {
-        Ok(true) => {}
-        Ok(false) => return Ok(()),
-        Err(_) => return Ok(()),
+        Ok(true) => {
+            log::info!("[Telegram] Report due - preparing to send...");
+        }
+        Ok(false) => {
+            log::debug!("[Telegram] Report not due yet (wait time not elapsed)");
+            return Ok(());
+        }
+        Err(e) => {
+            log::warn!("[Telegram] Error checking report status: {}", e);
+            return Ok(());
+        }
     }
 
     let devices = get_devices_from_last_minutes(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
         .map_err(|e| e.to_string())?;
 
+    log::info!("[Telegram] Sending device report for {} devices...", devices.len());
     send_devices_report(&devices).await?;
 
     let html_content = generate_raw_packets_html(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
         .map_err(|e| e.to_string())?;
     
+    log::info!("[Telegram] Sending HTML attachment with raw packets...");
     send_html_file(&html_content, "raw_packets.html").await?;
 
     // 📈 Send RSSI trend analysis report

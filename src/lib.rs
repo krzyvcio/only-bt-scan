@@ -4,10 +4,7 @@
 //! Obsługuje skanowanie BLE, zapis do bazy danych, Web API i powiadomienia Telegram.
 
 mod adapter_info;
-pub mod adapter_manager;  // NEW: Adapter management with best selection
 mod advertising_parser;
-pub mod async_scanner;    // NEW: Async scanner with channels
-pub mod db_writer;       // NEW: Batch DB writer with backpressure
 mod android_ble_bridge;
 mod background;
 mod ble_security;
@@ -16,20 +13,22 @@ mod bluetooth_features;
 mod bluetooth_manager;
 mod bluetooth_scanner;
 mod bluey_integration;
+mod class_of_device;
 mod company_id_reference;
 mod company_ids;
 mod config_params;
 mod core_bluetooth_integration;
 mod data_flow_estimator;
 mod data_models;
-pub mod db;
+mod db;
 mod db_frames;
-pub mod db_pool; // NEW: Database connection pool
+mod db_pool;
 mod device_events;
-pub mod rssi_analyzer; // NEW: RSSI trend analysis for single device
-pub mod rssi_trend_manager; // NEW: Global RSSI manager for all devices
-pub mod device_tracker;
+mod env_config;
 mod event_analyzer;
+mod device_tracker;
+mod rssi_trend_manager;
+mod rssi_analyzer;
 mod gatt_client;
 mod hci_packet_parser;
 mod hci_realtime_capture;
@@ -67,7 +66,6 @@ use std::io::{stdout, Write};
 use std::time::Duration;
 
 use bluetooth_scanner::{BluetoothScanner, ScanConfig};
-use dotenv::dotenv;
 use unified_scan::UnifiedScanEngine;
 
 mod ui_renderer;
@@ -159,11 +157,28 @@ fn format_timestamp(dt: &chrono::DateTime<chrono::Utc>) -> String {
     }
 }
 
+/// Format duration as uptime (e.g., "1h 23m 45s" or "45s")
+fn format_duration(duration: std::time::Duration) -> String {
+    let secs = duration.as_secs();
+    
+    let hours = secs / 3600;
+    let minutes = (secs % 3600) / 60;
+    let seconds = secs % 60;
+    
+    if hours > 0 {
+        format!("{}h {}m {}s", hours, minutes, seconds)
+    } else if minutes > 0 {
+        format!("{}m {}s", minutes, seconds)
+    } else {
+        format!("{}s", seconds)
+    }
+}
+
 /// Główna funkcja uruchamiająca aplikację skanera Bluetooth
 /// Inicjalizuje: logger, bazę danych, HCI capture, Web server, Telegram notifications
 pub async fn run() -> Result<(), anyhow::Error> {
     // Load .env file
-    dotenv().ok();
+    env_config::init();
 
     // Initialize file logger ONLY - no env_logger stdout output
     // All logs go to file via logger module
@@ -424,17 +439,10 @@ pub async fn run() -> Result<(), anyhow::Error> {
         });
 
         // Spawn periodic report task
+        log::info!("[Telegram] Spawning periodic report task (every 5 minutes)");
         tokio::spawn(async move {
             if let Err(e) = telegram_notifier::run_periodic_report_task().await {
                 log::warn!("[Telegram] Periodic task error: {}", e);
-            }
-        });
-
-        // Spawn periodic Telegram report task
-        log::info!("[Telegram] Spawning periodic report task");
-        tokio::spawn(async {
-            if let Err(e) = telegram_notifier::run_periodic_report_task().await {
-                log::warn!("[Telegram] Periodic task failed: {}", e);
             }
         });
 
@@ -681,6 +689,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
     // Main event loop — w trybie ciągłym: odświeżanie w miejscu (bez przewijania), bez przerwy
     let start_line = ui_renderer::get_device_list_start_line();
     let mut scan_count = 0;
+    let app_start_time = std::time::Instant::now();
 
     while !shutdown_in_progress.load(std::sync::atomic::Ordering::Relaxed) {
         // Clear only the content area and show scan status
@@ -691,13 +700,15 @@ pub async fn run() -> Result<(), anyhow::Error> {
         })?;
         execute!(stdout(), MoveTo(0, start_line))?;
         scan_count += 1;
+        
         writeln!(
             stdout(),
             "{}",
             format!(
-                "🔄 Scan #{:03} | {}",
+                "🔄 Scan #{:03} | {} | Uptime: {}",
                 scan_count,
-                chrono::Local::now().format("%H:%M:%S")
+                chrono::Local::now().format("%H:%M:%S"),
+                format_duration(app_start_time.elapsed())
             )
             .bold()
         )?;
@@ -817,20 +828,9 @@ pub async fn run() -> Result<(), anyhow::Error> {
                 }
                 // ═══════════════════════════════════════════════════════════════
                 // EMIT NEW DEVICE ALERTS WITH PACKET ANALYSIS
-                // ═══════════════════════════════════════════════════════════════
                 {
-                    // Find which MACs are NEW (not in DB yet)
-                    let mut new_macs = Vec::new();
-                    for device in devices {
-                        match db::get_device(&device.mac_address) {
-                            Ok(Some(_)) => {} // Device exists, skip
-                            Ok(None) => new_macs.push(device.mac_address.clone()),
-                            Err(e) => log::warn!("Could not check if MAC is new: {}", e),
-                        }
-                    }
-
-                    // For each packet from a new device, show analysis
-                    if !new_macs.is_empty() {
+                    // Show ALL devices (not just new ones)
+                    if !devices.is_empty() {
                         writeln!(stdout())?;
                         writeln!(
                             stdout(),
@@ -840,7 +840,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
                         writeln!(
                             stdout(),
                             "{}",
-                            "🆕 NEW DEVICES DETECTED".bright_green().bold()
+                            "📡 DETECTED DEVICES".bright_green().bold()
                         )?;
                         writeln!(
                             stdout(),
@@ -848,24 +848,10 @@ pub async fn run() -> Result<(), anyhow::Error> {
                             "═══════════════════════════════════════════════════════".bright_cyan()
                         )?;
 
+                        // Show ALL packets (no filtering)
                         for packet in &results.raw_packets {
-                            if new_macs.contains(&packet.mac_address) {
-                                // Show one analysis per MAC (first packet)
-                                if results
-                                    .raw_packets
-                                    .iter()
-                                    .filter(|p| p.mac_address == packet.mac_address)
-                                    .next()
-                                    .map(|p| p.packet_id == packet.packet_id)
-                                    .unwrap_or(false)
-                                {
-                                    let formatted =
-                                        crate::packet_analyzer_terminal::format_packet_for_terminal(
-                                            packet,
-                                        );
-                                    writeln!(stdout(), "{}", formatted)?;
-                                }
-                            }
+                            let formatted = crate::packet_analyzer_terminal::format_packet_for_terminal(packet);
+                            writeln!(stdout(), "{}", formatted)?;
                         }
                         writeln!(
                             stdout(),

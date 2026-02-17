@@ -23,3 +23,5 @@ geneze.txt
 *.dylib
 *.pyc
 *.pyo
+bluetooth_scan.db-shm
+bluetooth_scan.db-wal

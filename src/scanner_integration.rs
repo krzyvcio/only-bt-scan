@@ -79,6 +79,13 @@ impl ScannerWithTracking {
                 );
             }
 
+            // Update RSSI trend analyzer (for RSSI Telemetry section)
+            if let PacketAddResult::Accepted { .. } = &result {
+                let rssi_manager = crate::get_rssi_manager();
+                let timestamp = chrono::Utc::now();
+                rssi_manager.update_rssi(&device.mac_address, packet.rssi, timestamp);
+            }
+
             match result {
                 PacketAddResult::Accepted { packet_id, .. } => {
                     log::debug!(

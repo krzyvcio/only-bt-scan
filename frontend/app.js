@@ -1336,6 +1336,24 @@ function drawRssiChart(measurements, container) {
     yAxis.setAttribute('stroke-width', '1');
     svg.appendChild(yAxis);
     
+    // Draw time labels on X axis
+    const timeLabels = 5;
+    for (let i = 0; i <= timeLabels; i++) {
+        const idx = Math.floor((measurements.length - 1) * i / timeLabels);
+        const m = measurements[idx];
+        if (m && m.timestamp) {
+            const x = padding + (chartWidth / timeLabels) * i;
+            const timeLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            timeLabel.setAttribute('x', x);
+            timeLabel.setAttribute('y', height - 10);
+            timeLabel.setAttribute('text-anchor', 'middle');
+            timeLabel.setAttribute('font-size', '10');
+            timeLabel.setAttribute('fill', '#8b949e');
+            timeLabel.textContent = new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+            svg.appendChild(timeLabel);
+        }
+    }
+    
     // Clear and add SVG
     container.innerHTML = '';
     container.appendChild(svg);

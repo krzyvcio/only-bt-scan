@@ -1,6 +1,7 @@
 use crate::hci_scanner::HciScanner;
 use crate::mac_address_handler::MacAddress;
 use crate::pcap_exporter::{HciPcapPacket, PcapExporter};
+use crate::class_of_device;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
@@ -644,6 +645,26 @@ pub async fn get_raw_packets(web::Query(params): web::Query<PaginationParams>) -
         }
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": e
+        })),
+    }
+}
+
+pub async fn decode_cod(web::Query(params): web::Query<std::collections::HashMap<String, String>>) -> impl Responder {
+    let cod_str = params.get("cod").and_then(|s| s.parse::<u32>().ok());
+    
+    match cod_str {
+        Some(cod) => {
+            let device_class = class_of_device::format_cod(cod);
+            let services = class_of_device::get_cod_services(cod);
+            
+            HttpResponse::Ok().json(serde_json::json!({
+                "cod": cod,
+                "device_class": device_class,
+                "services": services
+            }))
+        }
+        None => HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Missing or invalid 'cod' parameter (expected u32)"
         })),
     }
 }
@@ -1671,6 +1692,7 @@ pub fn configure_services(cfg: &mut web::ServiceConfig) {
             .route("/telemetry", web::get().to(get_telemetry))
             .route("/rssi-telemetry", web::get().to(get_rssi_telemetry))
             .route("/devices/{mac}/rssi-telemetry", web::get().to(get_device_rssi_telemetry))
+            .route("/decode-cod", web::get().to(decode_cod))
             .route("/stats", web::get().to(get_stats))
             .route("/company-ids/stats", web::get().to(get_company_ids_stats))
             .route("/company-ids/update", web::post().to(update_company_ids))
