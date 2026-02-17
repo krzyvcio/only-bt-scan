@@ -100,6 +100,7 @@ impl PassivePacket {
             mac_address: self.mac_address.clone(),
             timestamp: Utc::now(),
             timestamp_ms: self.timestamp_ms,
+            latency_from_previous_ms: None,
             phy: self.phy.clone(),
             channel: self.channel,
             rssi: self.rssi,
