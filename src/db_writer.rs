@@ -16,7 +16,18 @@ use tokio::time;
 
 use crate::async_scanner::Packet;
 
-/// Database writer configuration
+/// Database writer configuration.
+/// 
+/// Controls batch size, timeouts, and SQLite performance tuning.
+/// 
+/// # Fields
+/// - `batch_size` - Maximum packets to batch before writing (default: 500)
+/// - `batch_timeout` - Max wait before flushing partial batch (default: 100ms)
+/// - `queue_capacity` - Max packets in memory queue (default: 10000)
+/// - `use_wal` - Enable WAL mode (default: true)
+/// - `synchronous` - Synchronous mode: OFF, NORMAL, FULL (default: NORMAL)
+/// - `cache_size` - Cache size in pages (default: 10000)
+/// - `temp_store` - Temp store: MEMORY or FILE (default: MEMORY)
 #[derive(Debug, Clone)]
 pub struct DbWriterConfig {
     /// Maximum packets to batch before writing
@@ -36,6 +47,10 @@ pub struct DbWriterConfig {
 }
 
 impl Default for DbWriterConfig {
+    /// Creates default configuration with sensible production values.
+    ///
+    /// # Returns
+    /// DbWriterConfig - Default configuration
     fn default() -> Self {
         Self {
             batch_size: 500,
@@ -49,7 +64,17 @@ impl Default for DbWriterConfig {
     }
 }
 
-/// Database writer statistics
+/// Database writer statistics.
+/// 
+/// Tracks performance metrics for monitoring and debugging.
+/// 
+/// # Fields
+/// - `packets_written` - Total packets successfully written
+/// - `packets_dropped` - Packets dropped due to queue full
+/// - `write_errors` - Number of write failures
+/// - `total_batches` - Total batches written
+/// - `avg_batch_size` - Average packets per batch
+/// - `last_write_duration_ms` - Last batch write time in milliseconds
 #[derive(Debug, Clone, Default)]
 pub struct DbWriterStats {
     pub packets_written: u64,
@@ -60,14 +85,26 @@ pub struct DbWriterStats {
     pub last_write_duration_ms: u64,
 }
 
-/// Packet batch for efficient database insertion
+/// Packet batch for efficient database insertion.
+/// 
+/// Groups multiple packets together for bulk insert operations.
+/// 
+/// # Fields
+/// - `packets` - Vector of packets to insert
+/// - `created_at` - When the batch was created (for timeout tracking)
 #[derive(Debug, Clone)]
 pub struct PacketBatch {
     pub packets: Vec<Packet>,
     pub created_at: std::time::Instant,
 }
 
-/// Database writer errors
+/// Database writer errors.
+/// 
+/// # Variants
+/// - `Database` - SQLite error
+/// - `QueueFull` - Packet queue is full (backpressure)
+/// - `WriterNotRunning` - Writer task not started
+/// - `Channel` - MPSC channel error
 #[derive(Debug, thiserror::Error)]
 pub enum DbWriterError {
     #[error("Database error: {0}")]
@@ -83,7 +120,22 @@ pub enum DbWriterError {
     Channel(String),
 }
 
-/// Async batch database writer
+/// Async batch database writer.
+/// 
+/// Writes packets to database in batches for high throughput.
+/// Runs in a dedicated tokio task for non-blocking operation.
+/// 
+/// # Type Parameters
+/// Uses internal channels for packet submission and control.
+/// 
+/// # Fields
+/// - `config` - Writer configuration
+/// - `db_path` - Path to SQLite database
+/// - `packet_rx` - Receiver for incoming packets
+/// - `control_tx` - Sender for control commands
+/// - `stats` - Writer statistics (atomic, thread-safe)
+/// - `running` - Flag indicating if writer is active
+/// - `pending_batch` - Current batch awaiting flush
 pub struct DbWriter {
     config: DbWriterConfig,
     db_path: String,
@@ -95,7 +147,19 @@ pub struct DbWriter {
 }
 
 impl DbWriter {
-    /// Create new DB writer (call spawn() to start)
+    /// Creates a new DB writer (call spawn() to start).
+    ///
+    /// Returns a tuple of:
+    /// - Self (not yet running)
+    /// - Sender for packets (cloneable)
+    /// - Sender for control commands
+    ///
+    /// # Arguments
+    /// * `config` - Writer configuration
+    /// * `db_path` - Path to SQLite database file
+    ///
+    /// # Returns
+    /// (Self, mpsc::Sender<Packet>, mpsc::Sender<DbWriterCommand>)
     pub fn new(config: DbWriterConfig, db_path: &str) -> (Self, mpsc::Sender<Packet>, mpsc::Sender<DbWriterCommand>) {
         let (packet_tx, packet_rx) = mpsc::channel(config.queue_capacity);
         let (control_tx, _control_rx) = mpsc::channel(10);
@@ -113,19 +177,46 @@ impl DbWriter {
         (writer, packet_tx, control_tx)
     }
 
-    /// Get sender for packets
+    /// Gets sender for packets.
+    ///
+    /// Note: In practice, use the sender returned from new().
+    /// This method exists for API consistency.
+    ///
+    /// # Returns
+    /// mpsc::Sender<Packet> - Channel sender for packets
+    /// 
+    /// # Note
+    /// Currently returns unimplemented - use sender from new()
     pub fn packet_sender(&self) -> mpsc::Sender<Packet> {
         // This is a bit awkward - in practice we'd use the one returned from new()
         // but we need to return it from here for API consistency
         todo!("Use packet sender from new()")
     }
 
-    /// Get current statistics
+    /// Gets current statistics.
+    ///
+    /// Thread-safe snapshot of writer metrics.
+    ///
+    /// # Returns
+    /// DbWriterStats - Current statistics
     pub fn get_stats(&self) -> DbWriterStats {
         self.stats.lock().unwrap().clone()
     }
 
-    /// Start the writer task
+    /// Starts the writer task.
+    ///
+    /// This is an async function that runs the main event loop.
+    /// It:
+    /// 1. Initializes the database schema
+    /// 2. Enters the main loop handling packets and timeouts
+    /// 3. Flushes batches on timeout or when batch size reached
+    /// 4. Exits when packet channel is closed
+    ///
+    /// # Behavior
+    /// - Receives packets and adds to pending batch
+    /// - Flushes when batch_size reached
+    /// - Flushes on batch_timeout tick
+    /// - Stops when running flag is cleared
     pub async fn spawn(mut self) {
         let running = self.running.clone();
         running.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -182,7 +273,13 @@ impl DbWriter {
         info!("DB writer task stopped");
     }
 
-    /// Initialize database schema
+    /// Initializes database schema.
+    ///
+    /// Creates tables for adapters, scan sessions, raw packets, and devices.
+    /// Configures SQLite for performance (WAL, cache, temp store).
+    ///
+    /// # Returns
+    /// Result<(), DbWriterError> - Ok on success
     fn init_database(&self) -> Result<(), DbWriterError> {
         let conn = Connection::open(&self.db_path)?;
 
@@ -260,7 +357,16 @@ impl DbWriter {
         Ok(())
     }
 
-    /// Flush current batch to database
+    /// Flushes current batch to database.
+    ///
+    /// Takes all pending packets, writes them in a blocking task,
+    /// and updates statistics. Uses transaction for atomicity.
+    ///
+    /// # Behavior
+    /// - Moves pending batch to local variable
+    /// - Spawns blocking task for database write
+    /// - Updates stats on completion
+    /// - Logs debug info on success
     async fn flush_batch(&self) {
         let mut batch = self.pending_batch.lock().unwrap();
         if batch.is_empty() {
@@ -314,7 +420,17 @@ impl DbWriter {
     }
 }
 
-/// Write batch of packets to database (blocking)
+/// Writes batch of packets to database (blocking).
+///
+/// Opens a new connection, begins transaction, inserts all packets,
+/// then commits. Uses hex encoding for binary data.
+///
+/// # Arguments
+/// * `db_path` - Path to SQLite database
+/// * `packets` - Slice of packets to write
+///
+/// # Returns
+/// Result<(), DbWriterError> - Ok on success
 fn write_batch_to_db(db_path: &str, packets: &[Packet]) -> Result<(), DbWriterError> {
     let conn = Connection::open(db_path)?;
 
@@ -354,7 +470,12 @@ fn write_batch_to_db(db_path: &str, packets: &[Packet]) -> Result<(), DbWriterEr
     Ok(())
 }
 
-/// Commands for DB writer control
+/// Commands for DB writer control.
+/// 
+/// # Variants
+/// - `Flush` - Force immediate flush of pending batch
+/// - `GetStats` - Request current statistics
+/// - `Stop` - Stop the writer task
 #[derive(Debug)]
 pub enum DbWriterCommand {
     Flush,

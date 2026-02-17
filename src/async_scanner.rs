@@ -24,7 +24,26 @@ const DEFAULT_BATCH_SIZE: usize = 500;
 /// Batch timeout in milliseconds
 const DEFAULT_BATCH_TIMEOUT_MS: u64 = 100;
 
-/// Raw Bluetooth packet with metadata
+/// Raw Bluetooth packet with metadata for async processing.
+///
+/// Represents a single advertising packet received from a BLE device.
+/// Contains timing, signal, and raw data information for processing
+/// through the async scanner pipeline.
+///
+/// # Fields
+/// - `id`: Global sequence number for ordering
+/// - `adapter_id`: ID of the adapter that received the packet
+/// - `timestamp_ns`: Timestamp in nanoseconds since epoch
+/// - `mac_address`: MAC address of the advertising device
+/// - `rssi`: Signal strength in dBm
+/// - `phy`: Physical layer type (1M, 2M, Coded)
+/// - `channel`: Advertising channel (37, 38, 39)
+/// - `data`: Raw advertising data bytes
+/// - `packet_type`: Type of packet received
+/// - `is_connectable`: Whether device accepts connections
+/// - `is_scannable`: Whether device sends scan responses
+/// - `device_name`: Device name if available
+/// - `manufacturer_id`: Manufacturer ID if available
 #[derive(Debug, Clone)]
 pub struct Packet {
     /// Global sequence number
@@ -55,7 +74,16 @@ pub struct Packet {
     pub manufacturer_id: Option<u16>,
 }
 
-/// Type of Bluetooth packet
+/// Type of Bluetooth packet received.
+///
+/// Indicates the kind of advertising or inquiry packet that was captured.
+///
+/// - `BleAdvertisement`: Standard BLE advertising packet
+/// - `BleScanResponse`: Response to an active scan
+/// - `BleExtendedAdvertisement`: Extended BLE advertising (BT 5.0+)
+/// - `BrEdrInquiry`: Classic Bluetooth inquiry message
+/// - `BrEdrPage`: Classic Bluetooth page message
+/// - `Unknown`: Unrecognized packet type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PacketType {
     BleAdvertisement,
@@ -85,7 +113,26 @@ impl std::fmt::Display for PacketType {
     }
 }
 
-/// Scanner configuration
+/// Configuration for the async scanner.
+///
+/// Controls scanning behavior, channel capacity, batch processing,
+/// and memory limits for the async scanner pipeline.
+///
+/// # Fields
+/// - `adapter_selection`: Strategy for selecting Bluetooth adapter
+/// - `scan_duration`: Duration of each scan cycle
+/// - `num_cycles`: Number of cycles (0 = infinite)
+/// - `ble_enabled`: Enable BLE scanning
+/// - `classic_enabled`: Enable Classic Bluetooth (Linux only)
+/// - `use_extended`: Use extended advertising
+/// - `use_all_phys`: Use all PHYs (1M, 2M, Coded)
+/// - `active_scanning`: Request scan responses
+/// - `filter_duplicates`: Filter duplicate packets
+/// - `channel_capacity`: Maximum packets in channel
+/// - `batch_size`: Number of packets per DB write batch
+/// - `batch_timeout`: Timeout for batch writes
+/// - `max_packets_in_memory`: Maximum packets to keep in memory
+/// - `max_devices_tracked`: Maximum unique devices to track
 #[derive(Debug, Clone)]
 pub struct ScannerConfig {
     /// Adapter selection strategy
@@ -139,7 +186,16 @@ impl Default for ScannerConfig {
     }
 }
 
-/// Control commands for scanner
+/// Control commands for the scanner.
+///
+/// Commands sent through the control channel to modify scanner behavior.
+///
+/// - `Start`: Begin scanning
+/// - `Stop`: Stop scanning
+/// - `Pause`: Pause scanning temporarily
+/// - `Resume`: Resume paused scanning
+/// - `UpdateConfig`: Update scanner configuration
+/// - `GetMetrics`: Request current metrics snapshot
 #[derive(Debug, Clone)]
 pub enum ControlCommand {
     /// Start scanning
@@ -156,7 +212,21 @@ pub enum ControlCommand {
     GetMetrics,
 }
 
-/// Scanner metrics
+/// Scanner metrics for monitoring performance.
+///
+/// Tracks packet counts, errors, and performance statistics
+/// for the async scanner pipeline.
+///
+/// # Fields
+/// - `packets_received`: Total packets received
+/// - `packets_sent_to_db`: Packets written to database
+/// - `packets_dropped`: Packets dropped due to backpressure
+/// - `devices_discovered`: Unique devices found
+/// - `db_write_errors`: Database write failures
+/// - `channel_full_count`: Times channel was full
+/// - `start_time`: When scanner started
+/// - `uptime_seconds`: Time since start in seconds
+/// - `packets_per_second`: Current throughput
 #[derive(Debug, Clone, Default)]
 pub struct ScannerMetrics {
     pub packets_received: u64,
@@ -182,7 +252,15 @@ impl ScannerMetrics {
     }
 }
 
-/// Backpressure action when channel is full
+/// Action to take when channel is full (backpressure).
+///
+/// Controls how the scanner handles the case when the packet
+/// channel reaches capacity.
+///
+/// - `DropOldest`: Remove oldest packet to make room
+/// - `DropNewest`: Reject newest packet
+/// - `Block`: Wait until space available (not recommended)
+/// - `DropWithWarning`: Drop packet and log warning
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackpressureAction {
     /// Drop oldest packet
@@ -201,7 +279,15 @@ impl Default for BackpressureAction {
     }
 }
 
-/// Scanner state
+/// Current state of the scanner.
+///
+/// Represents the operational state of the async scanner.
+///
+/// - `Idle`: Scanner created but not started
+/// - `Scanning`: Actively scanning for devices
+/// - `Paused`: Scanning temporarily paused
+/// - `Stopped`: Scanning stopped
+/// - `Error`: Error occurred
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScannerState {
     Idle,
@@ -217,10 +303,22 @@ impl Default for ScannerState {
     }
 }
 
-/// Async scanner with channels
-/// 
-/// This is a builder-style struct that creates the channels and tasks.
-/// Use `spawn()` to create the actual runtime components.
+/// Async scanner with channels and backpressure.
+///
+/// Builder-style struct that creates channels and tasks for async scanning.
+/// Use `spawn()` to create the actual runtime components, or use the
+/// packet/control channels directly with `take_packet_sender()` etc.
+///
+/// # Fields
+/// - `config`: Scanner configuration
+/// - `packet_tx`: Sender for packet channel (optional after take)
+/// - `packet_rx`: Receiver for packet channel (optional after take)
+/// - `control_tx`: Sender for control channel (optional after take)
+/// - `control_rx`: Receiver for control channel (optional after take)
+/// - `metrics`: Scanner metrics (atomic, thread-safe)
+/// - `state`: Current scanner state
+/// - `running`: Atomic flag indicating if running
+/// - `packet_counter`: Global packet counter
 pub struct AsyncScanner {
     config: ScannerConfig,
     packet_tx: Option<mpsc::Sender<Packet>>,
@@ -234,7 +332,16 @@ pub struct AsyncScanner {
 }
 
 impl AsyncScanner {
-    /// Create new async scanner with channels
+    /// Creates a new async scanner with channels.
+    ///
+    /// Initializes channels with configured capacity and sets up
+    /// metrics and state tracking.
+    ///
+    /// # Arguments
+    /// * `config` - Scanner configuration
+    ///
+    /// # Returns
+    /// A new AsyncScanner instance
     pub fn new(config: ScannerConfig) -> Self {
         let (packet_tx, packet_rx) = mpsc::channel(config.channel_capacity);
         let (control_tx, control_rx) = watch::channel(ControlCommand::Start);
@@ -252,49 +359,95 @@ impl AsyncScanner {
         }
     }
 
-    /// Take the packet sender - can only be called once
+    /// Takes ownership of the packet sender channel.
+    ///
+    /// Can only be called once. After this, the scanner no longer
+    /// has access to send packets.
+    ///
+    /// # Returns
+    /// The packet sender, or None if already taken
     pub fn take_packet_sender(&mut self) -> Option<mpsc::Sender<Packet>> {
         self.packet_tx.take()
     }
 
-    /// Take the packet receiver - can only be called once
+    /// Takes ownership of the packet receiver channel.
+    ///
+    /// Can only be called once. After this, the scanner no longer
+    /// has access to receive packets.
+    ///
+    /// # Returns
+    /// The packet receiver, or None if already taken
     pub fn take_packet_receiver(&mut self) -> Option<mpsc::Receiver<Packet>> {
         self.packet_rx.take()
     }
 
-    /// Take the control sender - can only be called once
+    /// Takes ownership of the control sender channel.
+    ///
+    /// Can only be called once.
+    ///
+    /// # Returns
+    /// The control sender, or None if already taken
     pub fn take_control_sender(&mut self) -> Option<watch::Sender<ControlCommand>> {
         self.control_tx.take()
     }
 
-    /// Take the control receiver - can only be called once
+    /// Takes ownership of the control receiver channel.
+    ///
+    /// Can only be called once.
+    ///
+    /// # Returns
+    /// The control receiver, or None if already taken
     pub fn take_control_receiver(&mut self) -> Option<watch::Receiver<ControlCommand>> {
         self.control_rx.take()
     }
 
-    /// Get packet sender clone
+    /// Gets a clone of the packet sender for sending from multiple tasks.
+    ///
+    /// Unlike take_packet_sender(), this can be called multiple times.
+    ///
+    /// # Returns
+    /// Clone of packet sender, or None if already taken
     pub fn packet_sender(&self) -> Option<mpsc::Sender<Packet>> {
         self.packet_tx.as_ref().map(|tx| tx.clone())
     }
 
-    /// Get current metrics
+    /// Gets current scanner metrics.
+    ///
+    /// Returns a snapshot of current performance statistics including
+    /// packet counts, error counts, and throughput.
+    ///
+    /// # Returns
+    /// Current ScannerMetrics
     pub fn get_metrics(&self) -> ScannerMetrics {
         let mut m = self.metrics.lock().unwrap();
         m.packets_per_second = m.packets_per_second();
         m.clone()
     }
 
-    /// Get current state
+    /// Gets the current scanner state.
+    ///
+    /// # Returns
+    /// Current ScannerState (Idle, Scanning, Paused, Stopped, or Error)
     pub fn get_state(&self) -> ScannerState {
         *self.state.lock().unwrap()
     }
 
-    /// Check if running
+    /// Checks if the scanner is currently running.
+    ///
+    /// # Returns
+    /// True if scanner is in Scanning state
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::SeqCst)
     }
 
-    /// Start the scanner (sets state to Running)
+    /// Starts the scanner, transitioning to Scanning state.
+    ///
+    /// Initializes metrics start time and sets state to Scanning.
+    /// After calling start(), packets can be sent via send_packet().
+    ///
+    /// # Returns
+    /// * `Ok(())` - Scanner started successfully
+    /// * `Err(ScannerError::AlreadyRunning)` - Scanner already running
     pub fn start(&self) -> Result<(), ScannerError> {
         if self.running.load(Ordering::SeqCst) {
             return Err(ScannerError::AlreadyRunning);
@@ -319,7 +472,14 @@ impl AsyncScanner {
         Ok(())
     }
 
-    /// Stop the scanner
+    /// Stops the scanner, transitioning to Stopped state.
+    ///
+    /// Sends a Stop control command and updates state.
+    /// After calling stop(), packets cannot be sent.
+    ///
+    /// # Returns
+    /// * `Ok(())` - Scanner stopped successfully
+    /// * `Err(ScannerError::NotRunning)` - Scanner not running
     pub fn stop(&self) -> Result<(), ScannerError> {
         if !self.running.load(Ordering::SeqCst) {
             return Err(ScannerError::NotRunning);
@@ -341,7 +501,18 @@ impl AsyncScanner {
         Ok(())
     }
 
-    /// Send a packet (with backpressure handling)
+    /// Sends a packet through the channel with backpressure handling.
+    ///
+    /// If the channel is full, applies the configured backpressure
+    /// action (drops oldest by default) and updates metrics.
+    ///
+    /// # Arguments
+    /// * `packet` - Packet to send
+    ///
+    /// # Returns
+    /// * `Ok(())` - Packet sent (or dropped due to backpressure)
+    /// * `Err(ScannerError::NotRunning)` - Scanner not started
+    /// * `Err(ScannerError::ChannelClosed)` - Channel closed
     pub async fn send_packet(&self, packet: Packet) -> Result<(), ScannerError> {
         if !self.running.load(Ordering::SeqCst) {
             return Err(ScannerError::NotRunning);
@@ -378,7 +549,17 @@ impl AsyncScanner {
     }
 }
 
-/// Scanner errors
+/// Scanner errors.
+///
+/// Errors that can occur during async scanner operations.
+///
+/// - `AlreadyRunning`: Scanner already started
+/// - `NotRunning`: Scanner not started
+/// - `ChannelFull`: Channel at capacity
+/// - `ChannelClosed`: Channel closed
+/// - `Adapter`: Adapter-specific error
+/// - `Scan`: Scanning error
+/// - `Config`: Configuration error
 #[derive(Debug, thiserror::Error)]
 pub enum ScannerError {
     #[error("Scanner is already running")]

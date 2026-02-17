@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: rustfmt
+        name: cargo fmt (src)
+        entry: cargo fmt
+        language: system
+        types: [rust]
+        files: ^src/.*\.rs$

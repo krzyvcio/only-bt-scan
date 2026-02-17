@@ -1,8 +1,7 @@
 /// BLE UUID mappings for services, characteristics, and manufacturer IDs
-/// Data based on Bluetooth SIG Assigned Numbers (2026)
-/// Sources:
-/// - https://github.com/NordicSemiconductor/bluetooth-numbers-database
-/// - https://www.bluetooth.com/specifications/assigned-numbers/
+///
+/// Data based on Bluetooth SIG Assigned Numbers (2026).
+/// Provides lookup functions for known 128-bit services and manufacturer names.
 pub fn get_known_128bit_service(uuid: &str) -> Option<&'static str> {
     let uuid_upper = uuid.to_uppercase();
 
@@ -112,7 +111,15 @@ pub fn get_known_128bit_service(uuid: &str) -> Option<&'static str> {
     }
 }
 
-/// Check if a UUID matches the adopted base format and extract 16-bit part
+/// Get manufacturer name by company ID
+///
+/// Looks up the company name associated with a Bluetooth SIG company identifier.
+///
+/// # Arguments
+/// * `code` - 16-bit company identifier (e.g., 0x004C for Apple)
+///
+/// # Returns
+/// `Some(&str)` with the company name if found, `None` otherwise
 pub fn get_manufacturer_name(code: u16) -> Option<&'static str> {
     match code {
         // ===== Major Tech Companies =====
@@ -248,6 +255,15 @@ pub fn get_manufacturer_name(code: u16) -> Option<&'static str> {
 }
 
 /// Check if a byte array matches the adopted 16-bit UUID base
+///
+/// The Bluetooth SIG adopted base for 16-bit UUIDs is:
+/// 0000XXXX-0000-1000-8000-00805F9B34FB
+///
+/// # Arguments
+/// * `uuid_bytes` - 16-byte array representing a 128-bit UUID
+///
+/// # Returns
+/// `true` if the UUID matches the adopted base format
 pub fn is_adopted_16bit_uuid(uuid_bytes: &[u8; 16]) -> bool {
     const ADOPTED_BASE: [u8; 12] = [
         0x00, 0x00, 0x10, 0x00, // 3rd-4th bytes (little-endian)
@@ -260,6 +276,14 @@ pub fn is_adopted_16bit_uuid(uuid_bytes: &[u8; 16]) -> bool {
 }
 
 /// Extract 16-bit UUID from a 128-bit adopted format
+///
+/// Converts a 128-bit UUID in adopted format to its 16-bit representation.
+///
+/// # Arguments
+/// * `uuid_bytes` - 16-byte array representing a 128-bit UUID in adopted format
+///
+/// # Returns
+/// `Some(u16)` with the extracted UUID if it matches the adopted format, `None` otherwise
 pub fn extract_16bit_from_uuid(uuid_bytes: &[u8; 16]) -> Option<u16> {
     if is_adopted_16bit_uuid(uuid_bytes) {
         Some(u16::from_le_bytes([uuid_bytes[0], uuid_bytes[1]]))
@@ -269,6 +293,15 @@ pub fn extract_16bit_from_uuid(uuid_bytes: &[u8; 16]) -> Option<u16> {
 }
 
 /// Check if a service UUID indicates LE Audio support
+///
+/// LE Audio services were introduced in Bluetooth 5.2 and include
+/// audio streaming, volume control, and hearing aid features.
+///
+/// # Arguments
+/// * `uuid16` - 16-bit service UUID to check
+///
+/// # Returns
+/// `true` if the UUID is an LE Audio service
 pub fn is_le_audio_service(uuid16: u16) -> bool {
     matches!(
         uuid16,
@@ -284,6 +317,15 @@ pub fn is_le_audio_service(uuid16: u16) -> bool {
 }
 
 /// Check if a service UUID indicates fitness/wearable capability
+///
+/// These services are commonly used in fitness trackers, smartwatches,
+/// and health monitoring devices.
+///
+/// # Arguments
+/// * `uuid16` - 16-bit service UUID to check
+///
+/// # Returns
+/// `true` if the UUID is a fitness/wearable service
 pub fn is_fitness_wearable_service(uuid16: u16) -> bool {
     matches!(
         uuid16,
@@ -301,6 +343,15 @@ pub fn is_fitness_wearable_service(uuid16: u16) -> bool {
 }
 
 /// Check if a service UUID indicates smart device/IoT capability
+///
+/// These services are commonly used in smart home devices, sensors,
+/// and IoT applications.
+///
+/// # Arguments
+/// * `uuid16` - 16-bit service UUID to check
+///
+/// # Returns
+/// `true` if the UUID is a smart home/IoT service
 pub fn is_iot_smart_service(uuid16: u16) -> bool {
     matches!(
         uuid16,
@@ -316,6 +367,14 @@ pub fn is_iot_smart_service(uuid16: u16) -> bool {
 }
 
 /// Check if a service suggests Bluetooth 5.0+ features
+///
+/// These services were introduced or significantly updated in Bluetooth 5.0.
+///
+/// # Arguments
+/// * `uuid16` - 16-bit service UUID to check
+///
+/// # Returns
+/// `true` if the UUID is a BT 5.0+ service
 pub fn is_bt50_or_later_service(uuid16: u16) -> bool {
     matches!(
         uuid16,
@@ -327,6 +386,15 @@ pub fn is_bt50_or_later_service(uuid16: u16) -> bool {
 }
 
 /// Check if a service suggests Bluetooth 5.2+ features (LE Audio)
+///
+/// LE Audio services were introduced in Bluetooth 5.2, enabling
+/// new audio use cases like hearing aids and broadcast audio.
+///
+/// # Arguments
+/// * `uuid16` - 16-bit service UUID to check
+///
+/// # Returns
+/// `true` if the UUID is a BT 5.2+ LE Audio service
 pub fn is_bt52_or_later_service(uuid16: u16) -> bool {
     matches!(
         uuid16,

@@ -625,16 +625,19 @@ fn update_last_report_time(conn: &rusqlite::Connection) -> Result<(), rusqlite::
 
 pub async fn run_periodic_report_task() -> Result<(), String> {
     eprintln!("[TELEGRAM] run_periodic_report_task started");
-    
+
     if !is_enabled() {
         eprintln!("[TELEGRAM] Not enabled, exiting");
         return Ok(());
     }
 
     eprintln!("[TELEGRAM] Enabled, entering loop");
-    
+
     loop {
-        eprintln!("[TELEGRAM] Loop iteration, sleeping for {} seconds", PERIODIC_REPORT_INTERVAL_SECS);
+        eprintln!(
+            "[TELEGRAM] Loop iteration, sleeping for {} seconds",
+            PERIODIC_REPORT_INTERVAL_SECS
+        );
         tokio::time::sleep(tokio::time::Duration::from_secs(
             PERIODIC_REPORT_INTERVAL_SECS,
         ))

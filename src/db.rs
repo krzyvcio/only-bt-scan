@@ -6,7 +6,27 @@ use crate::db_frames;
 
 const DB_PATH: &str = "bluetooth_scan.db";
 
-/// Parsed BLE Advertisement Data struktura
+/// Parsed BLE Advertisement Data structure.
+///
+/// Contains extracted fields from BLE advertising data including:
+/// - Local name (complete/short)
+/// - TX Power Level
+/// - Flags
+/// - Appearance
+/// - Service UUIDs
+/// - Manufacturer name and data
+/// - Temporal metrics (frame interval, packets per second)
+///
+/// # Fields
+/// - `local_name` - Complete local name from AD type 0x09
+/// - `tx_power` - TX Power Level from AD type 0x0A
+/// - `flags` - Parsed flags from AD type 0x01
+/// - `appearance` - Appearance from AD type 0x19
+/// - `service_uuids` - List of advertised service UUIDs
+/// - `manufacturer_name` - Company name from manufacturer data
+/// - `manufacturer_data` - Raw manufacturer data as hex
+/// - `frame_interval_ms` - Time since last frame from same device
+/// - `frames_per_second` - Transmission rate for this device
 #[derive(Debug, Clone, Default)]
 pub struct ParsedAdvertisementData {
     pub local_name: Option<String>,
@@ -22,8 +42,16 @@ pub struct ParsedAdvertisementData {
     pub frames_per_second: Option<f32>, // Rate this device is transmitting
 }
 
-/// Get last advertisement data for a device and parse it
-/// WITH frame interval timing (millisecond precision)
+/// Gets last advertisement data for a device and parses it.
+///
+/// Calculates frame interval timing with millisecond precision by comparing
+/// the last two frames from the same device.
+///
+/// # Arguments
+/// * `mac_address` - MAC address of the device
+///
+/// # Returns
+/// ParsedAdvertisementData - Parsed advertising data with timing metrics
 pub fn get_parsed_advertisement_with_timing(mac_address: &str) -> ParsedAdvertisementData {
     if let Ok(conn) = Connection::open(DB_PATH) {
         // Get last 2 frames for this device to calculate interval
@@ -68,9 +96,24 @@ pub fn get_parsed_advertisement_with_timing(mac_address: &str) -> ParsedAdvertis
     ParsedAdvertisementData::default()
 }
 
-/// Parse BLE Advertisement Data from hex string
+/// Parses BLE Advertisement Data from hex string.
+///
 /// Format: Length-Type-Value (LTV) frames
-/// 1eff060001092022... = 1e(len) ff(type=mfg) 0600(mfg_id=Microsoft) 01092022...(data)
+/// Example: "1eff060001092022..." = 1e(len) ff(type=mfg) 0600(mfg_id=Microsoft) 01092022...(data)
+///
+/// Extracts the following AD types:
+/// - 0x01: Flags
+/// - 0x08/0x09: Incomplete/Complete Local Name
+/// - 0x0A: TX Power Level
+/// - 0x19: Appearance
+/// - 0x06/0x07: Incomplete/Complete 128-bit Service UUIDs
+/// - 0xFF: Manufacturer Specific Data
+///
+/// # Arguments
+/// * `hex_data` - Hex string of raw advertising data
+///
+/// # Returns
+/// ParsedAdvertisementData - Extracted fields from advertising data
 pub fn parse_advertisement_data(hex_data: &str) -> ParsedAdvertisementData {
     let mut result = ParsedAdvertisementData::default();
 
@@ -378,6 +421,34 @@ fn parse_device_type(major: u8, minor: u8) -> Option<String> {
     }
 }
 
+/// Represents a scanned Bluetooth device from database queries.
+///
+/// This struct aggregates all device information including advertising data,
+/// security details, and device class information.
+///
+/// # Fields
+/// - `mac_address` - Unique MAC address
+/// - `name` - Device name (from advertising or GATT)
+/// - `rssi` - Current signal strength
+/// - `first_seen` - First detection timestamp
+/// - `last_seen` - Last detection timestamp
+/// - `manufacturer_id` - Bluetooth SIG company ID
+/// - `manufacturer_name` - Company name
+/// - `mac_type` - Public, Random, or RPA
+/// - `is_rpa` - Is Random Private Address
+/// - `security_level` - Security level (e.g., "Secure Connections")
+/// - `pairing_method` - Pairing method used
+/// - `is_authenticated` - Whether authenticated
+/// - `device_class` - Bluetooth device class
+/// - `service_classes` - Service classes
+/// - `device_type` - Device type string
+/// - `ad_flags` - Advertising flags
+/// - `ad_local_name` - Advertised local name
+/// - `ad_tx_power` - Advertised TX power
+/// - `ad_appearance` - Advertised appearance
+/// - `ad_service_uuids` - Advertised services
+/// - `ad_manufacturer_data` - Manufacturer data
+/// - `ad_service_data` - Service data
 #[derive(Debug, Clone)]
 pub struct ScannedDevice {
     pub mac_address: String,
@@ -433,6 +504,13 @@ impl Default for ScannedDevice {
     }
 }
 
+/// Represents a BLE GATT service discovered from a device.
+///
+/// # Fields
+/// - `device_id` - Foreign key to devices table
+/// - `uuid16` - 16-bit UUID (if standard)
+/// - `uuid128` - 128-bit UUID (if custom)
+/// - `name` - Human-readable service name
 #[derive(Debug, Clone)]
 pub struct BleService {
     pub device_id: i32,
@@ -441,7 +519,22 @@ pub struct BleService {
     pub name: Option<String>,
 }
 
-/// Initialize the database with required tables
+/// Initializes the database with required tables.
+///
+/// Creates the following tables:
+/// - devices: Main device storage
+/// - ble_services: GATT services
+/// - scan_history: RSSI history per scan
+/// - telemetry_snapshots: Global telemetry over time
+/// - device_telemetry_history: Per-device telemetry
+/// - gatt_services: Discovered GATT services
+/// - gatt_characteristics: GATT characteristics
+/// - scan_counter: Global scan counter
+///
+/// Also initializes frame storage via db_frames::init_frame_storage.
+///
+/// # Returns
+/// SqliteResult<()> - Ok on success, Error on failure
 pub fn init_database() -> SqliteResult<()> {
     let conn = Connection::open(DB_PATH)?;
 
@@ -684,7 +777,18 @@ pub fn init_database() -> SqliteResult<()> {
     Ok(())
 }
 
-/// Insert or update a scanned device
+/// Inserts a new device or updates an existing one.
+///
+/// If the device exists (by MAC address), updates RSSI, last_seen timestamp,
+/// and increments scan count. Otherwise inserts a new record.
+///
+/// Also updates the global RSSI trend analyzer.
+///
+/// # Arguments
+/// * `device` - ScannedDevice to insert or update
+///
+/// # Returns
+/// SqliteResult<i32> - Device ID (existing or newly created)
 pub fn insert_or_update_device(device: &ScannedDevice) -> SqliteResult<i32> {
     let conn = Connection::open(DB_PATH)?;
     let now = Utc::now();
@@ -771,7 +875,18 @@ pub fn insert_or_update_device(device: &ScannedDevice) -> SqliteResult<i32> {
     Ok(device_id)
 }
 
-/// Insert BLE service for a device
+/// Inserts a BLE GATT service for a device.
+///
+/// Uses INSERT OR IGNORE to avoid duplicates.
+///
+/// # Arguments
+/// * `device_id` - Foreign key to devices table
+/// * `uuid16` - 16-bit UUID (optional)
+/// * `uuid128` - 128-bit UUID (optional)
+/// * `name` - Service name (optional)
+///
+/// # Returns
+/// SqliteResult<()> - Ok on success
 pub fn insert_ble_service(
     device_id: i32,
     uuid16: Option<u16>,
@@ -789,7 +904,12 @@ pub fn insert_ble_service(
     Ok(())
 }
 
-/// Get or create global scan counter
+/// Gets or creates the global scan counter.
+///
+/// Increments and returns the counter for tracking scan cycles.
+///
+/// # Returns
+/// SqliteResult<i32> - Current scan number
 pub fn get_next_scan_number() -> SqliteResult<i32> {
     let conn = Connection::open(DB_PATH)?;
 
@@ -818,7 +938,17 @@ pub fn get_next_scan_number() -> SqliteResult<i32> {
     Ok(new_count)
 }
 
-/// Record RSSI value in scan history with scan number
+/// Records an RSSI value in scan history with scan number.
+///
+/// Used for tracking signal strength over time per device.
+///
+/// # Arguments
+/// * `device_id` - Device ID in database
+/// * `rssi` - RSSI value in dBm
+/// * `scan_number` - Current scan cycle number
+///
+/// # Returns
+/// SqliteResult<()> - Ok on success
 pub fn record_scan_rssi(device_id: i32, rssi: i8, scan_number: i32) -> SqliteResult<()> {
     let conn = Connection::open(DB_PATH)?;
     let now = Utc::now();
@@ -832,7 +962,12 @@ pub fn record_scan_rssi(device_id: i32, rssi: i8, scan_number: i32) -> SqliteRes
     Ok(())
 }
 
-/// Get all devices
+/// Retrieves all devices from the database.
+///
+/// Returns devices ordered by last_seen descending.
+///
+/// # Returns
+/// SqliteResult<Vec<ScannedDevice>> - List of all devices
 pub fn get_all_devices() -> SqliteResult<Vec<ScannedDevice>> {
     let conn = Connection::open(DB_PATH)?;
     let mut stmt = conn.prepare(
@@ -865,7 +1000,13 @@ pub fn get_all_devices() -> SqliteResult<Vec<ScannedDevice>> {
     devices.collect()
 }
 
-/// Get device by MAC address
+/// Gets a device by MAC address.
+///
+/// # Arguments
+/// * `mac_address` - MAC address to look up
+///
+/// # Returns
+/// SqliteResult<Option<ScannedDevice>> - Device if found, None otherwise
 pub fn get_device(mac_address: &str) -> SqliteResult<Option<ScannedDevice>> {
     let conn = Connection::open(DB_PATH)?;
     let mut stmt = conn.prepare(
@@ -900,7 +1041,13 @@ pub fn get_device(mac_address: &str) -> SqliteResult<Option<ScannedDevice>> {
     Ok(device)
 }
 
-/// Get BLE services for a device
+/// Gets BLE services for a device.
+///
+/// # Arguments
+/// * `device_id` - Device ID to get services for
+///
+/// # Returns
+/// SqliteResult<Vec<BleService>> - List of GATT services
 pub fn get_device_services(device_id: i32) -> SqliteResult<Vec<BleService>> {
     let conn = Connection::open(DB_PATH)?;
     let mut stmt = conn.prepare(
@@ -922,7 +1069,13 @@ pub fn get_device_services(device_id: i32) -> SqliteResult<Vec<BleService>> {
     services.collect()
 }
 
-/// Get devices found in the last N minutes
+/// Gets devices found in the last N minutes.
+///
+/// # Arguments
+/// * `minutes` - Number of minutes to look back
+///
+/// # Returns
+/// SqliteResult<Vec<ScannedDevice>> - List of recently seen devices
 pub fn get_recent_devices(minutes: u32) -> SqliteResult<Vec<ScannedDevice>> {
     let conn = Connection::open(DB_PATH)?;
     let mut stmt = conn.prepare(
@@ -957,13 +1110,22 @@ pub fn get_recent_devices(minutes: u32) -> SqliteResult<Vec<ScannedDevice>> {
     devices.collect()
 }
 
-/// Get device count
+/// Gets the total device count.
+///
+/// # Returns
+/// SqliteResult<i32> - Total number of devices in database
 pub fn get_device_count() -> SqliteResult<i32> {
     let conn = Connection::open(DB_PATH)?;
     conn.query_row("SELECT COUNT(*) FROM devices", [], |row| row.get(0))
 }
 
-/// Clear old scan history (older than X days)
+/// Clears old scan history entries.
+///
+/// # Arguments
+/// * `days` - Delete entries older than this many days
+///
+/// # Returns
+/// SqliteResult<usize> - Number of deleted records
 pub fn cleanup_old_scans(days: u32) -> SqliteResult<usize> {
     let conn = Connection::open(DB_PATH)?;
     let time_filter = format!("-{} days", days);
@@ -978,6 +1140,15 @@ pub fn cleanup_old_scans(days: u32) -> SqliteResult<usize> {
 // TELEMETRY PERSISTENCE FUNCTIONS (v0.4.0+)
 // ═══════════════════════════════════════════════════════════════
 
+/// Telemetry snapshot for overall statistics.
+///
+/// Captured periodically (every 5 minutes) to track system-wide metrics.
+///
+/// # Fields
+/// - `id` - Primary key
+/// - `snapshot_timestamp` - When the snapshot was taken
+/// - `total_packets` - Total packets since last snapshot
+/// - `total_devices` - Total unique devices seen
 #[derive(Debug, Clone)]
 pub struct TelemetrySnapshot {
     pub id: i32,
@@ -986,6 +1157,18 @@ pub struct TelemetrySnapshot {
     pub total_devices: i32,
 }
 
+/// Per-device telemetry record.
+///
+/// Captured as part of a telemetry snapshot for historical analysis.
+///
+/// # Fields
+/// - `id` - Primary key
+/// - `snapshot_id` - Foreign key to telemetry_snapshots
+/// - `device_mac` - Device MAC address
+/// - `packet_count` - Packets from this device
+/// - `avg_rssi` - Average RSSI
+/// - `min_latency_ms` - Minimum packet latency
+/// - `max_latency_ms` - Maximum packet latency
 #[derive(Debug, Clone)]
 pub struct DeviceTelemetryRecord {
     pub id: i32,
@@ -997,7 +1180,13 @@ pub struct DeviceTelemetryRecord {
     pub max_latency_ms: i32,
 }
 
-/// RSSI Trend point - for signal quality trend visualization
+/// RSSI Trend point - for signal quality trend visualization.
+///
+/// # Fields
+/// - `timestamp` - When the measurement was taken
+/// - `avg_rssi` - Average RSSI at this point
+/// - `packet_count` - Number of packets in this period
+/// - `signal_quality` - Quality category: "excellent", "good", "fair", "poor", "very_poor"
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RssiTrendPoint {
     pub timestamp: DateTime<Utc>,
@@ -1006,7 +1195,14 @@ pub struct RssiTrendPoint {
     pub signal_quality: String, // "excellent", "good", "fair", "poor", "very_poor"
 }
 
-/// Raw RSSI measurement from advertisement frame
+/// Raw RSSI measurement from advertisement frame.
+///
+/// Individual RSSI reading from a single packet.
+///
+/// # Fields
+/// - `timestamp` - When the packet was received
+/// - `rssi` - RSSI value in dBm
+/// - `signal_quality` - Quality category string
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RssiMeasurement {
     pub timestamp: DateTime<Utc>,
@@ -1014,7 +1210,17 @@ pub struct RssiMeasurement {
     pub signal_quality: String,
 }
 
-/// Save telemetry snapshot to database
+/// Saves telemetry snapshot to database.
+///
+/// Called periodically (every 5 minutes) to persist system-wide metrics.
+///
+/// # Arguments
+/// * `snapshot_timestamp` - When the snapshot was captured
+/// * `total_packets` - Total packet count
+/// * `total_devices` - Total unique device count
+///
+/// # Returns
+/// SqliteResult<i32> - Snapshot ID for linking device telemetry
 pub fn save_telemetry_snapshot(
     snapshot_timestamp: DateTime<Utc>,
     total_packets: i32,
@@ -1032,7 +1238,18 @@ pub fn save_telemetry_snapshot(
     Ok(snapshot_id)
 }
 
-/// Save device telemetry for a snapshot
+/// Saves device telemetry for a snapshot.
+///
+/// # Arguments
+/// * `snapshot_id` - Parent snapshot ID
+/// * `device_mac` - Device MAC address
+/// * `packet_count` - Number of packets from device
+/// * `avg_rssi` - Average RSSI
+/// * `min_latency_ms` - Minimum latency
+/// * `max_latency_ms` - Maximum latency
+///
+/// # Returns
+/// SqliteResult<()> - Ok on success
 pub fn save_device_telemetry(
     snapshot_id: i32,
     device_mac: &str,
@@ -1060,7 +1277,13 @@ pub fn save_device_telemetry(
     Ok(())
 }
 
-/// Get telemetry snapshots from last N hours
+/// Gets telemetry snapshots from the last N hours.
+///
+/// # Arguments
+/// * `hours` - Number of hours to look back
+///
+/// # Returns
+/// SqliteResult<Vec<TelemetrySnapshot>> - List of snapshots
 pub fn get_telemetry_snapshots(hours: u32) -> SqliteResult<Vec<TelemetrySnapshot>> {
     let conn = Connection::open(DB_PATH)?;
     let time_filter = format!("-{} hours", hours);
@@ -1091,7 +1314,13 @@ pub fn get_telemetry_snapshots(hours: u32) -> SqliteResult<Vec<TelemetrySnapshot
     snapshots.collect()
 }
 
-/// Get device telemetry for a snapshot
+/// Gets device telemetry for a specific snapshot.
+///
+/// # Arguments
+/// * `snapshot_id` - Snapshot ID to query
+///
+/// # Returns
+/// SqliteResult<Vec<DeviceTelemetryRecord>> - Device telemetry records
 pub fn get_snapshot_device_telemetry(snapshot_id: i32) -> SqliteResult<Vec<DeviceTelemetryRecord>> {
     let conn = Connection::open(DB_PATH)?;
 
@@ -1117,7 +1346,13 @@ pub fn get_snapshot_device_telemetry(snapshot_id: i32) -> SqliteResult<Vec<Devic
     records.collect()
 }
 
-/// Delete telemetry snapshots older than X days
+/// Deletes telemetry snapshots older than X days.
+///
+/// # Arguments
+/// * `days` - Delete snapshots older than this many days
+///
+/// # Returns
+/// SqliteResult<usize> - Number of deleted snapshots
 pub fn cleanup_old_telemetry(days: u32) -> SqliteResult<usize> {
     let conn = Connection::open(DB_PATH)?;
     let time_filter = format!("-{} days", days);
@@ -1128,8 +1363,21 @@ pub fn cleanup_old_telemetry(days: u32) -> SqliteResult<usize> {
     )
 }
 
-/// Insert advertisement frame (for real-time HCI capture)
-/// Called directly from HCI sniffer task
+/// Inserts an advertisement frame (for real-time HCI capture).
+///
+/// Called directly from HCI sniffer task. Creates device if doesn't exist.
+///
+/// # Arguments
+/// * `mac_address` - Device MAC address
+/// * `rssi` - Signal strength in dBm
+/// * `advertising_data_hex` - Raw advertising data as hex string
+/// * `phy` - Physical layer (LE 1M, LE 2M, etc.)
+/// * `channel` - BLE channel (37-39)
+/// * `frame_type` - Advertisement type
+/// * `timestamp_ms` - Timestamp in milliseconds since epoch
+///
+/// # Returns
+/// SqliteResult<()> - Ok on success
 pub fn insert_advertisement_frame(
     mac_address: &str,
     rssi: i8,
@@ -1192,8 +1440,16 @@ pub fn insert_advertisement_frame(
     Ok(())
 }
 
-/// Insert advertisement frame using pooled connection
-/// This is more efficient than opening a new connection each time
+/// Inserts advertisement frame using pooled connection.
+///
+/// More efficient than opening a new connection each time.
+/// Falls back to non-pooled version if pool not available.
+///
+/// # Arguments
+/// Same as insert_advertisement_frame
+///
+/// # Returns
+/// SqliteResult<()> - Ok on success
 pub fn insert_advertisement_frame_pooled(
     mac_address: &str,
     rssi: i8,
@@ -1297,7 +1553,13 @@ fn insert_advertisement_frame_inner(
     Ok(())
 }
 
-/// Get device by MAC using pooled connection
+/// Gets a device by MAC using pooled connection.
+///
+/// # Arguments
+/// * `mac_address` - MAC address to look up
+///
+/// # Returns
+/// SqliteResult<Option<ScannedDevice>> - Device if found
 pub fn get_device_pooled(mac_address: &str) -> SqliteResult<Option<ScannedDevice>> {
     let pool = crate::db_pool::get_pool();
     if let Some(pool) = pool {
@@ -1338,7 +1600,10 @@ fn get_device_inner(conn: &Connection, mac_address: &str) -> SqliteResult<Option
     .optional()
 }
 
-/// Get all devices using pooled connection
+/// Gets all devices using pooled connection.
+///
+/// # Returns
+/// SqliteResult<Vec<ScannedDevice>> - List of all devices
 pub fn get_all_devices_pooled() -> SqliteResult<Vec<ScannedDevice>> {
     let pool = crate::db_pool::get_pool();
     if let Some(pool) = pool {
@@ -1380,7 +1645,10 @@ fn get_all_devices_inner(conn: &Connection) -> SqliteResult<Vec<ScannedDevice>> 
     devices.collect()
 }
 
-/// Get device count using pooled connection
+/// Gets device count using pooled connection.
+///
+/// # Returns
+/// SqliteResult<i32> - Total device count
 pub fn get_device_count_pooled() -> SqliteResult<i32> {
     let pool = crate::db_pool::get_pool();
     if let Some(pool) = pool {
@@ -1390,7 +1658,13 @@ pub fn get_device_count_pooled() -> SqliteResult<i32> {
     }
 }
 
-/// Get recent devices using pooled connection
+/// Gets recent devices using pooled connection.
+///
+/// # Arguments
+/// * `minutes` - Number of minutes to look back
+///
+/// # Returns
+/// SqliteResult<Vec<ScannedDevice>> - List of recent devices
 pub fn get_recent_devices_pooled(minutes: u32) -> SqliteResult<Vec<ScannedDevice>> {
     let pool = crate::db_pool::get_pool();
     if let Some(pool) = pool {
@@ -1451,8 +1725,16 @@ fn get_signal_quality(rssi: f64) -> String {
     }
 }
 
-/// Get RSSI trend for a specific device over time
-/// Returns all telemetry snapshots for the device, showing how signal quality changes
+/// Gets RSSI trend for a specific device over time.
+///
+/// Returns all telemetry snapshots for the device, showing how signal quality changes.
+///
+/// # Arguments
+/// * `device_mac` - Device MAC address
+/// * `hours` - Number of hours to look back
+///
+/// # Returns
+/// SqliteResult<Vec<RssiTrendPoint>> - Trend data points
 pub fn get_device_rssi_trend(device_mac: &str, hours: u32) -> SqliteResult<Vec<RssiTrendPoint>> {
     let conn = Connection::open(DB_PATH)?;
     let time_filter = format!("-{} hours", hours);
@@ -1487,7 +1769,14 @@ pub fn get_device_rssi_trend(device_mac: &str, hours: u32) -> SqliteResult<Vec<R
     trend_points.collect()
 }
 
-/// Get RSSI trend using pooled connection
+/// Gets RSSI trend using pooled connection.
+///
+/// # Arguments
+/// * `device_mac` - Device MAC address
+/// * `hours` - Number of hours to look back
+///
+/// # Returns
+/// SqliteResult<Vec<RssiTrendPoint>> - Trend data points
 pub fn get_device_rssi_trend_pooled(
     device_mac: &str,
     hours: u32,
@@ -1500,8 +1789,17 @@ pub fn get_device_rssi_trend_pooled(
     }
 }
 
-/// Get last N raw RSSI measurements from advertisement frames
-/// Returns up to `limit` most recent RSSI readings for a device
+/// Gets last N raw RSSI measurements from advertisement frames.
+///
+/// Returns up to `limit` most recent RSSI readings for a device.
+/// Results are in chronological order (oldest first).
+///
+/// # Arguments
+/// * `device_mac` - Device MAC address
+/// * `limit` - Maximum number of measurements to return
+///
+/// # Returns
+/// SqliteResult<Vec<RssiMeasurement>> - RSSI measurements
 pub fn get_raw_rssi_measurements(
     device_mac: &str,
     limit: u32,
@@ -1540,7 +1838,13 @@ pub fn get_raw_rssi_measurements(
     Ok(result)
 }
 
-/// Get RSSI measurements from last 24 hours
+/// Gets RSSI measurements from the last 24 hours.
+///
+/// # Arguments
+/// * `device_mac` - Device MAC address
+///
+/// # Returns
+/// SqliteResult<Vec<RssiMeasurement>> - RSSI measurements
 pub fn get_raw_rssi_measurements_24h(device_mac: &str) -> SqliteResult<Vec<RssiMeasurement>> {
     let conn = Connection::open(DB_PATH)?;
 
@@ -1574,7 +1878,14 @@ pub fn get_raw_rssi_measurements_24h(device_mac: &str) -> SqliteResult<Vec<RssiM
     Ok(result)
 }
 
-/// Get last N raw RSSI measurements using pooled connection
+/// Gets last N raw RSSI measurements using pooled connection.
+///
+/// # Arguments
+/// * `device_mac` - Device MAC address
+/// * `limit` - Maximum number of measurements
+///
+/// # Returns
+/// SqliteResult<Vec<RssiMeasurement>> - RSSI measurements
 pub fn get_raw_rssi_measurements_pooled(
     device_mac: &str,
     limit: u32,

@@ -16,7 +16,27 @@ use crate::db::{self, ScannedDevice};
 use btleplug::api::{Central, Manager, Peripheral};
 use btleplug::platform::Manager as PlatformManager;
 
-/// Zeskanowane urządzenie Bluetooth (ujednolicony format)
+/// Bluetooth device in unified format containing all scanned device information.
+///
+/// # Fields
+/// - `mac_address`: Unique MAC address of the device
+/// - `name`: Device name from advertising data
+/// - `rssi`: Signal strength in dBm
+/// - `device_type`: Type of Bluetooth device (BLE only, BR/EDR, or Dual Mode)
+/// - `manufacturer_id`: Company identifier from manufacturer data
+/// - `manufacturer_name`: Human-readable manufacturer name
+/// - `manufacturer_data`: Raw manufacturer-specific data
+/// - `is_connectable`: Whether device accepts connections
+/// - `services`: List of advertised BLE services
+/// - `first_detected_ns`: Timestamp of first detection (nanoseconds since epoch)
+/// - `last_detected_ns`: Timestamp of last detection (nanoseconds since epoch)
+/// - `response_time_ms`: Time between first and last detection in milliseconds
+/// - `detected_bt_version`: Detected Bluetooth version from services
+/// - `supported_features`: List of supported Bluetooth features
+/// - `mac_type`: Type of MAC address (public, random, etc.)
+/// - `is_rpa`: Whether address is a resolvable private address
+/// - `security_level`: Detected security level
+/// - `pairing_method`: Method used for pairing if any
 #[derive(Debug, Clone)]
 pub struct BluetoothDevice {
     pub mac_address: String,
@@ -45,7 +65,11 @@ pub struct BluetoothDevice {
     pub pairing_method: Option<String>,
 }
 
-/// Typ urządzenia Bluetooth
+/// Type of Bluetooth device indicating supported radio technologies.
+///
+/// - `BleOnly`: Device supports only BLE (Low Energy)
+/// - `BrEdr`: Device supports only Classic Bluetooth (BR/EDR)
+/// - `DualMode`: Device supports both BLE and Classic Bluetooth
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DeviceType {
     BleOnly,
@@ -53,7 +77,12 @@ pub enum DeviceType {
     DualMode,
 }
 
-/// Informacje o usłudze BLE
+/// Information about a BLE service advertised by a device.
+///
+/// # Fields
+/// - `uuid16`: 16-bit UUID (e.g., 0x180D for Heart Rate)
+/// - `uuid128`: 128-bit UUID in string format
+/// - `name`: Human-readable service name if known
 #[derive(Debug, Clone)]
 pub struct ServiceInfo {
     pub uuid16: Option<u16>,
@@ -91,7 +120,13 @@ impl Default for BluetoothDevice {
     }
 }
 
-/// Konfiguracja skanera
+/// Configuration for Bluetooth scanning operations.
+///
+/// # Fields
+/// - `scan_duration`: Duration of each scan cycle
+/// - `num_cycles`: Number of scan cycles to perform
+/// - `use_ble`: Enable BLE scanning
+/// - `use_bredr`: Enable Classic Bluetooth scanning (Linux only)
 #[derive(Debug, Clone)]
 pub struct ScanConfig {
     pub scan_duration: Duration,
@@ -113,17 +148,45 @@ impl Default for ScanConfig {
     }
 }
 
-/// Główny skaner Bluetooth
+/// Main Bluetooth scanner for discovering BLE and Classic Bluetooth devices.
+///
+/// Uses btleplug for cross-platform BLE scanning and supports BR/EDR on Linux.
+/// Coordinates multiple scan methods including standard scanning, advanced
+/// service discovery, and raw HCI access.
+///
+/// # Fields
+/// - `config`: Scan configuration parameters
 pub struct BluetoothScanner {
     config: ScanConfig,
 }
 
 impl BluetoothScanner {
+    /// Creates a new BluetoothScanner with the given configuration.
+    ///
+    /// # Arguments
+    /// * `config` - Scan configuration containing duration, cycles, and options
+    ///
+    /// # Returns
+    /// A new BluetoothScanner instance
     pub fn new(config: ScanConfig) -> Self {
         Self { config }
     }
 
-    /// Uruchamia pełne skanowanie (BLE + opcjonalne BR/EDR)
+    /// Runs a full Bluetooth scan using configured methods (BLE + optional BR/EDR).
+    ///
+    /// Performs multiple scan cycles as configured, collecting all discovered devices.
+    /// Devices are merged across cycles keeping the best RSSI and earliest first detection.
+    ///
+    /// # Returns
+    /// * `Ok(Vec<BluetoothDevice>)` - List of discovered devices
+    /// * `Err(Box<dyn std::error::Error>)` - Error during scanning
+    ///
+    /// # Example
+    /// ```ignore
+    /// let config = ScanConfig::default();
+    /// let scanner = BluetoothScanner::new(config);
+    /// let devices = scanner.run_scan().await?;
+    /// ```
     pub async fn run_scan(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         info!(
             "Starting Bluetooth scan with {} cycles",
@@ -366,8 +429,17 @@ impl BluetoothScanner {
         Ok(all_devices)
     }
 
-    /// Uruchamia wszystkie 4 metody skanowania jednocześnie
-    /// Metody: 1) btleplug BLE, 2) BR-EDR (Linux), 3) Zaawansowany HCI, 4) Raw sniffing
+    /// Runs all 4 scanning methods concurrently for maximum device detection.
+    ///
+    /// Methods: 1) btleplug BLE, 2) BR-EDR (Linux), 3) Advanced HCI, 4) Raw sniffing
+    ///
+    /// Each method runs in parallel and results are merged by MAC address.
+    /// This approach maximizes discovery as some devices may only be visible
+    /// through specific scanning methods.
+    ///
+    /// # Returns
+    /// * `Ok(Vec<BluetoothDevice>)` - List of all unique discovered devices
+    /// * `Err(Box<dyn std::error::Error>)` - Error during scanning
     pub async fn concurrent_scan_all_methods(
         &self,
     ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
@@ -443,7 +515,15 @@ impl BluetoothScanner {
         Ok(all_devices)
     }
 
-    /// Zaawansowane skanowanie BLE z wykrywaniem usług i charakterystyk
+    /// Performs advanced BLE scanning with service and characteristic discovery.
+    ///
+    /// Attempts to connect to discovered devices to read their GATT services
+    /// and characteristics. This provides more detailed device information
+    /// but takes longer than passive scanning.
+    ///
+    /// # Returns
+    /// * `Ok(Vec<BluetoothDevice>)` - List of discovered devices with service details
+    /// * `Err(Box<dyn std::error::Error>)` - Error during scanning
     pub async fn scan_ble_advanced(
         &self,
     ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
@@ -527,7 +607,14 @@ impl BluetoothScanner {
         Ok(all_devices)
     }
 
-    /// Scan BR/EDR devices (Linux only)
+    /// Scans for BR/EDR (Classic Bluetooth) devices on Linux.
+    ///
+    /// Uses BlueZ to discover classic Bluetooth devices including
+    /// audio devices, keyboards, mice, and other BR/EDR peripherals.
+    ///
+    /// # Returns
+    /// * `Ok(Vec<BluetoothDevice>)` - List of discovered BR/EDR devices
+    /// * `Err(Box<dyn std::error::Error>)` - Error during scanning
     #[cfg(target_os = "linux")]
     async fn scan_bredr(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         debug!("Scanning BR/EDR devices (Linux)...");
@@ -545,7 +632,17 @@ impl BluetoothScanner {
         Ok(Vec::new())
     }
 
-    /// Save scanned devices to database
+    /// Saves scanned devices to the database.
+    ///
+    /// Inserts or updates each device in the database along with their
+    /// advertised services. This persists device information for later retrieval.
+    ///
+    /// # Arguments
+    /// * `devices` - Slice of BluetoothDevice to save
+    ///
+    /// # Returns
+    /// * `Ok(())` - All devices saved successfully
+    /// * `Err(Box<dyn std::error::Error>)` - Error during database operations
     pub async fn save_devices_to_db(
         &self,
         devices: &[BluetoothDevice],
@@ -601,7 +698,16 @@ impl BluetoothScanner {
         Ok(())
     }
 
-    /// Format device info for display
+    /// Formats device information as a human-readable string.
+    ///
+    /// Creates a single-line summary of the device including MAC address,
+    /// name, RSSI, response time, device type, and manufacturer.
+    ///
+    /// # Arguments
+    /// * `device` - Reference to BluetoothDevice to format
+    ///
+    /// # Returns
+    /// Formatted string with device information
     pub fn format_device_info(device: &BluetoothDevice) -> String {
         let name = device
             .name
@@ -625,7 +731,14 @@ impl BluetoothScanner {
         )
     }
 
-    /// Detect Bluetooth version and features from device services and characteristics
+    /// Detects Bluetooth version and features from device services.
+    ///
+    /// Analyzes the advertised services to determine the Bluetooth version
+    /// (4.0, 5.0, 5.1, 5.2, etc.) and supported features like LE Audio.
+    /// Updates the device's detected_bt_version and supported_features fields.
+    ///
+    /// # Arguments
+    /// * `device` - Mutable reference to BluetoothDevice to analyze
     pub fn detect_device_version(device: &mut BluetoothDevice) {
         use crate::ble_uuids::{
             get_known_128bit_service, is_bt50_or_later_service, is_bt52_or_later_service,
@@ -733,8 +846,18 @@ impl BluetoothScanner {
         }
     }
 
-    /// Ultra-advanced HCI raw scanning using Direct Bluetooth HCI Access
-    /// Provides maximum control and detailed device information
+    /// Performs ultra-advanced raw HCI scanning for maximum control.
+    ///
+    /// Uses direct Bluetooth HCI access for detailed device information.
+    /// On Linux: Uses HCI sockets for raw command access.
+    /// On Windows: Uses Windows Bluetooth Radio API.
+    /// On macOS: Uses IOBluetoothDevice framework.
+    ///
+    /// Requires appropriate privileges and hardware support.
+    ///
+    /// # Returns
+    /// * `Ok(Vec<BluetoothDevice>)` - List of discovered devices
+    /// * `Err(Box<dyn std::error::Error>)` - Error during HCI operations
     pub async fn scan_ble_hci_direct(
         &self,
     ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {

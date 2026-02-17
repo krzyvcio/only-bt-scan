@@ -22,12 +22,21 @@ static DATA_FLOW_ESTIMATOR: std::sync::LazyLock<std::sync::Mutex<DataFlowEstimat
     std::sync::LazyLock::new(|| std::sync::Mutex::new(DataFlowEstimatorState::new()));
 
 /// Internal state holding packet observations per device
+///
+/// Maintains:
+/// - Packet timeline per device (max 1000 packets)
+/// - Protocol signature database
+/// - Flow analysis cache
 pub struct DataFlowEstimatorState {
     estimator: DataFlowEstimator,
     max_packets_per_device: usize,
 }
 
 impl DataFlowEstimatorState {
+    /// Create new estimator state
+    ///
+    /// # Returns
+    /// New DataFlowEstimatorState with default limits
     pub fn new() -> Self {
         Self {
             estimator: DataFlowEstimator::new(),
@@ -62,6 +71,9 @@ impl DataFlowEstimatorState {
             .collect()
     }
 
+    /// Clear all observations
+    ///
+    /// Removes all packet observations and cached flow data.
     pub fn clear(&mut self) {
         self.estimator.device_packets.clear();
         self.estimator.flow_cache.clear();
@@ -119,6 +131,15 @@ pub fn clear_estimates() {
 }
 
 /// Known Bluetooth protocol types
+///
+/// Identified protocols from advertising packet analysis:
+/// - `Meshtastic`: Meshtastic mesh networking
+/// - `Eddystone`: Google Eddystone beacon
+/// - `IBeacon`: Apple iBeacon
+/// - `AltBeacon`: Alternative beacon format
+/// - `CybertrackTag`: Cybertrack tracking tag
+/// - `CustomRaw`: Unknown/custom protocol
+/// - `Unknown`: No protocol identified
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ProtocolType {
     Meshtastic,
@@ -131,6 +152,18 @@ pub enum ProtocolType {
 }
 
 /// Estimated transmission throughput and characteristics
+///
+/// Detailed per-device flow analysis:
+/// - `source_mac`: Origin device MAC
+/// - `dest_mac`: Target device if peer-to-peer detected
+/// - `estimated_bytes_per_sec`: Throughput estimate
+/// - `avg_payload_size`: Average advertising payload size
+/// - `packet_frequency_hz`: Packets per second
+/// - `reliability_estimate`: Signal stability (0-1)
+/// - `protocol_type`: Detected protocol
+/// - `last_packet_timestamp_ms`: Most recent packet time
+/// - `sample_count`: Number of packets analyzed
+/// - `confidence`: Analysis confidence (0-1)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataFlowEstimate {
     pub source_mac: String,
@@ -146,6 +179,16 @@ pub struct DataFlowEstimate {
 }
 
 /// Per-device data flow analysis
+///
+/// Complete analysis results for a single device:
+/// - `mac_address`: Device MAC
+/// - `total_payload_bytes_observed`: Cumulative bytes seen
+/// - `packet_count`: Number of packets analyzed
+/// - `average_packet_interval_ms`: Mean time between packets
+/// - `detected_protocol`: Protocol identification
+/// - `protocol_confidence`: Detection confidence (0-1)
+/// - `estimated_connection_state`: Inferred state
+/// - `data_flow_pairs`: Potential peer communications
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceDataFlow {
     pub mac_address: String,
@@ -159,6 +202,13 @@ pub struct DeviceDataFlow {
 }
 
 /// Inferred connection state based on packet patterns
+///
+/// Connection state deduced from advertising frequency:
+/// - `Advertising`: Regular advertising intervals
+/// - `DisconnectedIdle`: Sparse, infrequent packets
+/// - `Connected`: Dense packet stream (active connection)
+/// - `DataTransfer`: Very high frequency (>10Hz)
+/// - `Unknown`: Insufficient data
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConnectionState {
     Advertising,      // Regular advertising (legacy/extended)
@@ -169,6 +219,12 @@ pub enum ConnectionState {
 }
 
 /// Main data flow analysis engine
+///
+/// Core analyzer that maintains:
+/// - `device_packets`: Timeline of packets per device
+/// - `protocol_signatures`: Known protocol signatures
+/// - `flow_cache`: Cached analysis results
+/// - `config`: Analysis configuration
 pub struct DataFlowEstimator {
     // Timeline of packets per device
     device_packets: HashMap<String, Vec<PacketRecord>>,
@@ -183,6 +239,13 @@ pub struct DataFlowEstimator {
     config: EstimatorConfig,
 }
 
+/// Single packet observation record
+///
+/// Represents one captured advertising packet:
+/// - `timestamp_ms`: When packet was received
+/// - `payload_size`: Size of advertising data
+/// - `rssi`: Signal strength
+/// - `raw_data`: Complete packet bytes
 #[derive(Debug, Clone)]
 struct PacketRecord {
     timestamp_ms: u64,
@@ -191,6 +254,12 @@ struct PacketRecord {
     raw_data: Vec<u8>,
 }
 
+/// Configuration for data flow estimator
+///
+/// Tuning parameters:
+/// - `min_packet_interval_to_detect_connection_ms`: Min interval for connection detection
+/// - `high_frequency_threshold_hz`: Threshold for high-frequency detection
+/// - `rssi_stability_window_ms`: Window for RSSI stability analysis
 #[derive(Debug, Clone)]
 pub struct EstimatorConfig {
     pub min_packet_interval_to_detect_connection_ms: u64,
@@ -209,6 +278,10 @@ impl Default for EstimatorConfig {
 }
 
 impl DataFlowEstimator {
+    /// Create new estimator
+    ///
+    /// # Returns
+    /// DataFlowEstimator with registered protocol signatures
     pub fn new() -> Self {
         let mut estimator = Self {
             device_packets: HashMap::new(),
@@ -256,6 +329,14 @@ impl DataFlowEstimator {
     }
 
     /// Add a packet observation
+    ///
+    /// Records new advertising packet for device. Invalidates cache.
+    ///
+    /// # Arguments
+    /// * `mac_address` - Device MAC address
+    /// * `timestamp_ms` - Packet timestamp in milliseconds
+    /// * `payload` - Raw advertising data
+    /// * `rssi` - Signal strength in dBm
     pub fn add_packet_observation(
         &mut self,
         mac_address: &str,
@@ -280,6 +361,16 @@ impl DataFlowEstimator {
     }
 
     /// Analyze data flow for a specific device
+    ///
+    /// Returns cached result if available, otherwise computes new analysis
+    /// including protocol detection, connection state inference, and
+    /// peer communication patterns.
+    ///
+    /// # Arguments
+    /// * `mac_address` - Device MAC to analyze
+    ///
+    /// # Returns
+    /// Some(DeviceDataFlow) with analysis results, or None if no packets
     pub fn analyze_device_flow(&mut self, mac_address: &str) -> Option<DeviceDataFlow> {
         // Return cached result if available
         if let Some(cached) = self.flow_cache.get(mac_address) {
@@ -486,6 +577,11 @@ impl DataFlowEstimator {
     }
 
     /// Generate summary statistics
+    ///
+    /// Creates aggregate statistics across all tracked devices.
+    ///
+    /// # Returns
+    /// DataFlowSummary with totals and busiest device info
     pub fn generate_summary(&self) -> DataFlowSummary {
         let mut total_bytes = 0u64;
         let mut device_count = 0;
@@ -517,6 +613,9 @@ impl DataFlowEstimator {
     }
 
     /// Export all estimates as JSON
+    ///
+    /// # Returns
+    /// JSON string of all DeviceDataFlow estimates
     pub fn export_estimates(&mut self) -> Result<String, serde_json::Error> {
         let mut estimates = Vec::new();
 
@@ -531,6 +630,13 @@ impl DataFlowEstimator {
 }
 
 /// Summary statistics for all observed data flows
+///
+/// Aggregate metrics:
+/// - `total_devices_observed`: Count of unique devices
+/// - `total_payload_bytes_observed`: Total bytes across all devices
+/// - `busiest_device`: MAC of highest-throughput device
+/// - `busiest_device_bytes`: Bytes for busiest device
+/// - `average_bytes_per_device`: Mean bytes per device
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataFlowSummary {
     pub total_devices_observed: usize,
@@ -541,6 +647,14 @@ pub struct DataFlowSummary {
 }
 
 /// Helper: calculate variance of a numeric slice
+///
+/// Computes standard deviation variance for RSSI values.
+///
+/// # Arguments
+/// * `values` - Slice of RSSI values
+///
+/// # Returns
+/// Variance as f32
 fn calculate_variance(values: &[i8]) -> f32 {
     if values.is_empty() {
         return 0.0;

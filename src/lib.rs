@@ -1,7 +1,7 @@
 //! # only-bt-scan - Bluetooth LE/Bluetooth Scanner Application
-//! 
-//! Główna biblioteka aplikacji skanującej urządzenia Bluetooth.
-//! Obsługuje skanowanie BLE, zapis do bazy danych, Web API i powiadomienia Telegram.
+//!
+//! Main library for the BLE/Bluetooth scanner application.
+//! Supports BLE scanning, database storage, Web API, and Telegram notifications.
 
 mod adapter_info;
 mod advertising_parser;
@@ -24,11 +24,9 @@ mod db;
 mod db_frames;
 mod db_pool;
 mod device_events;
+mod device_tracker;
 mod env_config;
 mod event_analyzer;
-mod device_tracker;
-mod rssi_trend_manager;
-mod rssi_analyzer;
 mod gatt_client;
 mod hci_packet_parser;
 mod hci_realtime_capture;
@@ -43,10 +41,13 @@ mod multi_method_scanner;
 mod native_scanner;
 mod packet_analyzer_terminal;
 mod packet_tracker;
+mod passive_scanner;
 mod pcap_exporter;
 mod raw_packet_integration;
 mod raw_packet_parser;
 mod raw_sniffer;
+mod rssi_analyzer;
+mod rssi_trend_manager;
 mod scanner_integration;
 mod telegram_notifier;
 #[cfg(test)]
@@ -73,28 +74,45 @@ use unified_scan::UnifiedScanEngine;
 mod ui_renderer;
 mod web_server;
 
-use std::sync::{Arc, OnceLock};
 use crate::rssi_trend_manager::GlobalRssiManager;
+use std::sync::{Arc, OnceLock};
 
-/// Globalny menedżer RSSI dla śledzenia trendów siły sygnału wszystkich urządzeń
+/// Global RSSI manager for tracking signal strength trends across all devices.
+/// 
+/// This singleton manages real-time RSSI data for trend analysis and visualization.
 static RSSI_MANAGER: OnceLock<Arc<GlobalRssiManager>> = OnceLock::new();
 
-/// Zwraca globalną instancję menedżera RSSI (singleton)
+/// Returns the global RSSI manager instance (singleton pattern).
+/// 
+/// # Returns
+/// Arc<GlobalRssiManager> - Shared manager for RSSI trend tracking
+/// 
+/// # Example
+/// ```rust
+/// let manager = get_rssi_manager();
+/// ```
 pub fn get_rssi_manager() -> Arc<GlobalRssiManager> {
-    RSSI_MANAGER.get_or_init(|| GlobalRssiManager::default()).clone()
+    RSSI_MANAGER
+        .get_or_init(|| GlobalRssiManager::default())
+        .clone()
 }
 
-/// Tworzy kopię zapasową bazy danych przed uruchomieniem aplikacji
-/// Kopia zapisywana jest jako bluetooth_scan.db.bak
+/// Creates a backup of the database before application startup.
+/// 
+/// The backup is saved as bluetooth_scan.db.bak in the current directory.
+/// If no database exists, this function does nothing.
+/// 
+/// # Side Effects
+/// Creates a .bak file if the database exists
 fn backup_database() {
     const DB_PATH: &str = "bluetooth_scan.db";
     const DB_BAK: &str = "bluetooth_scan.db.bak";
-    
+
     // Check if database exists
     if !std::path::Path::new(DB_PATH).exists() {
         return;
     }
-    
+
     // Try to create backup
     match std::fs::copy(DB_PATH, DB_BAK) {
         Ok(bytes) => {
@@ -108,18 +126,26 @@ fn backup_database() {
     }
 }
 
-/// Przywraca bazę danych z kopii zapasowej .bak
-/// Zwraca true jeśli przywrócenie się powiodło
+/// Restores the database from a .bak backup file.
+/// 
+/// Removes the corrupted database file and copies from backup.
+/// 
+/// # Returns
+/// bool - true if restore was successful, false otherwise
+/// 
+/// # Side Effects
+/// - Deletes existing bluetooth_scan.db if present
+/// - Creates new database from backup file
 pub fn restore_database() -> bool {
     const DB_PATH: &str = "bluetooth_scan.db";
     const DB_BAK: &str = "bluetooth_scan.db.bak";
-    
+
     // Check if backup exists
     if !std::path::Path::new(DB_BAK).exists() {
         println!("❌ No backup file found");
         return false;
     }
-    
+
     // Remove corrupted database
     if std::path::Path::new(DB_PATH).exists() {
         if let Err(e) = std::fs::remove_file(DB_PATH) {
@@ -127,7 +153,7 @@ pub fn restore_database() -> bool {
             return false;
         }
     }
-    
+
     // Restore from backup
     match std::fs::copy(DB_BAK, DB_PATH) {
         Ok(bytes) => {
@@ -143,13 +169,21 @@ pub fn restore_database() -> bool {
     }
 }
 
-/// Formatuje znacznik czasu do wyświetlenia w interfejsie
-/// Jeśli data to dzisiaj - pokazuje tylko godzinę, w przeciwnym razie pełną datę
+/// Formats a timestamp for display in the UI.
+/// 
+/// If the date is today, shows only time (HH:MM:SS).
+/// Otherwise shows full date with time (YYYY-MM-DD HH:MM).
+/// 
+/// # Arguments
+/// * `dt` - Reference to a UTC DateTime to format
+/// 
+/// # Returns
+/// String - Formatted timestamp string
 fn format_timestamp(dt: &chrono::DateTime<chrono::Utc>) -> String {
     let now = chrono::Utc::now();
     let today = now.date_naive();
     let dt_date = dt.date_naive();
-    
+
     if dt_date == today {
         // Today - show only time
         dt.format("%H:%M:%S").to_string()
@@ -159,14 +193,22 @@ fn format_timestamp(dt: &chrono::DateTime<chrono::Utc>) -> String {
     }
 }
 
-/// Format duration as uptime (e.g., "1h 23m 45s" or "45s")
+/// Formats a duration as uptime string.
+/// 
+/// Examples: "1h 23m 45s", "45s", "5m 30s"
+/// 
+/// # Arguments
+/// * `duration` - Duration to format
+/// 
+/// # Returns
+/// String - Human-readable duration (e.g., "1h 23m 45s")
 fn format_duration(duration: std::time::Duration) -> String {
     let secs = duration.as_secs();
-    
+
     let hours = secs / 3600;
     let minutes = (secs % 3600) / 60;
     let seconds = secs % 60;
-    
+
     if hours > 0 {
         format!("{}h {}m {}s", hours, minutes, seconds)
     } else if minutes > 0 {
@@ -176,8 +218,28 @@ fn format_duration(duration: std::time::Duration) -> String {
     }
 }
 
-/// Główna funkcja uruchamiająca aplikację skanera Bluetooth
-/// Inicjalizuje: logger, bazę danych, HCI capture, Web server, Telegram notifications
+/// Main application entry point - initializes and runs the Bluetooth scanner.
+/// 
+/// This async function performs the following initialization steps:
+/// 1. Loads configuration from .env file
+/// 2. Initializes file logger
+/// 3. Creates database backup (if exists)
+/// 4. Initializes SQLite database and connection pool
+/// 5. Loads company ID reference data
+/// 6. Initializes HCI real-time capture (if available)
+/// 7. Sets up Telegram notifications (if configured)
+/// 8. Starts web server on configured port
+/// 9. Launches BLE scanning in continuous mode
+/// 
+/// # Returns
+/// Result<(), anyhow::Error> - Ok on successful shutdown, Error on failure
+/// 
+/// # Environment Variables
+/// - SCAN_DURATION - Duration of each scan cycle in seconds (default: 30)
+/// - SCAN_CYCLES - Number of scan cycles to run (default: 3)
+/// - WEB_SERVER_PORT - Port for web server (default: 8080)
+/// - TELEGRAM_BOT_TOKEN - Bot token for notifications
+/// - TELEGRAM_CHAT_ID - Chat ID for notifications
 pub async fn run() -> Result<(), anyhow::Error> {
     // Load .env file
     env_config::init();
@@ -236,7 +298,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
 
     // Backup database before starting (if exists)
     backup_database();
-    
+
     // Initialize database
     match db::init_database() {
         Ok(_) => {
@@ -459,7 +521,6 @@ pub async fn run() -> Result<(), anyhow::Error> {
                 .enable_all()
                 .build()
                 .expect("Failed to create Tokio runtime for Telegram");
-            
             eprintln!("[TELEGRAM] Runtime created, starting periodic task...");
             rt.block_on(async {
                 let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(900)); // 15 minutes
@@ -746,7 +807,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
         })?;
         execute!(stdout(), MoveTo(0, start_line))?;
         scan_count += 1;
-        
+
         writeln!(
             stdout(),
             "{}",
@@ -769,7 +830,11 @@ pub async fn run() -> Result<(), anyhow::Error> {
                 let raw_packets = &results.raw_packets;
 
                 // Debug output to stdout
-                println!("[DEBUG] Scan complete: {} devices, {} raw packets", devices.len(), raw_packets.len());
+                println!(
+                    "[DEBUG] Scan complete: {} devices, {} raw packets",
+                    devices.len(),
+                    raw_packets.len()
+                );
 
                 log::info!(
                     "📝 Scan complete: {} devices, {} raw packets",
@@ -884,11 +949,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
                             "{}",
                             "═══════════════════════════════════════════════════════".bright_cyan()
                         )?;
-                        writeln!(
-                            stdout(),
-                            "{}",
-                            "📡 DETECTED DEVICES".bright_green().bold()
-                        )?;
+                        writeln!(stdout(), "{}", "📡 DETECTED DEVICES".bright_green().bold())?;
                         writeln!(
                             stdout(),
                             "{}",
@@ -897,7 +958,8 @@ pub async fn run() -> Result<(), anyhow::Error> {
 
                         // Show ALL packets (no filtering)
                         for packet in &results.raw_packets {
-                            let formatted = crate::packet_analyzer_terminal::format_packet_for_terminal(packet);
+                            let formatted =
+                                crate::packet_analyzer_terminal::format_packet_for_terminal(packet);
                             writeln!(stdout(), "{}", formatted)?;
                         }
                         writeln!(
@@ -1086,10 +1148,17 @@ pub async fn run() -> Result<(), anyhow::Error> {
 // TELEMETRY PERSISTENCE HELPERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Zapisuje bieżącą migawkę telemetrii do bazy danych (wywoływane co 5 minut)
+/// Saves the current telemetry snapshot to the database (called every 5 minutes).
+/// 
+/// Persists global telemetry data including:
+/// - Total packets and devices count
+/// - Per-device telemetry (packet count, avg RSSI, latency)
+/// 
+/// Also cleans up old telemetry records older than 30 days.
+/// 
+/// # Returns
+/// Result<(), anyhow::Error> - Ok on success, Error on failure
 async fn save_telemetry_snapshot() -> anyhow::Result<()> {
-    
-
     // Get current telemetry from global singleton
     if let Some(snapshot) = telemetry::get_global_telemetry() {
         // Save main snapshot

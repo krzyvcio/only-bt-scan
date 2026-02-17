@@ -1,10 +1,10 @@
-
 # TASKS.md - only-bt-scan
 
 ## Aktualne zadania
 
 ### Priorytet wysoki
 
+- [ ] Naprawić 332 warnings z `cargo check`
 - [x] Zaimplementować passive scanning z RSSI i raw packets
 - [x] Dodać eksport do PCAP/Wireshark
 

@@ -1,13 +1,16 @@
 /// Scanner Integration - Bridges BluetoothDevice to PacketTracker
 ///
 /// Adapts BluetoothScanner results for packet ordering and temporal analysis
-use crate::bluetooth_scanner::BluetoothDevice;
-use crate::data_models::RawPacketModel;
-use crate::packet_tracker::{GlobalPacketTracker, PacketAddResult};
-use crate::telemetry::TelemetryCollector;
-use chrono::Utc;
 
-/// Wrapper for unified scanning + tracking
+/// Wrapper combining scanning with packet tracking and telemetry.
+///
+/// Coordinates Bluetooth scanning with packet ordering, deduplication,
+/// telemetry collection, and event analysis.
+///
+/// # Fields
+/// - `packet_tracker`: Global packet tracker for ordering
+/// - `telemetry_collector`: Telemetry collection system
+/// - `last_scan_packets`: Raw packets from most recent scan
 pub struct ScannerWithTracking {
     pub packet_tracker: GlobalPacketTracker,
     pub telemetry_collector: TelemetryCollector,
@@ -15,6 +18,10 @@ pub struct ScannerWithTracking {
 }
 
 impl ScannerWithTracking {
+    /// Creates a new ScannerWithTracking.
+    ///
+    /// # Returns
+    /// A new ScannerWithTracking with fresh packet tracker and telemetry
     pub fn new() -> Self {
         Self {
             packet_tracker: GlobalPacketTracker::new(),
@@ -23,7 +30,14 @@ impl ScannerWithTracking {
         }
     }
 
-    /// Process Bluetooth devices from scan and add to tracker
+    /// Processes Bluetooth devices from scan and adds to tracker.
+    ///
+    /// Converts each device to a raw packet, stores for database
+    /// persistence, adds to global packet tracker, records telemetry,
+    /// and updates RSSI trends.
+    ///
+    /// # Arguments
+    /// * `devices` - Vector of BluetoothDevice from scan
     pub fn process_scan_results(&mut self, devices: Vec<BluetoothDevice>) {
         log::info!(
             "🔄 Processing {} devices through packet tracker",
@@ -106,22 +120,37 @@ impl ScannerWithTracking {
         );
     }
 
-    /// Get raw packets from last scan (for database persistence)
+    /// Gets raw packets from the last scan for database persistence.
+    ///
+    /// # Returns
+    /// Slice of RawPacketModel from most recent scan
     pub fn get_last_scan_packets(&self) -> &[RawPacketModel] {
         &self.last_scan_packets
     }
 
-    /// Get global packet ordering
+    /// Gets global packet ordering across all tracked devices.
+    ///
+    /// # Returns
+    /// Vector of tuples: (mac_address, packet_id, timestamp_ms)
     pub fn get_packet_ordering(&self) -> Vec<(String, u64, u64)> {
         self.packet_tracker.get_global_sequence()
     }
 
-    /// Get device packet sequence
+    /// Gets packet sequence for a specific device.
+    ///
+    /// # Arguments
+    /// * `mac` - MAC address of the device
+    ///
+    /// # Returns
+    /// Vector of packet IDs in order, or None if not found
     pub fn get_device_sequence(&self, mac: &str) -> Option<Vec<u64>> {
         self.packet_tracker.get_device_sequence(mac)
     }
 
-    /// Get tracking statistics
+    /// Gets tracking statistics from the scanner.
+    ///
+    /// # Returns
+    /// ScannerTrackingStats with device and packet counts
     pub fn get_stats(&self) -> ScannerTrackingStats {
         let global_stats = self.packet_tracker.get_global_stats();
 
@@ -141,7 +170,10 @@ impl ScannerWithTracking {
         }
     }
 
-    /// Export telemetry
+    /// Exports global telemetry as JSON.
+    ///
+    /// # Returns
+    /// JSON string with telemetry data
     pub fn export_telemetry(&self) -> String {
         let telemetry = self
             .telemetry_collector
@@ -156,7 +188,13 @@ impl ScannerWithTracking {
         }
     }
 
-    /// Export device-specific telemetry
+    /// Exports device-specific telemetry as JSON.
+    ///
+    /// # Arguments
+    /// * `mac` - MAC address of the device
+    ///
+    /// # Returns
+    /// JSON string with device telemetry, or None if not found
     pub fn export_device_telemetry(&self, mac: &str) -> Option<String> {
         let telemetry = self
             .telemetry_collector
@@ -172,7 +210,17 @@ impl ScannerWithTracking {
     }
 }
 
-/// Convert BluetoothDevice to RawPacketModel for packet tracking
+/// Converts a BluetoothDevice to RawPacketModel for packet tracking.
+///
+/// Transforms device information into a format suitable for
+/// the global packet tracker and database persistence.
+///
+/// # Arguments
+/// * `device` - Source BluetoothDevice
+/// * `packet_id` - Global packet sequence ID
+///
+/// # Returns
+/// RawPacketModel representing the device
 fn create_raw_packet_from_device(device: &BluetoothDevice, packet_id: u64) -> RawPacketModel {
     // Use last_detected_ns as timestamp
     let timestamp = Utc::now();
@@ -229,7 +277,19 @@ fn create_raw_packet_from_device(device: &BluetoothDevice, packet_id: u64) -> Ra
     packet
 }
 
-/// Statistics from scanner with tracking
+/// Statistics from scanner with tracking.
+///
+/// Contains metrics about device discovery, packet processing,
+/// and filtering from the scanner and packet tracker.
+///
+/// # Fields
+/// - `unique_devices`: Number of unique devices discovered
+/// - `total_packets_received`: Total packets received
+/// - `total_packets_tracked`: Packets accepted for tracking
+/// - `acceptance_rate_percent`: Percentage of packets accepted
+/// - `total_filtered`: Packets filtered out
+/// - `total_duplicates`: Duplicate packets detected
+/// - `device_sequence_lengths`: Map of MAC to packet count
 #[derive(Debug, Clone)]
 pub struct ScannerTrackingStats {
     pub unique_devices: usize,

@@ -144,29 +144,58 @@ pub fn clear_events() {
 /// EVENT PATTERNS
 /// ═══════════════════════════════════════════════════════════════════════════════
 
+/// Event patterns
+///
+/// Classification of device advertising behavior:
+/// - `Regular`: Consistent packet intervals
+/// - `Bursty`: Clusters of packets with gaps
+/// - `Random`: Unpredictable timing
+/// - `Degrading`: Signal getting weaker over time
+/// - `Improving`: Signal getting stronger over time
+/// - `Intermittent`: Frequent gaps in transmission
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceEventPattern {
+    /// MAC address of device
     pub device_mac: String,
+    /// Type of advertising pattern
     pub pattern_type: PatternType,
-    pub frequency_hz: f64, // Events per second
-    pub regularity: f64,   // 0.0-1.0 (1.0 = perfectly regular)
-    pub confidence: f64,   // 0.0-1.0
+    /// Events per second
+    pub frequency_hz: f64,
+    /// Regularity score (0.0-1.0, 1.0 = perfectly regular)
+    pub regularity: f64,
+    /// Analysis confidence (0.0-1.0)
+    pub confidence: f64,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum PatternType {
-    Regular,      // Consistent interval
-    Bursty,       // Clusters of events
-    Random,       // Unpredictable
-    Degrading,    // Signal getting weaker
-    Improving,    // Signal getting stronger
-    Intermittent, // Frequent gaps
+    /// Consistent interval between events
+    Regular,
+    /// Clusters of events with gaps
+    Bursty,
+    /// Unpredictable timing
+    Random,
+    /// Signal getting weaker
+    Degrading,
+    /// Signal getting stronger
+    Improving,
+    /// Frequent gaps
+    Intermittent,
 }
 
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// DEVICE BEHAVIOR ANALYSIS
 /// ═══════════════════════════════════════════════════════════════════════════════
 
+/// Device behavior analysis results
+///
+/// Complete behavioral analysis for a device:
+/// - `device_mac`: MAC address
+/// - `total_events`: Count of events observed
+/// - `event_duration_ms`: Time span of observations
+/// - `pattern`: Detected advertising pattern
+/// - `rssi_trend`: Signal strength trend
+/// - `stability_score`: Signal stability (0-100)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceBehavior {
     pub device_mac: String,
@@ -174,30 +203,48 @@ pub struct DeviceBehavior {
     pub event_duration_ms: u64,
     pub pattern: DeviceEventPattern,
     pub rssi_trend: RssiTrend,
-    pub stability_score: f64, // 0.0-100.0
+    /// Signal stability score (0.0-100.0)
+    pub stability_score: f64,
 }
 
+/// RSSI trend classification
+///
+/// Direction of signal strength change:
+/// - `Stable`: No significant change
+/// - `Improving`: Signal getting stronger
+/// - `Degrading`: Signal getting weaker
+/// - `Volatile`: Rapid fluctuations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RssiTrend {
-    Stable,    // No significant change
-    Improving, // Getting stronger
-    Degrading, // Getting weaker
-    Volatile,  // Rapid fluctuations
+    Stable,
+    Improving,
+    Degrading,
+    Volatile,
 }
 
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// TEMPORAL CORRELATIONS
 /// ═══════════════════════════════════════════════════════════════════════════════
 
+/// Temporal correlation between device event patterns
+///
+/// Represents devices that tend to be active at similar times:
+/// - `device1`, `device2`: MAC addresses of correlated devices
+/// - `correlation_coefficient`: Similarity measure (-1.0 to 1.0)
+/// - `simultaneous_events`: Count of events within 100ms
+/// - `correlation_strength`: Categorical strength rating
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemporalCorrelation {
     pub device1: String,
     pub device2: String,
-    pub correlation_coefficient: f64, // -1.0 to 1.0
-    pub simultaneous_events: usize,   // Events within 100ms
+    /// Correlation coefficient (-1.0 to 1.0)
+    pub correlation_coefficient: f64,
+    /// Events within 100ms of each other
+    pub simultaneous_events: usize,
     pub correlation_strength: CorrelationStrength,
 }
 
+/// Correlation strength classification
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum CorrelationStrength {
     None,
@@ -211,36 +258,71 @@ pub enum CorrelationStrength {
 /// EVENT ANOMALIES
 /// ═══════════════════════════════════════════════════════════════════════════════
 
+/// Anomaly detected in device event stream
+///
+/// Represents unusual patterns:
+/// - `timestamp_ms`: When anomaly occurred
+/// - `device_mac`: Device with anomaly
+/// - `anomaly_type`: Type of anomaly
+/// - `severity`: How severe (0.0-1.0)
+/// - `description`: Human-readable explanation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventAnomaly {
     pub timestamp_ms: u64,
     pub device_mac: String,
     pub anomaly_type: AnomalyType,
-    pub severity: f64, // 0.0-1.0
+    /// Severity of anomaly (0.0-1.0)
+    pub severity: f64,
     pub description: String,
 }
 
+/// Types of anomalies that can be detected
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum AnomalyType {
-    GapInTransmission, // Unexpected silence
-    RssiDropout,       // Sudden signal loss
-    BurstyBehavior,    // Unusual clustering
-    FrequencyChange,   // Different pattern
+    /// Unexpected gap in transmission (>2.5x avg interval)
+    GapInTransmission,
+    /// Sudden RSSI drop (>20dBm)
+    RssiDropout,
+    /// Unusual clustering of events
+    BurstyBehavior,
+    /// Change in advertising pattern
+    FrequencyChange,
 }
 
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// EVENT ANALYZER
 /// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Event analyzer for temporal pattern analysis
+///
+/// Performs device behavior analysis, anomaly detection,
+/// and correlation finding on timeline events.
 pub struct EventAnalyzer {
     events: Vec<TimelineEvent>,
 }
 
 impl EventAnalyzer {
+    /// Create new analyzer with events
+    ///
+    /// # Arguments
+    /// * `events` - Timeline events to analyze
+    ///
+    /// # Returns
+    /// New EventAnalyzer instance
     pub fn new(events: Vec<TimelineEvent>) -> Self {
         Self { events }
     }
 
     /// Analyze device event patterns
+    ///
+    /// Computes behavioral analysis including pattern type, frequency,
+    /// regularity, RSSI trend, and stability score.
+    ///
+    /// # Arguments
+    /// * `mac_address` - Device MAC to analyze
+    ///
+    /// # Returns
+    /// Some(DeviceBehavior) if enough events, None otherwise
     pub fn analyze_device_pattern(&self, mac_address: &str) -> Option<DeviceBehavior> {
         let device_events: Vec<_> = self
             .events
@@ -336,6 +418,16 @@ impl EventAnalyzer {
     }
 
     /// Detect event anomalies
+    ///
+    /// Finds unusual patterns in device event stream:
+    /// - Gap in transmission: interval > 2.5x average
+    /// - RSSI dropout: sudden drop > 20dBm
+    ///
+    /// # Arguments
+    /// * `mac_address` - Device MAC to analyze
+    ///
+    /// # Returns
+    /// Vector of detected anomalies
     pub fn detect_anomalies(&self, mac_address: &str) -> Vec<EventAnomaly> {
         let mut anomalies = Vec::new();
         let device_events: Vec<_> = self
@@ -396,6 +488,12 @@ impl EventAnalyzer {
     }
 
     /// Find correlations between device event patterns
+    ///
+    /// Identifies devices that tend to be active at similar times.
+    /// Considers events within 100ms of each other as "simultaneous".
+    ///
+    /// # Returns
+    /// Vector of temporal correlations between device pairs
     pub fn find_correlations(&self) -> Vec<TemporalCorrelation> {
         let mut correlations = Vec::new();
         let devices: std::collections::HashSet<String> =
@@ -459,6 +557,15 @@ impl EventAnalyzer {
 }
 
 /// Helper: Analyze RSSI trend
+///
+/// Compares average RSSI in first vs last third of samples.
+/// High variance indicates volatile signal.
+///
+/// # Arguments
+/// * `rssi_values` - Slice of RSSI measurements
+///
+/// # Returns
+/// RssiTrend classification
 fn analyze_rssi_trend(rssi_values: &[i8]) -> RssiTrend {
     if rssi_values.len() < 3 {
         return RssiTrend::Stable;
@@ -485,6 +592,14 @@ fn analyze_rssi_trend(rssi_values: &[i8]) -> RssiTrend {
 }
 
 /// Helper: Calculate variance
+///
+/// Computes standard deviation variance for a slice of values.
+///
+/// # Arguments
+/// * `values` - Slice of numeric values
+///
+/// # Returns
+/// Standard deviation variance
 fn calculate_variance(values: &[f64]) -> f64 {
     if values.is_empty() {
         return 0.0;

@@ -66,6 +66,11 @@ impl SampleWindow {
 }
 
 /// Movement trend relative to antenna
+///
+/// - `Approaching`: Device signal strength increasing (getting closer)
+/// - `Leaving`: Device signal strength decreasing (moving away)
+/// - `Stable`: Signal strength relatively constant
+/// - `Unknown`: Not enough samples to determine
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Trend {
     Approaching,
@@ -86,6 +91,10 @@ impl Trend {
 }
 
 /// Motion state
+///
+/// - `Still`: Device is stationary (low variance in RSSI)
+/// - `Moving`: Device is in motion (high variance or changing trend)
+/// - `Unknown`: Not enough samples to determine
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Motion {
     Still,
@@ -104,6 +113,14 @@ impl Motion {
 }
 
 /// Device telemetry state output
+///
+/// Contains computed state from RSSI telemetry including:
+/// - `trend`: Movement direction (approaching/leaving/stable)
+/// - `motion`: Whether device is still or moving
+/// - `slope`: Rate of RSSI change (dB/sec)
+/// - `variance`: Signal stability measure (dB²)
+/// - `rssi`: Current smoothed RSSI value
+/// - `confidence`: How reliable the state estimate is (0-1)
 #[derive(Debug, Clone)]
 pub struct DeviceState {
     pub trend: Trend,
@@ -128,6 +145,15 @@ impl Default for DeviceState {
 }
 
 /// Compute linear regression slope (dRSSI/dt)
+///
+/// Uses least squares regression to find rate of RSSI change over time.
+/// Positive slope = device approaching, Negative = device leaving.
+///
+/// # Arguments
+/// * `samples` - Deque of RSSI samples with timestamps
+///
+/// # Returns
+/// Slope in dB/sec (rate of RSSI change)
 fn compute_slope(samples: &VecDeque<Sample>) -> f64 {
     let n = samples.len() as f64;
     if n < 2.0 {
@@ -155,6 +181,15 @@ fn compute_slope(samples: &VecDeque<Sample>) -> f64 {
 }
 
 /// Compute variance of RSSI values
+///
+/// Measures signal stability - low variance indicates steady signal,
+/// high variance indicates unstable/intermittent signal.
+///
+/// # Arguments
+/// * `samples` - Deque of RSSI samples
+///
+/// # Returns
+/// Variance of RSSI values in dB²
 fn compute_variance(samples: &VecDeque<Sample>) -> f64 {
     let n = samples.len() as f64;
     if n == 0.0 {
@@ -174,6 +209,14 @@ fn compute_variance(samples: &VecDeque<Sample>) -> f64 {
 }
 
 /// Single device tracking record
+///
+/// Tracks all discovery events for a single BLE device with:
+/// - MAC address and name/manufacturer identification
+/// - Temporal tracking (first/last detection, count, timestamps)
+/// - Signal statistics (current/average/min/max RSSI)
+/// - Detection methods used
+/// - Database persistence status
+/// - RSSI telemetry for trend/motion analysis
 #[derive(Debug, Clone)]
 pub struct DeviceTracker {
     pub mac_address: String,
@@ -211,6 +254,14 @@ pub struct DeviceTracker {
 
 impl DeviceTracker {
     /// Create new device tracker
+    ///
+    /// Initializes a new tracker for the given MAC address with default values.
+    ///
+    /// # Arguments
+    /// * `mac` - MAC address of the device to track
+    ///
+    /// # Returns
+    /// New DeviceTracker instance with first_detected set to current time
     pub fn new(mac: String) -> Self {
         let now = Utc::now();
         Self {
@@ -239,6 +290,18 @@ impl DeviceTracker {
     }
 
     /// Record a detection event
+    ///
+    /// Updates all tracking statistics for a device detection including:
+    /// - Temporal tracking (last_detected, detection_count)
+    /// - Signal tracking (current_rssi, avg_rssi, min_rssi, max_rssi)
+    /// - Device info (name, manufacturer)
+    /// - Telemetry for trend/motion analysis
+    ///
+    /// # Arguments
+    /// * `rssi` - Signal strength in dBm
+    /// * `method` - Detection method/source (e.g., "btleplug", "windows")
+    /// * `device_name` - Optional device name from advertising data
+    /// * `manufacturer_id` - Optional manufacturer ID from company identifier
     pub fn record_detection(
         &mut self,
         rssi: i8,
@@ -343,11 +406,23 @@ impl DeviceTracker {
     }
 
     /// Get time since first detection
+    ///
+    /// Calculates the duration between first and last detection.
+    ///
+    /// # Returns
+    /// Duration representing time span of device tracking
     pub fn duration_detected(&self) -> chrono::Duration {
         self.last_detected - self.first_detected
     }
 
     /// Print verbose device info to terminal
+    ///
+    /// Outputs comprehensive device information including:
+    /// - Device identification (MAC, name, manufacturer)
+    /// - Temporal statistics (first/last detection, span, count)
+    /// - Detection methods used
+    /// - Signal quality (current, average, min/max RSSI)
+    /// - Recent detection timeline (last 10 events)
     pub fn print_verbose(&self) {
         let method_str = self.detected_by_methods.join(", ");
         let duration = self.duration_detected();
@@ -454,6 +529,13 @@ impl DeviceTracker {
     }
 
     /// Insert or update device in database and return device ID
+    ///
+    /// Persists device information to SQLite database using insert_or_update.
+    /// Sets db_device_id and stored_in_db flag on success.
+    ///
+    /// # Returns
+    /// * `Ok(id)` - Database ID of persisted device
+    /// * `Err(message)` - Error message if persistence failed
     pub fn persist_to_db(&mut self) -> Result<i32, String> {
         let device = ScannedDevice {
             mac_address: self.mac_address.clone(),
@@ -497,9 +579,11 @@ impl DeviceTracker {
 
 /// Global device tracker manager
 ///
-/// Limits:
-/// - Max tracked devices: 10000 (prevents memory leak)
-/// - Oldest devices are removed when limit reached
+/// Manages tracking of multiple BLE devices with:
+/// - Thread-safe access via Arc<Mutex<>>
+/// - Device limit to prevent memory leaks (default 10,000)
+/// - Automatic eviction of oldest devices when limit reached
+/// - Database persistence for all tracked devices
 pub struct DeviceTrackerManager {
     devices: Arc<Mutex<HashMap<String, DeviceTracker>>>,
     max_devices: usize,
@@ -507,6 +591,9 @@ pub struct DeviceTrackerManager {
 
 impl DeviceTrackerManager {
     /// Create new manager with default limit (10000 devices)
+    ///
+    /// # Returns
+    /// New DeviceTrackerManager with 10,000 device limit
     pub fn new() -> Self {
         Self {
             devices: Arc::new(Mutex::new(HashMap::new())),
@@ -515,6 +602,12 @@ impl DeviceTrackerManager {
     }
 
     /// Create new manager with custom device limit
+    ///
+    /// # Arguments
+    /// * `max_devices` - Maximum number of devices to track
+    ///
+    /// # Returns
+    /// New DeviceTrackerManager with specified limit
     pub fn with_limit(max_devices: usize) -> Self {
         Self {
             devices: Arc::new(Mutex::new(HashMap::new())),
@@ -523,7 +616,16 @@ impl DeviceTrackerManager {
     }
 
     /// Get or create tracker for device
-    /// Returns Arc to the tracker - caller should hold the lock briefly
+    ///
+    /// Returns Arc to the tracker. If device limit is reached, evicts oldest
+    /// device before creating new tracker.
+    ///
+    /// # Arguments
+    /// * `mac` - MAC address of device
+    ///
+    /// # Returns
+    /// Arc<Mutex<DeviceTracker>> for the device
+    /// Note: Caller should hold the lock briefly
     pub fn get_or_create(&self, mac: &str) -> Arc<Mutex<DeviceTracker>> {
         let mut devices = self.devices.lock().unwrap();
 
@@ -544,6 +646,19 @@ impl DeviceTrackerManager {
     }
 
     /// Record detection on device - holds lock for entire operation to prevent race
+    ///
+    /// Creates device tracker if needed, records detection, updates telemetry,
+    /// and logs detection event to console. Lock is held for entire operation.
+    ///
+    /// # Arguments
+    /// * `mac` - MAC address of device
+    /// * `rssi` - Signal strength in dBm
+    /// * `method` - Detection method/source
+    /// * `device_name` - Optional device name
+    /// * `manufacturer_id` - Optional manufacturer ID
+    ///
+    /// # Returns
+    /// Formatted log message string
     pub fn record_detection(
         &self,
         mac: &str,
@@ -593,6 +708,11 @@ impl DeviceTrackerManager {
     }
 
     /// Get all tracked devices
+    ///
+    /// Returns vector of all device trackers, sorted by detection count (descending).
+    ///
+    /// # Returns
+    /// Vector of DeviceTracker for all tracked devices
     pub fn get_all_devices(&self) -> Vec<DeviceTracker> {
         let devices = self.devices.lock().unwrap();
         let mut all: Vec<_> = devices.values().cloned().collect();
@@ -601,12 +721,23 @@ impl DeviceTrackerManager {
     }
 
     /// Get device by MAC
+    ///
+    /// # Arguments
+    /// * `mac` - MAC address to look up
+    ///
+    /// # Returns
+    /// Some(DeviceTracker) if found, None otherwise
     pub fn get_device(&self, mac: &str) -> Option<DeviceTracker> {
         let devices = self.devices.lock().unwrap();
         devices.get(mac).cloned()
     }
 
     /// Print summary of all tracked devices
+    ///
+    /// Outputs formatted table to terminal with:
+    /// - MAC address, device name, manufacturer
+    /// - Detection count and average RSSI
+    /// - Detection methods used
     pub fn print_summary(&self) {
         let devices = self.get_all_devices();
 
@@ -651,6 +782,13 @@ impl DeviceTrackerManager {
     }
 
     /// Persist all devices to database
+    ///
+    /// Iterates through all tracked devices and persists any that haven't
+    /// been stored yet. Updates stored_in_db flag on success.
+    ///
+    /// # Returns
+    /// * `Ok(count)` - Number of devices persisted
+    /// * `Err(message)` - Error message if critical failure
     pub fn persist_all(&self) -> Result<usize, String> {
         let mut devices = self.devices.lock().unwrap();
         let mut count = 0;
@@ -671,6 +809,15 @@ impl DeviceTrackerManager {
     }
 
     /// Export devices to formatted table
+    ///
+    /// Generates detailed text report with all device information including:
+    /// - MAC, name, manufacturer
+    /// - First/last detection timestamps
+    /// - Detection count and methods
+    /// - RSSI statistics (min/avg/max)
+    ///
+    /// # Returns
+    /// Formatted string report
     pub fn export_detailed_report(&self) -> String {
         let devices = self.get_all_devices();
         let mut report = String::new();
@@ -718,6 +865,14 @@ impl DeviceTrackerManager {
 }
 
 /// Format duration to readable string
+///
+/// Converts chrono::Duration to human-readable format (Xh Xm Xs).
+///
+/// # Arguments
+/// * `duration` - Duration to format
+///
+/// # Returns
+/// Formatted string like "1h 23m 45s" or "5m 30s"
 fn format_duration(duration: chrono::Duration) -> String {
     let secs = duration.num_seconds();
     let hours = secs / 3600;

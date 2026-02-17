@@ -1,6 +1,6 @@
-//! Entry point aplikacji only-bt-scan
+//! Entry point for the only-bt-scan application.
 //!
-//! Punkt wejścia - inicjalizuje środowisko i uruchamia główną pętlę aplikacji
+//! Initializes the runtime environment and launches the main application.
 
 use dotenv::dotenv;
 use only_bt_scan::run;
@@ -8,6 +8,17 @@ use std::env;
 use std::path::PathBuf;
 
 #[tokio::main]
+/// Application entry point.
+/// 
+/// Loads environment variables from .env files and starts the async runtime.
+/// Searches for .env in the following order:
+/// 1. Project root (next to executable)
+/// 2. Current working directory
+/// 
+/// Sets default RUST_LOG to "info" if not already configured.
+/// 
+/// # Returns
+/// Result<(), anyhow::Error> - Ok on successful exit, Error on failure
 async fn main() -> Result<(), anyhow::Error> {
     // Znajdź katalog główny projektu i załaduj .env
     let exe_path = std::env::current_exe().unwrap_or_default();

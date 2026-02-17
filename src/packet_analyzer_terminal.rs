@@ -53,15 +53,23 @@ pub fn format_packet_for_terminal(packet: &RawPacketModel) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data_models::RawPacketModel;
+    use chrono::Utc;
 
     #[test]
     fn test_format_empty_packet() {
-        assert_eq!(format_packet_for_terminal(&[]), "Empty packet");
+        let packet = RawPacketModel::new("AA:BB:CC:DD:EE:FF".to_string(), Utc::now(), vec![]);
+        let result = format_packet_for_terminal(&packet);
+        assert!(result.contains("Empty"));
     }
 
     #[test]
     fn test_format_basic_packet() {
-        let packet = vec![0x01, 0x02, 0x03];
+        let packet = RawPacketModel::new(
+            "AA:BB:CC:DD:EE:FF".to_string(),
+            Utc::now(),
+            vec![0x01, 0x02, 0x03],
+        );
         let formatted = format_packet_for_terminal(&packet);
         assert!(formatted.contains("01 02 03"));
     }

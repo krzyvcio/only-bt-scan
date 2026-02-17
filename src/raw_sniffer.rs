@@ -2,7 +2,6 @@
 /// Collects complete advertising packets and raw BLE frames
 /// Supports: Linux (HCI raw sockets), Windows (WinAPI), macOS (limited)
 use chrono::{DateTime, Utc};
-use log::debug;
 use serde::{Deserialize, Serialize};
 
 /// Complete Bluetooth frame with metadata

@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+
 /// Core Data Models - Two fundamental data types
 ///
 /// This module defines the two main data models in the system:
@@ -16,7 +17,35 @@ use std::collections::HashMap;
 // MODEL 1: DEVICE DATA - High-level aggregated device information
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Complete device representation - aggregated from many packets
+/// Complete device representation - aggregated from many packets.
+///
+/// This struct represents a high-level view of a Bluetooth device,
+/// aggregating information from multiple raw advertisement packets.
+///
+/// # Fields
+/// - `mac_address` - Unique MAC address (primary identifier)
+/// - `device_name` - Friendly name from advertising data or GATT
+/// - `device_type` - BLE, BR/EDR, or Dual Mode
+/// - `rssi` - Most recent signal strength in dBm
+/// - `avg_rssi` - Rolling average RSSI
+/// - `rssi_variance` - Signal stability measure
+/// - `first_seen` - Timestamp of first detection
+/// - `last_seen` - Timestamp of most recent detection
+/// - `response_time_ms` - Time gap between first and last detection
+/// - `manufacturer_id` - Bluetooth SIG company identifier
+/// - `manufacturer_name` - Human-readable company name
+/// - `advertised_services` - List of advertised service UUIDs
+/// - `appearance` - Device appearance category
+/// - `tx_power` - Transmit power level from advertising
+/// - `mac_type` - Public, Random, or Resolvable Private Address
+/// - `is_rpa` - Flag for Random Private Address
+/// - `security_level` - Security level if discovered
+/// - `pairing_method` - Pairing method if discovered
+/// - `is_connectable` - Whether device accepts connections
+/// - `detection_count` - Total number of scan detections
+/// - `last_rssi_values` - Recent RSSI values for charting
+/// - `discovered_services` - GATT services (if connected)
+/// - `vendor_protocols` - Vendor-specific protocols (iBeacon, Eddystone, etc.)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceModel {
     // === Core Identification ===
@@ -61,6 +90,14 @@ pub struct DeviceModel {
     pub vendor_protocols: Vec<VendorProtocolInfo>,
 }
 
+/// Bluetooth device type classification.
+///
+/// Based on Bluetooth Core Specification:
+/// - BleOnly - LE (Low Energy) only
+/// - BrEdrOnly - Classic Bluetooth only  
+/// - DualModeBle - Dual mode, LE preferred
+/// - DualModeBrEdr - Dual mode, BR/EDR preferred
+/// - Unknown - Unable to determine
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum DeviceType {
     BleOnly,
@@ -70,6 +107,14 @@ pub enum DeviceType {
     Unknown,
 }
 
+/// GATT Service information discovered from a connectable device.
+///
+/// # Fields
+/// - `uuid` - Service UUID (16-bit or 128-bit)
+/// - `name` - Human-readable service name (if known)
+/// - `characteristics_count` - Number of characteristics in this service
+/// - `readable` - Whether service has readable characteristics
+/// - `writable` - Whether service has writable characteristics
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GattServiceInfo {
     pub uuid: String,
@@ -79,6 +124,12 @@ pub struct GattServiceInfo {
     pub writable: bool,
 }
 
+/// Vendor-specific protocol information extracted from advertising data.
+///
+/// # Fields
+/// - `protocol_name` - Protocol name (e.g., "iBeacon", "Eddystone", "Fast Pair")
+/// - `protocol_type` - Protocol category (e.g., "beacon", "continuity", "fast_pair")
+/// - `data` - Protocol-specific data as key-value pairs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VendorProtocolInfo {
     pub protocol_name: String, // e.g., "iBeacon", "Eddystone", "Fast Pair"
@@ -90,7 +141,33 @@ pub struct VendorProtocolInfo {
 // MODEL 2: RAW PACKET DATA - Low-level raw Bluetooth packet information
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Complete raw Bluetooth packet - as captured from the air
+/// Complete raw Bluetooth packet - as captured from the air.
+///
+/// Represents a single BLE advertisement packet with all metadata.
+///
+/// # Fields
+/// - `packet_id` - Unique sequential ID
+/// - `mac_address` - Device MAC address
+/// - `timestamp` - Full timestamp with nanosecond precision
+/// - `timestamp_ms` - Milliseconds since epoch (for temporal analysis)
+/// - `latency_from_previous_ms` - Time since previous packet from same device
+/// - `phy` - Physical layer (LE 1M, LE 2M, LE Coded)
+/// - `channel` - BLE channel (37-39 for advertising, 0-36 for data)
+/// - `rssi` - Signal strength in dBm
+/// - `packet_type` - Advertisement type (ADV_IND, SCAN_RSP, etc.)
+/// - `is_scan_response` - Whether this is a scan response
+/// - `is_extended` - BT 5.0+ extended advertising
+/// - `advertising_data` - Raw bytes from advertising data
+/// - `advertising_data_hex` - Hex string representation
+/// - `ad_structures` - Parsed AD structures
+/// - `flags` - Parsed advertising flags
+/// - `local_name` - Complete local name
+/// - `short_name` - Shortened local name
+/// - `advertised_services` - List of service UUIDs
+/// - `manufacturer_data` - Manufacturer-specific data by company ID
+/// - `service_data` - Service data by service UUID
+/// - `total_length` - Total packet length
+/// - `parsed_successfully` - Whether parsing succeeded
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawPacketModel {
     // === Packet Identification ===
@@ -131,7 +208,19 @@ pub struct RawPacketModel {
     pub parsed_successfully: bool,
 }
 
-/// Single AD Structure from advertising data
+/// Single AD Structure from advertising data.
+///
+/// BLE advertising data is composed of AD Structures, each with:
+/// - Length (1 byte)
+/// - AD Type (1 byte)
+/// - AD Data (length-1 bytes)
+///
+/// # Fields
+/// - `ad_type` - AD type byte (e.g., 0xFF for Manufacturer Data)
+/// - `type_name` - Human-readable AD type name
+/// - `data` - Raw data bytes
+/// - `data_hex` - Hex string representation
+/// - `interpretation` - Human-readable meaning of the data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdStructureData {
     pub ad_type: u8,
@@ -141,6 +230,12 @@ pub struct AdStructureData {
     pub interpretation: String, // Human-readable meaning
 }
 
+/// Advertising Flags from AD Type 0x01.
+///
+/// Standard Bluetooth LE flags indicating:
+/// - Discovery mode (limited/general)
+/// - BR/EDR support
+/// - Dual mode controller/host capability
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdvertisingFlags {
     pub le_limited_discoverable: bool,
@@ -154,7 +249,17 @@ pub struct AdvertisingFlags {
 // RELATIONSHIP MODEL - Connecting the two
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Links device to its packets
+/// Links device to its packets - relationship model for API responses.
+///
+/// Provides aggregated statistics about a device's packet history.
+///
+/// # Fields
+/// - `mac_address` - Device MAC address
+/// - `total_packets` - Total packet count
+/// - `packets_by_channel` - Packet count per channel
+/// - `packets_by_type` - Packet count per advertisement type
+/// - `packets_by_phy` - Packet count per physical layer
+/// - `last_packet_ids` - Recent packet IDs for quick lookup
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DevicePacketRelationship {
     pub mac_address: String,
@@ -169,7 +274,12 @@ pub struct DevicePacketRelationship {
 // COMBINED API RESPONSES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Device with its recent packets
+/// Device with its recent packets - combined API response.
+///
+/// # Fields
+/// - `device` - The device model
+/// - `recent_packets` - Recent raw packets from this device
+/// - `packet_count` - Total packets for this device
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceWithPackets {
     pub device: DeviceModel,
@@ -177,7 +287,14 @@ pub struct DeviceWithPackets {
     pub packet_count: u64,
 }
 
-/// Paginated response for devices
+/// Paginated response for devices listing.
+///
+/// # Fields
+/// - `devices` - Array of device models for current page
+/// - `total` - Total count of all devices
+/// - `page` - Current page number (1-indexed)
+/// - `page_size` - Number of items per page
+/// - `total_pages` - Total number of pages
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedDevices {
     pub devices: Vec<DeviceModel>,
@@ -187,7 +304,14 @@ pub struct PaginatedDevices {
     pub total_pages: usize,
 }
 
-/// Paginated response for raw packets
+/// Paginated response for raw packets listing.
+///
+/// # Fields
+/// - `packets` - Array of packet models for current page
+/// - `total` - Total count of all packets
+/// - `page` - Current page number (1-indexed)
+/// - `page_size` - Number of items per page
+/// - `total_pages` - Total number of pages
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedPackets {
     pub packets: Vec<RawPacketModel>,
@@ -197,7 +321,14 @@ pub struct PaginatedPackets {
     pub total_pages: usize,
 }
 
-/// Combined scan results
+/// Combined scan results - all data from a single scan cycle.
+///
+/// # Fields
+/// - `scan_timestamp` - When the scan started
+/// - `total_devices` - Number of unique devices found
+/// - `total_packets` - Total raw packets captured
+/// - `devices` - List of all discovered devices
+/// - `sample_packets` - Sample of raw packets for detail view
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanResultsModel {
     pub scan_timestamp: DateTime<Utc>,
@@ -211,7 +342,25 @@ pub struct ScanResultsModel {
 // DATABASE SCHEMA MAPPING
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Maps to 'devices' table
+/// Maps to 'devices' table in SQLite database.
+///
+/// Internal struct for database row mapping.
+///
+/// # Fields
+/// - `id` - Primary key
+/// - `mac_address` - Unique MAC address
+/// - `device_name` - Device name (optional)
+/// - `rssi` - Current RSSI value
+/// - `first_seen` - First detection timestamp
+/// - `last_seen` - Last detection timestamp
+/// - `manufacturer_id` - Bluetooth company ID
+/// - `manufacturer_name` - Company name
+/// - `device_type` - Device type string
+/// - `number_of_scan` - Number of scan cycles detected in
+/// - `mac_type` - MAC address type
+/// - `is_rpa` - Is Random Private Address
+/// - `security_level` - Security level
+/// - `pairing_method` - Pairing method used
 #[derive(Debug, Clone)]
 pub struct DeviceRow {
     pub id: i32,
@@ -230,7 +379,20 @@ pub struct DeviceRow {
     pub pairing_method: Option<String>,
 }
 
-/// Maps to 'ble_advertisement_frames' table
+/// Maps to 'ble_advertisement_frames' table in SQLite database.
+///
+/// Internal struct for database row mapping.
+///
+/// # Fields
+/// - `id` - Primary key
+/// - `device_id` - Foreign key to devices table
+/// - `mac_address` - Device MAC address
+/// - `rssi` - Signal strength
+/// - `advertising_data` - Raw bytes (BLOB in DB)
+/// - `phy` - Physical layer
+/// - `channel` - BLE channel
+/// - `frame_type` - Advertisement type
+/// - `timestamp` - Timestamp string
 #[derive(Debug, Clone)]
 pub struct PacketRow {
     pub id: i64,
@@ -250,6 +412,13 @@ pub struct PacketRow {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 impl DeviceModel {
+    /// Creates a new DeviceModel with default values.
+    ///
+    /// # Arguments
+    /// * `mac_address` - The MAC address of the device
+    ///
+    /// # Returns
+    /// DeviceModel - New instance with default/empty values
     pub fn new(mac_address: String) -> Self {
         let now = Utc::now();
         Self {
@@ -279,6 +448,13 @@ impl DeviceModel {
         }
     }
 
+    /// Adds an RSSI measurement and updates statistics.
+    ///
+    /// Updates current RSSI, maintains rolling average (last 100 values),
+    /// and calculates signal variance for stability analysis.
+    ///
+    /// # Arguments
+    /// * `rssi` - New RSSI value in dBm
     pub fn add_rssi(&mut self, rssi: i8) {
         self.rssi = rssi;
         self.last_rssi_values.push(rssi);
@@ -307,6 +483,15 @@ impl DeviceModel {
 }
 
 impl RawPacketModel {
+    /// Creates a new RawPacketModel with default values.
+    ///
+    /// # Arguments
+    /// * `mac_address` - The MAC address of the sending device
+    /// * `timestamp` - Packet timestamp
+    /// * `advertising_data` - Raw advertising data bytes
+    ///
+    /// # Returns
+    /// RawPacketModel - New instance with calculated fields
     pub fn new(mac_address: String, timestamp: DateTime<Utc>, advertising_data: Vec<u8>) -> Self {
         let advertising_data_hex = hex::encode(&advertising_data);
         let timestamp_ms =

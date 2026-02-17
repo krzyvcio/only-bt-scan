@@ -5,11 +5,16 @@
 /// - Windows: winbluetooth + Windows Bluetooth API
 /// - Linux: BlueZ + hci
 /// - macOS: CoreBluetooth (via btleplug)
-use crate::bluetooth_scanner::{BluetoothDevice, BluetoothScanner, ScanConfig};
-use crate::windows_bluetooth::windows_bt::{WindowsBluetoothCapabilities, WindowsBluetoothManager};
-use log::{debug, info};
 
-/// Multi-platform Bluetooth scanner with native API support
+/// Multi-platform Bluetooth scanner with native API support.
+///
+/// Provides platform-specific scanning capabilities while maintaining
+/// a unified interface. On Windows, combines WMI/Registry enumeration
+/// with btleplug for BLE. On Linux, uses BlueZ. On macOS, uses CoreBluetooth.
+///
+/// # Fields
+/// - `config`: Scan configuration
+/// - `windows_manager`: Windows-specific Bluetooth manager (Windows only)
 pub struct NativeBluetoothScanner {
     config: ScanConfig,
     #[cfg(target_os = "windows")]
@@ -17,6 +22,16 @@ pub struct NativeBluetoothScanner {
 }
 
 impl NativeBluetoothScanner {
+    /// Creates a new native Bluetooth scanner with the given configuration.
+    ///
+    /// Initializes platform-specific Bluetooth managers and displays
+    /// capabilities for the current platform.
+    ///
+    /// # Arguments
+    /// * `config` - Scan configuration parameters
+    ///
+    /// # Returns
+    /// A new NativeBluetoothScanner instance
     pub fn new(config: ScanConfig) -> Self {
         info!("🚀 Initializing Native Bluetooth Scanner");
 
@@ -33,7 +48,16 @@ impl NativeBluetoothScanner {
         }
     }
 
-    /// Run native platform scan
+    /// Runs a native platform scan using the best available method.
+    ///
+    /// Delegates to platform-specific scanning:
+    /// - Windows: WMI enumeration + btleplug BLE scan
+    /// - Linux: BlueZ via btleplug
+    /// - macOS: CoreBluetooth via btleplug
+    ///
+    /// # Returns
+    /// * `Ok(Vec<BluetoothDevice>)` - List of discovered devices
+    /// * `Err(Box<dyn std::error::Error>)` - Error during scanning
     pub async fn run_native_scan(
         &mut self,
     ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
@@ -109,7 +133,14 @@ impl NativeBluetoothScanner {
         self.scan_via_btleplug().await
     }
 
-    /// Fallback: Use btleplug for cross-platform scanning
+    /// Fallback method using btleplug for cross-platform scanning.
+    ///
+    /// Used when native platform APIs are unavailable or fail.
+    /// Provides standard BLE scanning via btleplug library.
+    ///
+    /// # Returns
+    /// * `Ok(Vec<BluetoothDevice>)` - List of discovered BLE devices
+    /// * `Err(Box<dyn std::error::Error>)` - Error during scanning
     async fn scan_via_btleplug(&self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         debug!("Using btleplug for cross-platform scanning");
 
@@ -117,7 +148,13 @@ impl NativeBluetoothScanner {
         scanner.run_scan().await
     }
 
-    /// Get native capabilities for current platform
+    /// Gets native Bluetooth capabilities for the current platform.
+    ///
+    /// Returns information about what features and APIs are supported
+    /// on the current platform including BLE, BR/EDR, HCI, GATT, and pairing.
+    ///
+    /// # Returns
+    /// PlatformCapabilities with supported features
     pub fn get_capabilities(&self) -> PlatformCapabilities {
         #[cfg(target_os = "windows")]
         {
@@ -182,7 +219,21 @@ impl NativeBluetoothScanner {
     }
 }
 
-/// Platform detection and capabilities
+/// Platform detection and capabilities.
+///
+/// Contains information about what Bluetooth features and APIs
+/// are supported on the current platform.
+///
+/// # Fields
+/// - `platform`: Operating system name (Windows, Linux, macOS, etc.)
+/// - `supports_native_api`: Whether platform has native Bluetooth API
+/// - `supports_ble`: Whether BLE (Low Energy) is supported
+/// - `supports_bredr`: Whether Classic Bluetooth (BR/EDR) is supported
+/// - `supports_dual_mode`: Whether dual-mode devices are supported
+/// - `supports_hci_raw`: Whether raw HCI access is available
+/// - `supports_gatt`: Whether GATT server/client is supported
+/// - `supports_pairing`: Whether device pairing is supported
+/// - `api_name`: Name of the Bluetooth API being used
 #[derive(Debug, Clone)]
 pub struct PlatformCapabilities {
     pub platform: String,
