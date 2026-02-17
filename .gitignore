@@ -25,3 +25,4 @@ geneze.txt
 *.pyo
 bluetooth_scan.db-shm
 bluetooth_scan.db-wal
+bluetooth_scan.db-wal
