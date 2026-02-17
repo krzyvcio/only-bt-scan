@@ -138,3 +138,46 @@ Nie są martwe - są conditional #[cfg]:
 - ble_uuids.rs - 16+ (częściowo używane)
 - config_params.rs - 9 (tylko testy używają)
 - Inne moduły platformowe (android, bluey, core_bluetooth)
+
+---
+
+## 2026-02-17: Passive Scanner Module
+
+### Implemented: passive_scanner.rs
+
+Nowy moduł do pasywnego skanowania BLE z precyzyjnymi znacznikami czasu:
+
+#### Features:
+- **PassivePacket** - struktura pakietu z:
+  - `packet_id` - unikalny ID pakietu
+  - `mac_address` - adres MAC urządzenia
+  - `rssi` - siła sygnału w dBm
+  - `timestamp_ns` - znacznik czasu w nanosekundach
+  - `timestamp_ms` - znacznik czasu w milisekundach
+  - `phy` - PHY (LE 1M, LE 2M, LE Coded)
+  - `channel` - kanał BLE (37-39)
+  - `packet_type` - typ pakietu (ADV_IND, etc.)
+  - `advertising_data` - surowe dane reklamowe
+  - Flagi: is_connectable, is_scannable, is_directed, is_legacy, is_extended
+  - tx_power - moc nadawania
+
+- **PassiveScanConfig** - konfiguracja skanowania:
+  - `scan_duration_ms` - czas skanowania
+  - `filter_duplicates` - filtrowanie duplikatów
+  - `rssi_threshold` - próg RSSI
+  - `capture_legacy/capture_extended` - typy pakietów
+
+- **PassiveScanner** - główny skaner:
+  - `start_passive_scan()` - synchroniczne skanowanie
+  - `start_passive_scan_streaming()` - strumieniowanie (placeholder)
+  - `get_timestamp_ns/ms()` - precyzyjne znaczniki czasu
+
+#### Integration:
+- Wykorzystuje `quanta` do precyzyjnego pomiaru czasu (nanosekundy)
+- Integracja z `data_models::RawPacketModel`
+- Wykorzystuje btleplug do cross-platform skanowania
+- Deduplikacja pakietów w oknie czasowym
+
+#### Files modified/created:
+- Created: `src/passive_scanner.rs` (nowy moduł)
+- Modified: `src/lib.rs` (dodany moduł)

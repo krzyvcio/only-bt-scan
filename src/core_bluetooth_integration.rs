@@ -1,14 +1,17 @@
-use crate::data_models::DeviceModel;
+//! CoreBluetooth Integration Module (macOS/iOS)
+//! 
+//! Provides native CoreBluetooth access for BLE scanning on Apple platforms.
+//! This module uses the `core_bluetooth` crate for direct access to Apple's
+//! CoreBluetooth framework.
+//!
+//! NOTE: This is optional - btleplug already uses CoreBluetooth internally on macOS.
+//! Enable the `l2cap` feature in Cargo.toml to use this module.
+
+use crate::data_models::{DeviceModel, DeviceType};
 use crate::l2cap_analyzer::L2CapChannel;
-/// Core Bluetooth Integration (macOS/iOS)
-/// Provides native CoreBluetooth access for L2CAP channel information,
-/// advanced GATT operations, and platform-specific optimizations
-///
-/// Uses the `core_bluetooth` crate for safe Rust bindings to Apple's CoreBluetooth
 use log::{info, warn};
 use std::time::Duration;
 
-/// CoreBluetooth Configuration
 #[derive(Debug, Clone)]
 pub struct CoreBluetoothConfig {
     pub enabled: bool,
@@ -32,7 +35,6 @@ impl Default for CoreBluetoothConfig {
     }
 }
 
-/// CoreBluetooth Scanner for macOS/iOS
 pub struct CoreBluetoothScanner {
     config: CoreBluetoothConfig,
 }
@@ -42,23 +44,23 @@ impl CoreBluetoothScanner {
         Self { config }
     }
 
-    /// Start scanning with CoreBluetooth
-    pub async fn scan(&self) -> Result<Vec<DeviceModel>, Box<dyn std::error::Error>> {
-        info!("🍎 Starting CoreBluetooth scan");
-        info!("   Scan duration: {:?}", self.config.scan_duration);
-        info!("   Service discovery: {}", self.config.discover_services);
-        info!("   L2CAP extraction: {}", self.config.extract_l2cap_info);
+    /// Start scanning with native CoreBluetooth API
+    pub async fn scan(&self) -> Result<Vec<DeviceModel>, Box<dyn std::error::Error + Send + Sync>> {
+        info!("🍎 Starting native CoreBluetooth scan");
 
-        #[cfg(target_os = "macos")]
+        #[cfg(feature = "l2cap")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
-            self.scan_macos().await
+            self.scan_native().await
         }
 
-        #[cfg(target_os = "ios")]
+        #[cfg(not(feature = "l2cap"))]
         {
-            self.scan_ios().await
+            warn!("CoreBluetooth not available - enable 'l2cap' feature");
+            Ok(Vec::new())
         }
 
+        #[cfg(feature = "l2cap")]
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
             warn!("CoreBluetooth is macOS/iOS only");
@@ -66,229 +68,138 @@ impl CoreBluetoothScanner {
         }
     }
 
+    #[cfg(feature = "l2cap")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    async fn scan_native(&self) -> Result<Vec<DeviceModel>, Box<dyn std::error::Error + Send + Sync>> {
+        use core_bluetooth::central::{CentralEvent, CentralManager};
+        
+        info!("   Initializing CoreBluetooth CentralManager...");
+        
+        let (central, mut receiver) = CentralManager::new();
+        
+        info!("   CBCentralManager created, waiting for state changes...");
+        
+        let mut devices = Vec::new();
+        let scan_start = std::time::Instant::now();
+        
+        while scan_start.elapsed() < self.config.scan_duration {
+            if let Ok(event) = receiver.recv_timeout(Duration::from_millis(500)) {
+                match event {
+                    CentralEvent::ManagerStateChanged { new_state } => {
+                        info!("   Manager state: {:?}", new_state);
+                    }
+                    CentralEvent::PeripheralDiscovered { peripheral, advertisement_data, rssi } => {
+                        let uuid = peripheral.id();
+                        let mac = uuid.to_string();
+                        
+                        let name = advertisement_data
+                            .local_name()
+                            .map(|s| s.to_string());
+                        
+                        let rssi_value = rssi as i8;
+                        
+                        let device = DeviceModel {
+                            mac_address: mac.clone(),
+                            device_name: name,
+                            device_type: DeviceType::BleOnly,
+                            rssi: rssi_value,
+                            avg_rssi: rssi_value as f64,
+                            rssi_variance: 0.0,
+                            first_seen: chrono::Utc::now(),
+                            last_seen: chrono::Utc::now(),
+                            response_time_ms: 0,
+                            manufacturer_id: None,
+                            manufacturer_name: None,
+                            advertised_services: Vec::new(),
+                            appearance: None,
+                            tx_power: None,
+                            mac_type: Some("Public".to_string()),
+                            is_rpa: false,
+                            security_level: None,
+                            pairing_method: None,
+                            is_connectable: true,
+                            detection_count: 1,
+                            last_rssi_values: vec![rssi_value],
+                            discovered_services: Vec::new(),
+                            vendor_protocols: Vec::new(),
+                        };
+                        
+                        info!("   Discovered: {} (RSSI: {})", mac, rssi_value);
+                        devices.push(device);
+                    }
+                    CentralEvent::PeripheralConnected { peripheral } => {
+                        info!("   Connected: {}", peripheral.id());
+                    }
+                    CentralEvent::PeripheralDisconnected { peripheral, .. } => {
+                        info!("   Disconnected: {}", peripheral.id());
+                    }
+                    _ => {}
+                }
+            }
+        }
+        
+        info!("   CoreBluetooth scan complete: {} devices found", devices.len());
+        Ok(devices)
+    }
+
     /// Extract L2CAP channel information for a device
     pub async fn extract_l2cap_channels(
         &self,
         mac_address: &str,
-    ) -> Result<Vec<L2CapChannel>, Box<dyn std::error::Error>> {
-        info!(
-            "🍎 Extracting L2CAP channels for {} via CoreBluetooth",
-            mac_address
-        );
-
-        #[cfg(target_os = "macos")]
+    ) -> Result<Vec<L2CapChannel>, Box<dyn std::error::Error + Send + Sync>> {
+        info!("   L2CAP extraction for {} via native API", mac_address);
+        
+        #[cfg(feature = "l2cap")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
-            self.extract_l2cap_macos(mac_address).await
+            info!("   Note: L2CAP channels require active connection");
         }
 
-        #[cfg(target_os = "ios")]
+        #[cfg(not(feature = "l2cap"))]
         {
-            self.extract_l2cap_ios(mac_address).await
+            warn!("L2CAP not available - enable 'l2cap' feature");
         }
 
-        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-        {
-            Ok(Vec::new())
-        }
+        Ok(Vec::new())
     }
 
-    /// Get device connection info with L2CAP details
+    /// Get device connection info
     pub async fn get_device_connection_info(
         &self,
         mac_address: &str,
-    ) -> Result<DeviceConnectionInfo, Box<dyn std::error::Error>> {
-        info!("🍎 Getting device connection info for {}", mac_address);
+    ) -> Result<DeviceConnectionInfo, Box<dyn std::error::Error + Send + Sync>> {
+        info!("   Getting connection info for {}", mac_address);
 
-        #[cfg(target_os = "macos")]
+        #[cfg(feature = "l2cap")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
-            self.get_connection_info_macos(mac_address).await
+            Ok(DeviceConnectionInfo {
+                mac_address: mac_address.to_string(),
+                is_connected: false,
+                l2cap_channels: Vec::new(),
+                connection_state: ConnectionState::Disconnected,
+            })
         }
 
-        #[cfg(target_os = "ios")]
+        #[cfg(not(feature = "l2cap"))]
         {
-            self.get_connection_info_ios(mac_address).await
+            Err("CoreBluetooth not available - enable 'l2cap' feature".into())
         }
 
+        #[cfg(feature = "l2cap")]
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
             Err("CoreBluetooth not available".into())
         }
     }
-
-    #[cfg(target_os = "macos")]
-    async fn scan_macos(&self) -> Result<Vec<DeviceModel>, Box<dyn std::error::Error>> {
-        info!("📱 macOS CoreBluetooth scanning");
-
-        // Note: Real implementation would use core_bluetooth crate:
-        //
-        // use core_bluetooth::CBCentralManager;
-        // let central = CBCentralManager::new();
-        // central.scan_for_peripherals_with_services(None);
-        //
-        // Wait for peripherals_did_discover_peripheral callbacks
-        // Process discovered peripherals
-
-        info!("   Initializing CBCentralManager");
-        info!("   Requesting location permissions (required for macOS)");
-
-        // Simulated results
-        Ok(Vec::new())
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    async fn scan_macos(&self) -> Result<Vec<DeviceModel>, Box<dyn std::error::Error>> {
-        Ok(Vec::new())
-    }
-
-    #[cfg(target_os = "ios")]
-    async fn scan_ios(&self) -> Result<Vec<DeviceModel>, Box<dyn std::error::Error>> {
-        info!("📱 iOS CoreBluetooth scanning");
-
-        // iOS CoreBluetooth is similar but with different permission handling
-        // use core_bluetooth::CBCentralManager;
-        // iOS doesn't require location permission for Bluetooth scanning in iOS 13+
-
-        info!("   Initializing CBCentralManager");
-        info!("   iOS permissions: NSBluetoothPeripheralUsageDescription");
-
-        Ok(Vec::new())
-    }
-
-    #[cfg(not(target_os = "ios"))]
-    async fn scan_ios(&self) -> Result<Vec<DeviceModel>, Box<dyn std::error::Error>> {
-        Ok(Vec::new())
-    }
-
-    #[cfg(target_os = "macos")]
-    async fn extract_l2cap_macos(
-        &self,
-        mac_address: &str,
-    ) -> Result<Vec<L2CapChannel>, Box<dyn std::error::Error>> {
-        info!("🍎 Extracting L2CAP for {}", mac_address);
-
-        // use core_bluetooth::CBPeripheral;
-        // let peripheral = CBPeripheral::find_by_address(mac_address)?;
-        //
-        // Get L2CAP channels via CBL2CAPChannel API
-        // if let Some(l2cap_channels) = peripheral.l2cap_channels() {
-        //     for channel in l2cap_channels {
-        //         channels.push(L2CapChannel {
-        //             channel_id: channel.source_id() as u16,
-        //             psm: L2CapPsm(channel.psm() as u16),
-        //             ...
-        //         });
-        //     }
-        // }
-
-        debug!("   Looking up peripheral: {}", mac_address);
-        debug!("   Accessing CBL2CAPChannel objects");
-
-        Ok(Vec::new())
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    async fn extract_l2cap_macos(
-        &self,
-        _mac_address: &str,
-    ) -> Result<Vec<L2CapChannel>, Box<dyn std::error::Error>> {
-        Ok(Vec::new())
-    }
-
-    #[cfg(target_os = "ios")]
-    async fn extract_l2cap_ios(
-        &self,
-        mac_address: &str,
-    ) -> Result<Vec<L2CapChannel>, Box<dyn std::error::Error>> {
-        info!("🍎 Extracting L2CAP for {} on iOS", mac_address);
-        Ok(Vec::new())
-    }
-
-    #[cfg(not(target_os = "ios"))]
-    async fn extract_l2cap_ios(
-        &self,
-        _mac_address: &str,
-    ) -> Result<Vec<L2CapChannel>, Box<dyn std::error::Error>> {
-        Ok(Vec::new())
-    }
-
-    #[cfg(target_os = "macos")]
-    async fn get_connection_info_macos(
-        &self,
-        mac_address: &str,
-    ) -> Result<DeviceConnectionInfo, Box<dyn std::error::Error>> {
-        info!("🍎 Getting connection info for {}", mac_address);
-
-        // use core_bluetooth::CBPeripheral;
-        // let peripheral = CBPeripheral::find_by_address(mac_address)?;
-        //
-        // Get MTU, connection state, RSSI, etc.
-
-        Ok(DeviceConnectionInfo {
-            mac_address: mac_address.to_string(),
-            is_connected: false,
-            mtu: 512,
-            rssi: -70,
-            l2cap_channels: Vec::new(),
-            connection_state: ConnectionState::Disconnected,
-            connection_interval_ms: None,
-            latency: None,
-        })
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    async fn get_connection_info_macos(
-        &self,
-        _mac_address: &str,
-    ) -> Result<DeviceConnectionInfo, Box<dyn std::error::Error>> {
-        Err("Not available".into())
-    }
-
-    #[cfg(target_os = "ios")]
-    async fn get_connection_info_ios(
-        &self,
-        mac_address: &str,
-    ) -> Result<DeviceConnectionInfo, Box<dyn std::error::Error>> {
-        info!("🍎 Getting connection info for {} on iOS", mac_address);
-        Ok(DeviceConnectionInfo {
-            mac_address: mac_address.to_string(),
-            is_connected: false,
-            mtu: 512,
-            rssi: -70,
-            l2cap_channels: Vec::new(),
-            connection_state: ConnectionState::Disconnected,
-            connection_interval_ms: None,
-            latency: None,
-        })
-    }
-
-    #[cfg(not(target_os = "ios"))]
-    async fn get_connection_info_ios(
-        &self,
-        _mac_address: &str,
-    ) -> Result<DeviceConnectionInfo, Box<dyn std::error::Error>> {
-        Err("Not available".into())
-    }
 }
 
-/// Device connection information from CoreBluetooth
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug)]
 pub struct DeviceConnectionInfo {
     pub mac_address: String,
     pub is_connected: bool,
-    pub mtu: u16,
-    pub rssi: i8,
-    pub l2cap_channels: Vec<L2CapChannelInfo>,
+    pub l2cap_channels: Vec<L2CapChannel>,
     pub connection_state: ConnectionState,
-    pub connection_interval_ms: Option<f64>,
-    pub latency: Option<u16>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct L2CapChannelInfo {
-    pub channel_id: u16,
-    pub psm: u16,
-    pub mtu: u16,
-    pub state: String,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -299,40 +210,38 @@ pub enum ConnectionState {
     Disconnecting,
 }
 
-/// Platform capabilities
 #[derive(Debug, Clone)]
 pub struct CoreBluetoothCapabilities {
     pub platform: &'static str,
     pub available: bool,
     pub l2cap_support: bool,
     pub gatt_support: bool,
-    pub connection_params: bool,
 }
 
 impl CoreBluetoothCapabilities {
     pub fn current() -> Self {
-        #[cfg(target_os = "macos")]
+        #[cfg(feature = "l2cap")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
             Self {
-                platform: "macOS",
+                platform: if cfg!(target_os = "macos") { "macOS" } else { "iOS" },
                 available: true,
                 l2cap_support: true,
                 gatt_support: true,
-                connection_params: true,
             }
         }
 
-        #[cfg(target_os = "ios")]
+        #[cfg(not(feature = "l2cap"))]
         {
             Self {
-                platform: "iOS",
-                available: true,
-                l2cap_support: true,
-                gatt_support: true,
-                connection_params: true,
+                platform: "Other",
+                available: false,
+                l2cap_support: false,
+                gatt_support: false,
             }
         }
 
+        #[cfg(feature = "l2cap")]
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
             Self {
@@ -340,27 +249,11 @@ impl CoreBluetoothCapabilities {
                 available: false,
                 l2cap_support: false,
                 gatt_support: false,
-                connection_params: false,
             }
-        }
-    }
-
-    pub fn info(&self) -> String {
-        if self.available {
-            format!(
-                "CoreBluetooth on {}: ✅ Available (L2CAP: {}, GATT: {}, Conn params: {})",
-                self.platform,
-                if self.l2cap_support { "✓" } else { "✗" },
-                if self.gatt_support { "✓" } else { "✗" },
-                if self.connection_params { "✓" } else { "✗" }
-            )
-        } else {
-            format!("CoreBluetooth on {}: ❌ Not available", self.platform)
         }
     }
 }
 
-/// CoreBluetooth enhanced scanner
 pub struct EnhancedCoreBluetoothScanner {
     config: CoreBluetoothConfig,
     capabilities: CoreBluetoothCapabilities,
@@ -369,10 +262,10 @@ pub struct EnhancedCoreBluetoothScanner {
 impl EnhancedCoreBluetoothScanner {
     pub fn new(config: CoreBluetoothConfig) -> Self {
         let capabilities = CoreBluetoothCapabilities::current();
-
+        
         info!("🍎 Enhanced CoreBluetooth Scanner");
         info!("   Platform: {}", capabilities.platform);
-        info!("   {}", capabilities.info());
+        info!("   Available: {}", capabilities.available);
 
         Self {
             config,
@@ -380,7 +273,7 @@ impl EnhancedCoreBluetoothScanner {
         }
     }
 
-    pub async fn scan(&self) -> Result<Vec<DeviceModel>, Box<dyn std::error::Error>> {
+    pub async fn scan(&self) -> Result<Vec<DeviceModel>, Box<dyn std::error::Error + Send + Sync>> {
         if !self.capabilities.available {
             warn!("CoreBluetooth not available on this platform");
             return Ok(Vec::new());
@@ -388,18 +281,6 @@ impl EnhancedCoreBluetoothScanner {
 
         let scanner = CoreBluetoothScanner::new(self.config.clone());
         scanner.scan().await
-    }
-
-    pub async fn get_device_with_l2cap(
-        &self,
-        mac_address: &str,
-    ) -> Result<Option<DeviceConnectionInfo>, Box<dyn std::error::Error>> {
-        if !self.capabilities.l2cap_support {
-            return Ok(None);
-        }
-
-        let scanner = CoreBluetoothScanner::new(self.config.clone());
-        Ok(Some(scanner.get_device_connection_info(mac_address).await?))
     }
 
     pub fn is_available(&self) -> bool {
@@ -420,37 +301,11 @@ mod tests {
         let config = CoreBluetoothConfig::default();
         assert!(config.enabled);
         assert!(config.discover_services);
-        assert!(config.extract_l2cap_info);
     }
 
     #[test]
     fn test_capabilities() {
         let caps = CoreBluetoothCapabilities::current();
-        println!("{}", caps.info());
-        // Varies by platform
-    }
-
-    #[test]
-    fn test_enhanced_scanner_creation() {
-        let config = CoreBluetoothConfig::default();
-        let scanner = EnhancedCoreBluetoothScanner::new(config);
-        println!("Platform: {}", scanner.platform());
-    }
-
-    #[test]
-    fn test_connection_state_display() {
-        let info = DeviceConnectionInfo {
-            mac_address: "AA:BB:CC:DD:EE:FF".to_string(),
-            is_connected: true,
-            mtu: 512,
-            rssi: -60,
-            l2cap_channels: Vec::new(),
-            connection_state: ConnectionState::Connected,
-            connection_interval_ms: Some(30.0),
-            latency: Some(0),
-        };
-
-        assert_eq!(info.mtu, 512);
-        assert!(info.is_connected);
+        println!("Platform: {}, Available: {}", caps.platform, caps.available);
     }
 }

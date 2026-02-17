@@ -1,5 +1,5 @@
 //! # only-bt-scan - Bluetooth LE/Bluetooth Scanner Application
-//! 
+//!
 //! Główna biblioteka aplikacji skanującej urządzenia Bluetooth.
 //! Obsługuje skanowanie BLE, zapis do bazy danych, Web API i powiadomienia Telegram.
 
@@ -24,11 +24,9 @@ mod db;
 mod db_frames;
 mod db_pool;
 mod device_events;
+mod device_tracker;
 mod env_config;
 mod event_analyzer;
-mod device_tracker;
-mod rssi_trend_manager;
-mod rssi_analyzer;
 mod gatt_client;
 mod hci_packet_parser;
 mod hci_realtime_capture;
@@ -43,10 +41,13 @@ mod multi_method_scanner;
 mod native_scanner;
 mod packet_analyzer_terminal;
 mod packet_tracker;
+mod passive_scanner;
 mod pcap_exporter;
 mod raw_packet_integration;
 mod raw_packet_parser;
 mod raw_sniffer;
+mod rssi_analyzer;
+mod rssi_trend_manager;
 mod scanner_integration;
 mod telegram_notifier;
 mod telemetry;
@@ -71,15 +72,17 @@ use unified_scan::UnifiedScanEngine;
 mod ui_renderer;
 mod web_server;
 
-use std::sync::{Arc, OnceLock};
 use crate::rssi_trend_manager::GlobalRssiManager;
+use std::sync::{Arc, OnceLock};
 
 /// Globalny menedżer RSSI dla śledzenia trendów siły sygnału wszystkich urządzeń
 static RSSI_MANAGER: OnceLock<Arc<GlobalRssiManager>> = OnceLock::new();
 
 /// Zwraca globalną instancję menedżera RSSI (singleton)
 pub fn get_rssi_manager() -> Arc<GlobalRssiManager> {
-    RSSI_MANAGER.get_or_init(|| GlobalRssiManager::default()).clone()
+    RSSI_MANAGER
+        .get_or_init(|| GlobalRssiManager::default())
+        .clone()
 }
 
 /// Tworzy kopię zapasową bazy danych przed uruchomieniem aplikacji
@@ -87,12 +90,12 @@ pub fn get_rssi_manager() -> Arc<GlobalRssiManager> {
 fn backup_database() {
     const DB_PATH: &str = "bluetooth_scan.db";
     const DB_BAK: &str = "bluetooth_scan.db.bak";
-    
+
     // Check if database exists
     if !std::path::Path::new(DB_PATH).exists() {
         return;
     }
-    
+
     // Try to create backup
     match std::fs::copy(DB_PATH, DB_BAK) {
         Ok(bytes) => {
@@ -111,13 +114,13 @@ fn backup_database() {
 pub fn restore_database() -> bool {
     const DB_PATH: &str = "bluetooth_scan.db";
     const DB_BAK: &str = "bluetooth_scan.db.bak";
-    
+
     // Check if backup exists
     if !std::path::Path::new(DB_BAK).exists() {
         println!("❌ No backup file found");
         return false;
     }
-    
+
     // Remove corrupted database
     if std::path::Path::new(DB_PATH).exists() {
         if let Err(e) = std::fs::remove_file(DB_PATH) {
@@ -125,7 +128,7 @@ pub fn restore_database() -> bool {
             return false;
         }
     }
-    
+
     // Restore from backup
     match std::fs::copy(DB_BAK, DB_PATH) {
         Ok(bytes) => {
@@ -147,7 +150,7 @@ fn format_timestamp(dt: &chrono::DateTime<chrono::Utc>) -> String {
     let now = chrono::Utc::now();
     let today = now.date_naive();
     let dt_date = dt.date_naive();
-    
+
     if dt_date == today {
         // Today - show only time
         dt.format("%H:%M:%S").to_string()
@@ -160,11 +163,11 @@ fn format_timestamp(dt: &chrono::DateTime<chrono::Utc>) -> String {
 /// Format duration as uptime (e.g., "1h 23m 45s" or "45s")
 fn format_duration(duration: std::time::Duration) -> String {
     let secs = duration.as_secs();
-    
+
     let hours = secs / 3600;
     let minutes = (secs % 3600) / 60;
     let seconds = secs % 60;
-    
+
     if hours > 0 {
         format!("{}h {}m {}s", hours, minutes, seconds)
     } else if minutes > 0 {
@@ -230,7 +233,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
 
     // Backup database before starting (if exists)
     backup_database();
-    
+
     // Initialize database
     match db::init_database() {
         Ok(_) => {
@@ -442,7 +445,8 @@ pub async fn run() -> Result<(), anyhow::Error> {
         log::info!("[Telegram] Spawning periodic report task (every 1 minute)");
         std::thread::spawn(move || {
             eprintln!("[TELEGRAM] Thread started, creating Tokio runtime...");
-            let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime for Telegram");
+            let rt = tokio::runtime::Runtime::new()
+                .expect("Failed to create Tokio runtime for Telegram");
             eprintln!("[TELEGRAM] Runtime created, starting periodic task...");
             rt.block_on(async {
                 telegram_notifier::run_periodic_report_task().await;
@@ -704,7 +708,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
         })?;
         execute!(stdout(), MoveTo(0, start_line))?;
         scan_count += 1;
-        
+
         writeln!(
             stdout(),
             "{}",
@@ -726,7 +730,11 @@ pub async fn run() -> Result<(), anyhow::Error> {
                 let raw_packets = &results.raw_packets;
 
                 // Debug output to stdout
-                println!("[DEBUG] Scan complete: {} devices, {} raw packets", devices.len(), raw_packets.len());
+                println!(
+                    "[DEBUG] Scan complete: {} devices, {} raw packets",
+                    devices.len(),
+                    raw_packets.len()
+                );
 
                 log::info!(
                     "📝 Scan complete: {} devices, {} raw packets",
@@ -841,11 +849,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
                             "{}",
                             "═══════════════════════════════════════════════════════".bright_cyan()
                         )?;
-                        writeln!(
-                            stdout(),
-                            "{}",
-                            "📡 DETECTED DEVICES".bright_green().bold()
-                        )?;
+                        writeln!(stdout(), "{}", "📡 DETECTED DEVICES".bright_green().bold())?;
                         writeln!(
                             stdout(),
                             "{}",
@@ -854,7 +858,8 @@ pub async fn run() -> Result<(), anyhow::Error> {
 
                         // Show ALL packets (no filtering)
                         for packet in &results.raw_packets {
-                            let formatted = crate::packet_analyzer_terminal::format_packet_for_terminal(packet);
+                            let formatted =
+                                crate::packet_analyzer_terminal::format_packet_for_terminal(packet);
                             writeln!(stdout(), "{}", formatted)?;
                         }
                         writeln!(
@@ -1009,8 +1014,6 @@ pub async fn run() -> Result<(), anyhow::Error> {
 
 /// Zapisuje bieżącą migawkę telemetrii do bazy danych (wywoływane co 5 minut)
 async fn save_telemetry_snapshot() -> anyhow::Result<()> {
-    
-
     // Get current telemetry from global singleton
     if let Some(snapshot) = telemetry::get_global_telemetry() {
         // Save main snapshot
