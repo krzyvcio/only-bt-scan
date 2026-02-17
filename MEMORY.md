@@ -84,3 +84,23 @@ Nadal nieużywane ale zostawione:
 - RSSI trends (approaching/moving away/stable)
 - Surowe pakiety (do 50)
 - Jako HTML załącznik: ble_scan_report.html
+
+---
+
+## Proponowane kolejne funkcjonalności (subagent 2)
+
+### Priorytet HIGH:
+1. **GATT Service Discovery** - połącz z urządzeniami BLE i odczytaj GATT services
+2. **Live WebSocket Updates** - zamiast pollingu, push updates na web UI
+
+### Priorytet MEDIUM:
+3. **Interactive Telegram Commands** - /stats, /device MAC, /export
+4. **Device Filtering & Search** - filtrowanie po producencie, RSSI
+5. **Device Watchlist & Alerts** - śledź konkretne urządzenia
+6. **Historical Trend Charts** - wykresy historyczne
+7. **DB Query Optimization** - indeksy
+
+### Priorytet LOW:
+8. **Multi-Adapter Support** - wiele adapterów BT jednocześnie
+9. **Data Export** - JSON/CSV/PCAP
+10. **Extended Advertising Parsing** - BLE 5.0
