@@ -1,140 +1,86 @@
-# MEMORY.md - Postępy analizy nieużywanego kodu
+# MEMORY.md - Postępy projektu only-bt-scan
 
-## 2026-02-16: Analiza rozpoczęta
+## 2026-02-17: Sesja główna (ostatnia)
 
-### Podsumowanie
-- **292 warningi** o nieużywanym kodzie z `cargo check`
+### Zmiany w tej sesji:
 
-### Top pliki z nieużywanym kodem (ilość warningów):
-1. `l2cap_analyzer.rs` - ~16 (L2CAP protokół)
-2. `ble_uuids.rs` - 16 (UUID services/characteristics)
-3. `event_analyzer.rs` - 15 (analiza zdarzeń)
-4. `core_bluetooth_integration.rs` - 14 (macOS CoreBluetooth)
-5. `data_flow_estimator.rs` - 14 (estymacja przepływu)
-6. `advertising_parser.rs` - 13+ (parsowanie AD struktur)
-7. `link_layer.rs` - 14 (link layer)
-8. `bluey_integration.rs` - 10 (Bluey scanner)
-9. `android_ble_bridge.rs` - 8 (Android BLE)
-10. `config_params.rs` - 10 (stałe konfiguracyjne)
-11. `device_events.rs` - 12 (zdarzenia urządzeń)
-12. `gatt_client.rs` - 11 (GATT klient)
-13. `background.rs` - 6 (tryb background)
+#### 1. RSSI Trend 24h API
+- Dodano endpoint `/api/devices/{mac}/rssi-24h` - zwraca pomiary z ostatnich 24h
+- Dodano funkcję w db.rs: `get_raw_rssi_measurements_24h()`
+- Frontend ładuje teraz dane z 24h zamiast 100 ostatnich pomiarów
 
-### Całe nieużywane moduły (można usunąć):
-- `android_ble_bridge.rs` - Android bridge
-- `bluey_integration.rs` - Bluey scanner
-- `core_bluetooth_integration.rs` - macOS CoreBluetooth
-- `data_flow_estimator.rs` - estymacja przepływu
-- `event_analyzer.rs` - analizator zdarzeń
-- `html_report.rs` - generowanie HTML
-- `interactive_ui.rs` - interaktywny UI
-- `gatt_client.rs` - GATT klient
+#### 2. Telegram - naprawa raportów okresowych
+- Zmieniono interwał z 5 min na **1 minutę**
+- Naprawiono błędy SQL w zapytaniach datetime
+- Przeniesiono task Telegrama do osobnego wątku z Tokio runtime (std::thread::spawn)
+- Raport teraz zawiera: urządzenia, RSSI trends, surowe pakiety HTML
 
-### Kolejność czyszczenia:
-1. **ETAP 1**: config_params.rs - proste stałe i funkcje
-2. **ETAP 2**: company_ids.rs + company_id_reference.rs - stałe
-3. **ETAP 3**: Całe moduły (android_ble, bluey, core_bluetooth)
-4. **ETAP 4**: advertising_parser.rs (używa innego parsera?)
-5. **ETAP 5**: Pozostałe
+#### 3. Frontend - rozdzielenie app.js
+Podzielono na mniejsze moduły:
+- `api.js` - funkcje API
+- `devices.js` - obsługa urządzeń
+- `packets.js` - obsługa pakietów
+- `rssi.js` - wykresy RSSI
+- `modals.js` - okna modalowe
+- `app.js` - główna logika
 
-### Status: ANALIZA TRWA - raport z cargo check przetworzony
+#### 4. Dodatki w UI
+- Dodano przycisk "📶 RSSI" w modal szczegółów pakietu
+- Kliknięcie przechodzi do zakładki RSSI i ładuje wykres dla tego urządzenia
 
-## 2026-02-16: ETAP 1 - config_params.rs
-- **6 nieużywanych stałych/funkcji** (używane tylko w testach):
-  - RSSI_SMOOTHING_FACTOR, RSSI_VARIANCE_LIMIT, SIGNAL_LOSS_TIMEOUT_MS
-  - MIN_PACKET_INTERVAL_MS, TIMESTAMP_PRECISION_MS
-  - rssi_to_signal_quality, is_signal_stable, is_duplicate_packet, should_process_packet
-- Gotowe do usunięcia (tylko testy)
+#### 5. Kompilacja .env
+- Dodano `env_config.rs` - ładuje .env przy kompilacji (include_str!)
+- Nie trzeba już usuwać zmiennych systemowych przed uruchomieniem
 
-## 2026-02-16: ETAP 2 - company_ids.rs + company_id_reference.rs
-- **Nieużywane w company_ids.rs**:
-  - get_company_name_u32(), search_company(), is_registered()
-- **Nieużywane w company_id_reference.rs**:
-  - all_company_ids(), all_companies(), lookup_company_id_u32()
-  - search_company_by_name() (używane przez search_company, które nie jest używane)
-  - is_registered_company_id() (używane przez is_registered, które nie jest używane)
+#### 6. Class of Device
+- Dodano `class_of_device.rs` - dekodowanie COD z pliku YAML
+- Endpoint: `/api/decode-cod?cod=0x040100`
 
-## 2026-02-16: ETAP 3 - Platform-specific moduły
-Nie są martwe - są conditional #[cfg]:
-- `android_ble_bridge.rs` - #[cfg(target_os = "android")]
-- `core_bluetooth_integration.rs` - #[cfg(target_os = "macos")]
-- `bluey_integration.rs` - ?
+#### 7. Terminal - uptime
+- Dodano wyświetlanie uptime przy skanowaniu: `Uptime: 1h 23m 45s`
 
-## Status: ANALIZA KONTYNUOWANA
+#### 8. Terminal - wszystkie pakiety
+- Zmieniono z wyświetlania tylko nowych urządzeń na **wszystkie wykryte pakiety**
 
-## 2026-02-16: ETAP 4 - advertising_parser.rs
-- Funkcje są używane WEWNĄTRZ modułu (parse_advertising_packet wywołuje wewnętrzne)
-- Ale zewnętrzne wywołania są warunkowe #[cfg] lub nie używają wszystkich funkcji
-- parse_advertising_packet() jest używany przez multi_method_scanner
-- WAŻNE: vendor_protocols używa ParsedAdvertisingPacket z advertising_parser!
+#### 9. Czyszczenie warningów (subagent)
+- Usunięto nieużywane funkcje z ble_uuids.rs (12 funkcji)
+- Usunięto nieużywane funkcje z config_params.rs (4 funkcje)
+- Naprawiono prefixowanie zmiennych (_) w telegram_notifier.rs
+- Warningi: 336 -> 295 (-41)
 
-## 2026-02-16: ETAP 5 - Częściowo używane moduły
-- `interactive_ui` - używany (display_countdown_interruptible), reszta martwa
-- `html_report` - brak użycia w kodzie głównym
-- `event_analyzer` - brak użycia
-- `data_flow_estimator` - brak użycia
-- `gatt_client` - brak użycia
-- `link_layer` - brak użycia
-- `l2cap_analyzer` - brak użycia
+---
 
-## Podsumowanie: Możliwe do usunięcia:
-1. config_params.rs (6+ elementów) - TEST ONLY
-2. company_ids/company_id_reference (7 funkcji) - nieużywane API
-3. html_report.rs - cały moduł
-4. event_analyzer.rs - cały moduł  
-5. data_flow_estimator.rs - cały moduł
-6. gatt_client.rs - cały moduł
-7. link_layer.rs - cały moduł
-8. l2cap_analyzer.rs - cały moduł
+## 2026-02-16: Integracja analyzerów
 
-## Status: ANALIZA ZAKOŃCZONA - gotowe do czyszczenia
+### event_analyzer.rs
+- Globalny stan (LazyLock<Mutex>)
+- Funkcje: add_timeline_events, analyze_device_behavior, detect_anomalies, find_correlations
 
-## 2026-02-16: INTEGRACJA - Event Analyzer + Data Flow Estimator
+### data_flow_estimator.rs
+- Globalny stan (LazyLock<Mutex>)
+- Wykrywanie protokołów: Meshtastic, Eddystone, iBeacon, AltBeacon, Cybertrack
 
-### Dodane funkcjonalności:
+### API endpoints dodane:
+- GET /api/devices/{mac}/behavior
+- GET /api/devices/{mac}/anomalies  
+- GET /api/temporal-correlations
+- GET /api/event-analyzer-stats
+- GET /api/devices/{mac}/data-flow
+- GET /api/data-flows
+- GET /api/data-flow-stats
+- POST /api/event-analyzer-clear
 
-#### 1. event_analyzer.rs - zintegrowany z globalnym stanem
-- Dodano globalny `EVENT_ANALYZER` (LazyLock<Mutex>)
-- Funkcje API:
-  - `add_timeline_events()` - dodawanie zdarzeń
-  - `analyze_device_behavior(mac)` - analiza wzorców urządzenia
-  - `detect_anomalies(mac)` - wykrywanie anomalii
-  - `find_correlations()` - korelacje czasowe między urządzeniami
-  - `get_event_count()` - licznik zdarzeń
+---
 
-#### 2. data_flow_estimator.rs - zintegrowany z globalnym stanem
-- Dodano globalny `DATA_FLOW_ESTIMATOR` (LazyLock<Mutex>)
-- Funkcje API:
-  - `add_packet(mac, timestamp, payload, rssi)` - dodawanie pakietów
-  - `analyze_device(mac)` - analiza przepływu dla urządzenia
-  - `analyze_all_devices()` - analiza wszystkich urządzeń
-  - `get_device_count()` - licznik śledzonych urządzeń
-  - `clear_estimates()` - czyszczenie danych
+## Warningi - stan (336 -> 295)
+Nadal nieużywane ale zostawione:
+- Platformowe: android_ble_bridge, core_bluetooth_integration, bluey_integration (#[cfg])
+- advertising_parser (używany przez vendor_protocols)
 
-#### 3. API endpoints (web_server.rs):
-- `GET /api/devices/{mac}/behavior` - wzorce urządzenia
-- `GET /api/devices/{mac}/anomalies` - anomalia urządzenia
-- `GET /api/temporal-correlations` - korelacje czasowe
-- `GET /api/event-analyzer-stats` - statystyki analyzera
-- `GET /api/devices/{mac}/data-flow` - przepływ danych urządzenia
-- `GET /api/data-flows` - wszystkie przepływy
-- `GET /api/data-flow-stats` - statystyki przepływu
+---
 
-### Następne kroki:
-1. ✅ Połączyć z ScannerWithTracking (dodawanie zdarzeń)
-2. ✅ Uruchomić cargo check - 292 -> 277 warnings (-15)
-
-### PODSUMOWANIE INTEGRACJI:
-- **Warningi zmniejszone: 292 -> 277** (15 mniej)
-- Nowe funkcjonalności:
-  - Analiza wzorców urządzeń (event_analyzer)
-  - Wykrywanie anomalii sygnału
-  - Korelacje czasowe między urządzeniami
-  - Estymacja przepływu danych (protokoły: Meshtastic, Eddystone, iBeacon, etc.)
-  - 9 nowych API endpoints
-
-### Pozostałe warningi (277) - do dalszej analizy:
-- advertising_parser.rs - 23 warningi (używany przez vendor_protocols)
-- ble_uuids.rs - 16+ (częściowo używane)
-- config_params.rs - 9 (tylko testy używają)
-- Inne moduły platformowe (android, bluey, core_bluetooth)
+## Dane do Telegram raportu (co 1 min)
+- Lista urządzeń z ostatniej minuty
+- RSSI trends (approaching/moving away/stable)
+- Surowe pakiety (do 50)
+- Jako HTML załącznik: ble_scan_report.html
