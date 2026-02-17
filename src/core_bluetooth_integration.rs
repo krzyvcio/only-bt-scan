@@ -7,7 +7,7 @@
 //! NOTE: This is optional - btleplug already uses CoreBluetooth internally on macOS.
 //! Enable the `l2cap` feature in Cargo.toml to use this module.
 
-use crate::data_models::{DeviceModel, DeviceType};
+use crate::data_models::DeviceModel;
 use crate::l2cap_analyzer::L2CapChannel;
 use log::{info, warn};
 use std::time::Duration;

@@ -13,7 +13,6 @@ use btleplug::api::{Central, Manager, Peripheral};
 use btleplug::platform::Manager as PlatformManager;
 use chrono::Utc;
 use log::{debug, error, info, warn};
-use quanta::Clock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
