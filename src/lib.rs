@@ -438,12 +438,16 @@ pub async fn run() -> Result<(), anyhow::Error> {
             }
         });
 
-        // Spawn periodic report task
-        log::info!("[Telegram] Spawning periodic report task (every 5 minutes)");
-        tokio::spawn(async move {
-            if let Err(e) = telegram_notifier::run_periodic_report_task().await {
-                log::warn!("[Telegram] Periodic task error: {}", e);
-            }
+        // Spawn telegram periodic report task in separate thread with Tokio runtime
+        log::info!("[Telegram] Spawning periodic report task (every 1 minute)");
+        std::thread::spawn(move || {
+            eprintln!("[TELEGRAM] Thread started, creating Tokio runtime...");
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime for Telegram");
+            eprintln!("[TELEGRAM] Runtime created, starting periodic task...");
+            rt.block_on(async {
+                telegram_notifier::run_periodic_report_task().await;
+            });
+            eprintln!("[TELEGRAM] Thread ending");
         });
 
         execute!(
@@ -453,7 +457,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
         writeln!(
             stdout(),
             "{}",
-            "✅ Telegram enabled | Co 5 min: raport + HTML".bright_green()
+            "✅ Telegram enabled | Co 1 min: raport + HTML".bright_green()
         )?;
     } else {
         execute!(

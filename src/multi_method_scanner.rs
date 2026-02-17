@@ -176,7 +176,7 @@ impl UnifiedDevice {
         }
 
         use crate::advertising_parser::parse_advertising_packet;
-        
+
         let parsed = parse_advertising_packet(
             &self.mac_address,
             self.rssi,
@@ -219,14 +219,23 @@ impl UnifiedDevice {
 
         // Store manufacturer data as hex string
         for (mfg_id, data) in &parsed.manufacturer_data {
-            let hex_data = data.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+            let hex_data = data
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
             self.ad_manufacturer_data = Some(format!("{:04X}: {}", mfg_id, hex_data));
         }
 
         // Store service data
         for (uuid, data) in &parsed.service_data_16 {
-            let hex_data = data.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
-            self.ad_service_data.push(format!("0x{:04X}: {}", uuid, hex_data));
+            let hex_data = data
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
+            self.ad_service_data
+                .push(format!("0x{:04X}: {}", uuid, hex_data));
         }
     }
 }

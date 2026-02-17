@@ -9,7 +9,6 @@ mod adapter {
     use super::models::LeAdvertisingReport;
     use log::{debug, info, warn};
     use std::collections::HashMap;
-    
 
     pub struct WindowsHciAdapter {
         adapter_id: String,

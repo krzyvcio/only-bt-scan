@@ -1168,6 +1168,23 @@ body::before {
     color: var(--accent-cyan);
 }
 
+.btn-rssi-track {
+    margin-left: 12px;
+    padding: 6px 12px;
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: background 0.2s;
+}
+
+.btn-rssi-track:hover {
+    background: var(--accent-green);
+}
+
 /* Hex Raw Display */
 .hex-raw {
     background: var(--bg-secondary);

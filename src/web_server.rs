@@ -1364,6 +1364,68 @@ pub async fn get_device_rssi_trend(
     }
 }
 
+/// Get RSSI measurements from last 24 hours for trend chart
+pub async fn get_rssi_24h(path: web::Path<String>) -> impl Responder {
+    let raw_mac = path.into_inner();
+    let mac = match validate_mac_address(&raw_mac) {
+        Ok(m) => m,
+        Err(e) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({ "error": e }));
+        }
+    };
+
+    match crate::db::get_raw_rssi_measurements_24h(&mac) {
+        Ok(measurements) => {
+            if measurements.is_empty() {
+                return HttpResponse::NotFound().json(serde_json::json!({
+                    "error": "No RSSI measurements found in last 24 hours",
+                    "device_mac": mac
+                }));
+            }
+
+            let first_rssi = measurements.first().map(|m| m.rssi).unwrap_or(0);
+            let last_rssi = measurements.last().map(|m| m.rssi).unwrap_or(0);
+            let rssi_delta = last_rssi - first_rssi;
+            let trend = if rssi_delta > 5 {
+                "getting_closer"
+            } else if rssi_delta < -5 {
+                "getting_farther"
+            } else {
+                "stable"
+            };
+
+            let rssi_values: Vec<i32> = measurements.iter().map(|m| m.rssi).collect();
+            let avg_rssi = rssi_values.iter().sum::<i32>() as f64 / rssi_values.len() as f64;
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "device_mac": mac,
+                "time_range": "24 hours",
+                "measurements_count": measurements.len(),
+                "rssi_stats": {
+                    "min": rssi_values.iter().min().copied().unwrap_or(0),
+                    "max": rssi_values.iter().max().copied().unwrap_or(0),
+                    "avg": avg_rssi
+                },
+                "trend": {
+                    "direction": trend,
+                    "delta": rssi_delta,
+                    "description": match trend {
+                        "getting_closer" => "Device is approaching",
+                        "getting_farther" => "Device is moving away",
+                        _ => "Signal is stable"
+                    }
+                },
+                "measurements": measurements
+            }))
+        }
+        Err(e) => {
+            log::error!("Failed to get 24h RSSI: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() }))
+        }
+    }
+}
+
 /// Get raw RSSI measurements from advertisement frames (last 100 by default)
 /// Query params: ?limit=100 (default)
 /// Returns actual signal strength readings with trend analysis
@@ -1680,6 +1742,7 @@ pub fn configure_services(cfg: &mut web::ServiceConfig) {
             .route("/devices/{mac}/trend", web::get().to(get_device_rssi_trend))
             .route("/devices/{mac}/trend-state", web::get().to(get_device_trend_state))
             .route("/devices/{mac}/rssi-raw", web::get().to(get_raw_rssi))
+            .route("/devices/{mac}/rssi-24h", web::get().to(get_rssi_24h))
             .route("/devices/{mac}/l2cap", web::get().to(get_l2cap_info))
             .route("/trends/all", web::get().to(get_all_device_trends))
             .route("/mac/{mac}", web::get().to(get_mac_info))

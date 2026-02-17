@@ -3,8 +3,8 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::env;
 
-const PERIODIC_REPORT_INTERVAL_SECS: u64 = 300;
-const DEVICES_HISTORY_WINDOW_SECS: i64 = 300;
+const PERIODIC_REPORT_INTERVAL_SECS: u64 = 60;
+const DEVICES_HISTORY_WINDOW_SECS: i64 = 60;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelegramConfig {
@@ -16,12 +16,13 @@ pub struct TelegramConfig {
 pub fn get_config() -> TelegramConfig {
     let bot_token = env::var("TELEGRAM_BOT_TOKEN").unwrap_or_default();
     let chat_id = env::var("TELEGRAM_CHAT_ID").unwrap_or_default();
-    
-    eprintln!("[TELEGRAM] bot_token='{}', chat_id='{}'", 
-        if bot_token.is_empty() { "EMPTY" } else { "SET" }, 
+
+    eprintln!(
+        "[TELEGRAM] bot_token='{}', chat_id='{}'",
+        if bot_token.is_empty() { "EMPTY" } else { "SET" },
         if chat_id.is_empty() { "EMPTY" } else { "SET" }
     );
-    
+
     let enabled = !bot_token.is_empty() && !chat_id.is_empty();
 
     if enabled {
@@ -93,9 +94,9 @@ pub async fn send_initial_device_report() -> Result<(), String> {
     }
 
     let conn = rusqlite::Connection::open("bluetooth_scan.db").map_err(|e| e.to_string())?;
-    
+
     let devices = get_all_current_devices(&conn).map_err(|e| e.to_string())?;
-    
+
     if devices.is_empty() {
         let msg = "<i>Brak wykrytych urzadzen</i>";
         send_telegram_message(&config.bot_token, &config.chat_id, msg).await
@@ -105,9 +106,11 @@ pub async fn send_initial_device_report() -> Result<(), String> {
     }
 }
 
-fn get_all_current_devices(conn: &rusqlite::Connection) -> Result<Vec<DeviceReport>, Box<dyn std::error::Error>> {
+fn get_all_current_devices(
+    conn: &rusqlite::Connection,
+) -> Result<Vec<DeviceReport>, Box<dyn std::error::Error>> {
     let time_filter = "-10 minutes";
-    
+
     let mut stmt = conn.prepare(
         "SELECT 
             d.id,
@@ -164,30 +167,33 @@ fn get_all_current_devices(conn: &rusqlite::Connection) -> Result<Vec<DeviceRepo
 
 fn format_initial_devices_message(devices: &[DeviceReport]) -> String {
     let mut message = String::new();
-    
+
     message.push_str("<b>📱 WYRYTE URZADZENIA</b>\n\n");
-    message.push_str(&format!("Znaleziono <b>{}</b> urzadzen(i)\n\n", devices.len()));
+    message.push_str(&format!(
+        "Znaleziono <b>{}</b> urzadzen(i)\n\n",
+        devices.len()
+    ));
 
     for (idx, device) in devices.iter().enumerate() {
         let name = device.device_name.as_deref().unwrap_or("Unknown");
         let manufacturer = device.manufacturer_name.as_deref().unwrap_or("Unknown");
-        
+
         message.push_str(&format!("<b>{}. {}</b>\n", idx + 1, name));
         message.push_str(&format!("   MAC: <code>{}</code>\n", device.mac_address));
-        
+
         if !manufacturer.is_empty() && manufacturer != "Unknown" {
             message.push_str(&format!("   Producent: {}\n", manufacturer));
         }
-        
+
         message.push_str(&format!(
             "   RSSI: {} dBm | Pakiety: {}\n",
             device.current_rssi, device.packet_count
         ));
-        
+
         if device.is_connectable {
             message.push_str("   [Connectable]\n");
         }
-        
+
         message.push_str(&format!(
             "   Pierwsze: {} | Ostatnie: {}\n\n",
             device.first_seen, device.last_seen
@@ -387,9 +393,9 @@ pub async fn send_devices_report(devices: &[DeviceReport]) -> Result<(), String>
 
 async fn send_telegram_message(token: &str, chat_id: &str, message: &str) -> Result<(), String> {
     let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
-    
+
     eprintln!("[TELEGRAM] URL: {}", url);
-    
+
     let client = reqwest::Client::builder()
         .use_native_tls()
         .danger_accept_invalid_certs(true)
@@ -446,16 +452,19 @@ fn get_raw_packets_for_device(
 ) -> Result<Vec<RawPacketInfo>, Box<dyn std::error::Error>> {
     let time_filter = format!("-{} minutes", minutes);
 
-    let mut stmt = conn.prepare(
+    let query = format!(
         "SELECT timestamp, rssi, advertising_data, phy, channel, frame_type
          FROM ble_advertisement_frames
-         WHERE mac_address = ? AND timestamp > datetime(''now'', ?)
+         WHERE mac_address = '{}' AND timestamp > datetime('now', '-{} minutes')
          ORDER BY timestamp DESC
          LIMIT 10",
-    )?;
+        mac_address, minutes
+    );
+
+    let mut stmt = conn.prepare(&query)?;
 
     let packets = stmt
-        .query_map(params![mac_address, time_filter], |row| {
+        .query_map([], |row| {
             let timestamp: String = row.get(0)?;
             let timestamp_formatted = parse_and_format_time(&timestamp);
 
@@ -493,7 +502,7 @@ fn get_devices_from_last_minutes(
 ) -> Result<Vec<DeviceReport>, Box<dyn std::error::Error>> {
     let time_filter = format!("-{} minutes", minutes);
 
-    let mut stmt = conn.prepare(
+    let query = format!(
         "SELECT 
             d.id,
             d.mac_address, 
@@ -506,16 +515,19 @@ fn get_devices_from_last_minutes(
             d.first_seen,
             d.last_seen,
             (SELECT COUNT(*) FROM ble_services WHERE device_id = d.id) as services_count,
-            (SELECT COUNT(*) FROM ble_advertisement_frames WHERE mac_address = d.mac_address AND timestamp > datetime(''now'', ?)) as packet_count
+            (SELECT COUNT(*) FROM ble_advertisement_frames WHERE mac_address = d.mac_address AND timestamp > datetime('now', '-{} minutes')) as packet_count
         FROM devices d
-        LEFT JOIN scan_history sh ON d.id = sh.device_id AND sh.scan_timestamp > datetime(''now'', ?)
-        WHERE d.last_seen > datetime(''now'', ?)
+        LEFT JOIN scan_history sh ON d.id = sh.device_id AND sh.scan_timestamp > datetime('now', '-{} minutes')
+        WHERE d.last_seen > datetime('now', '-{} minutes')
         GROUP BY d.id
-        ORDER BY d.last_seen DESC, d.rssi DESC"
-    )?;
+        ORDER BY d.last_seen DESC, d.rssi DESC",
+        minutes, minutes, minutes
+    );
+
+    let mut stmt = conn.prepare(&query)?;
 
     let devices = stmt
-        .query_map(params![time_filter, time_filter, time_filter], |row| {
+        .query_map([], |row| {
             let _device_id: i64 = row.get(0)?;
             let first_seen: String = row.get(8)?;
             let last_seen: String = row.get(9)?;
@@ -575,62 +587,55 @@ fn parse_and_format_time(timestamp: &str) -> String {
 }
 
 fn update_last_report_time(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
-    conn.execute("UPDATE telegram_reports SET last_report_time = datetime(''now''), report_count = report_count + 1 WHERE id = 1", [])?;
+    conn.execute("UPDATE telegram_reports SET last_report_time = datetime('now'), report_count = report_count + 1 WHERE id = 1", [])?;
     Ok(())
 }
 
 pub async fn run_periodic_report_task() -> Result<(), String> {
+    eprintln!("[TELEGRAM] run_periodic_report_task started");
+    
     if !is_enabled() {
+        eprintln!("[TELEGRAM] Not enabled, exiting");
         return Ok(());
     }
 
+    eprintln!("[TELEGRAM] Enabled, entering loop");
+    
     loop {
+        eprintln!("[TELEGRAM] Loop iteration, sleeping for {} seconds", PERIODIC_REPORT_INTERVAL_SECS);
         tokio::time::sleep(tokio::time::Duration::from_secs(
             PERIODIC_REPORT_INTERVAL_SECS,
         ))
         .await;
 
+        eprintln!("[TELEGRAM] Wake up, calling send_periodic_report");
         if let Err(e) = send_periodic_report().await {
+            eprintln!("[TELEGRAM] Failed to send periodic report: {}", e);
             log::warn!("Failed to send periodic Telegram report: {}", e);
         }
     }
 }
 
 async fn send_periodic_report() -> Result<(), String> {
-    log::info!("[Telegram] Checking if periodic report should be sent...");
-    
-    let conn = rusqlite::Connection::open("bluetooth_scan.db").map_err(|e| e.to_string())?;
+    log::info!("[Telegram] 📤 Sending periodic report (every 1 minute)...");
 
-    match should_send_report(&conn) {
-        Ok(true) => {
-            log::info!("[Telegram] Report due - preparing to send...");
-        }
-        Ok(false) => {
-            log::debug!("[Telegram] Report not due yet (wait time not elapsed)");
-            return Ok(());
-        }
-        Err(e) => {
-            log::warn!("[Telegram] Error checking report status: {}", e);
-            return Ok(());
-        }
-    }
+    let conn = rusqlite::Connection::open("bluetooth_scan.db").map_err(|e| e.to_string())?;
 
     let devices = get_devices_from_last_minutes(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
         .map_err(|e| e.to_string())?;
 
-    log::info!("[Telegram] Sending device report for {} devices...", devices.len());
+    log::info!(
+        "[Telegram] Sending device report for {} devices...",
+        devices.len()
+    );
     send_devices_report(&devices).await?;
 
-    let html_content = generate_raw_packets_html(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
+    // Generate enhanced HTML report with all data
+    let html_content = generate_enhanced_html_report(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
         .map_err(|e| e.to_string())?;
-    
-    log::info!("[Telegram] Sending HTML attachment with raw packets...");
-    send_html_file(&html_content, "raw_packets.html").await?;
 
-    // 📈 Send RSSI trend analysis report
-    if let Err(e) = periodic_rssi_trends_report().await {
-        log::warn!("Failed to send RSSI trend report: {}", e);
-    }
+    log::info!("[Telegram] Sending enhanced HTML attachment...");
+    send_html_file(&html_content, "ble_scan_report.html").await?;
 
     update_last_report_time(&conn).map_err(|e| e.to_string())?;
 
@@ -639,9 +644,12 @@ async fn send_periodic_report() -> Result<(), String> {
     Ok(())
 }
 
-fn generate_raw_packets_html(conn: &rusqlite::Connection, minutes: i64) -> Result<String, Box<dyn std::error::Error>> {
+fn generate_raw_packets_html(
+    conn: &rusqlite::Connection,
+    minutes: i64,
+) -> Result<String, Box<dyn std::error::Error>> {
     let time_filter = format!("-{} minutes", minutes);
-    
+
     let mut stmt = conn.prepare(
         "SELECT 
             f.mac_address,
@@ -657,10 +665,20 @@ fn generate_raw_packets_html(conn: &rusqlite::Connection, minutes: i64) -> Resul
         LEFT JOIN devices d ON f.mac_address = d.mac_address
         WHERE f.timestamp > datetime('now', ?)
         ORDER BY f.timestamp DESC
-        LIMIT 500"
+        LIMIT 500",
     )?;
 
-    let packets: Vec<(String, String, i8, String, String, i32, String, Option<String>, String)> = stmt
+    let packets: Vec<(
+        String,
+        String,
+        i8,
+        String,
+        String,
+        i32,
+        String,
+        Option<String>,
+        String,
+    )> = stmt
         .query_map([&time_filter], |row| {
             Ok((
                 row.get(0)?,
@@ -671,7 +689,8 @@ fn generate_raw_packets_html(conn: &rusqlite::Connection, minutes: i64) -> Resul
                 row.get(5)?,
                 row.get(6)?,
                 row.get(7)?,
-                row.get::<_, Option<String>>(8)?.unwrap_or_else(|| "N/A".to_string()),
+                row.get::<_, Option<String>>(8)?
+                    .unwrap_or_else(|| "N/A".to_string()),
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -702,38 +721,357 @@ fn generate_raw_packets_html(conn: &rusqlite::Connection, minutes: i64) -> Resul
 <body>
 "#);
 
-    html.push_str(&format!("<h1>📡 BLE Raw Packets (ostatnie {} min)</h1>", minutes));
-    html.push_str(&format!("<div class=\"stats\">{} pakietow | {}</div>", 
+    html.push_str(&format!(
+        "<h1>📡 BLE Raw Packets (ostatnie {} min)</h1>",
+        minutes
+    ));
+    html.push_str(&format!(
+        "<div class=\"stats\">{} pakietow | {}</div>",
         packets.len(),
         chrono::Local::now().format("%H:%M:%S")
     ));
 
     for (mac, timestamp, rssi, ad_data, phy, channel, frame_type, name, first_seen) in packets {
         let time_str = parse_and_format_time(&timestamp);
-        
+
         html.push_str("<div class=\"packet\">");
         html.push_str("<div class=\"packet-header\">");
         html.push_str(&format!("<span class=\"mac\">{}</span>", mac));
-        html.push_str(&format!("<span class=\"rssi\"><strong>{} dBm</strong></span>", rssi));
+        html.push_str(&format!(
+            "<span class=\"rssi\"><strong>{} dBm</strong></span>",
+            rssi
+        ));
         html.push_str("</div>");
-        
+
         if let Some(n) = name {
             html.push_str(&format!("<div class=\"name\">{}</div>", n));
         }
-        
+
         html.push_str(&format!("<div class=\"time\">{}</div>", time_str));
-        
+
         if !first_seen.is_empty() && first_seen != "N/A" {
-            html.push_str(&format!("<div class=\"first-seen\">Pierwsze wykrycie: {}</div>", parse_and_format_time(&first_seen)));
+            html.push_str(&format!(
+                "<div class=\"first-seen\">Pierwsze wykrycie: {}</div>",
+                parse_and_format_time(&first_seen)
+            ));
         }
-        
+
         html.push_str(&format!("<div class=\"data\">{}</div>", ad_data));
-        html.push_str(&format!("<div class=\"meta\">PHY: {} | CH: {} | Typ: {}</div>", phy, channel, frame_type));
-        
+        html.push_str(&format!(
+            "<div class=\"meta\">PHY: {} | CH: {} | Typ: {}</div>",
+            phy, channel, frame_type
+        ));
+
         html.push_str("</div>");
     }
 
     html.push_str("</body></html>");
+
+    Ok(html)
+}
+
+/// Generate enhanced HTML report with all data: devices, raw packets, RSSI trends
+fn generate_enhanced_html_report(
+    conn: &rusqlite::Connection,
+    minutes: i64,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let time_filter = format!("-{} minutes", minutes);
+
+    // Get devices from last N minutes
+    let mut stmt = conn.prepare(
+        "SELECT mac_address, device_name, rssi, manufacturer_name, first_seen, last_seen, number_of_scan
+         FROM devices
+         WHERE last_seen > datetime('now', ?)
+         ORDER BY last_seen DESC
+         LIMIT 100"
+    )?;
+
+    let devices: Vec<(
+        String,
+        Option<String>,
+        i8,
+        Option<String>,
+        String,
+        String,
+        i32,
+    )> = stmt
+        .query_map([&time_filter], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Get raw packets
+    let mut stmt = conn.prepare(
+        "SELECT f.mac_address, f.timestamp, f.rssi, f.advertising_data, f.phy, f.channel, f.frame_type, d.device_name, d.first_seen
+         FROM ble_advertisement_frames f
+         LEFT JOIN devices d ON f.mac_address = d.mac_address
+         WHERE f.timestamp > datetime('now', ?)
+         ORDER BY f.timestamp DESC
+         LIMIT 200"
+    )?;
+
+    let packets: Vec<(
+        String,
+        String,
+        i8,
+        String,
+        String,
+        i32,
+        String,
+        Option<String>,
+        String,
+    )> = stmt
+        .query_map([&time_filter], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+                row.get(7)?,
+                row.get::<_, Option<String>>(8)?
+                    .unwrap_or_else(|| "".to_string()),
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Get unique MACs for RSSI trends
+    let unique_macs: Vec<String> = devices
+        .iter()
+        .map(|(mac, _, _, _, _, _, _)| mac.clone())
+        .collect();
+
+    // Calculate RSSI trends for each device
+    let mut rssi_trends = Vec::new();
+    for mac in &unique_macs {
+        let mut stmt = conn.prepare(
+            "SELECT timestamp, rssi FROM ble_advertisement_frames
+             WHERE mac_address = ? AND timestamp > datetime('now', ?)
+             ORDER BY timestamp ASC",
+        )?;
+
+        let measurements: Vec<(String, i8)> = stmt
+            .query_map(params![mac, &time_filter], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if measurements.len() >= 2 {
+            let first_rssi = measurements.first().map(|(_, r)| *r).unwrap_or(0);
+            let last_rssi = measurements.last().map(|(_, r)| *r).unwrap_or(0);
+            let delta = last_rssi - first_rssi;
+            let trend = if delta > 3 {
+                "📶 approaching"
+            } else if delta < -3 {
+                "📉 moving away"
+            } else {
+                "➡️ stable"
+            };
+
+            rssi_trends.push((mac.clone(), trend, delta, measurements.len()));
+        }
+    }
+
+    let mut html = String::new();
+    html.push_str(r#"<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLE Scan Report</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #eee; min-height: 100vh; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #00d9ff; font-size: 24px; margin-bottom: 8px; }
+        h2 { color: #ff6b6b; font-size: 18px; margin: 24px 0 12px; border-bottom: 1px solid #333; padding-bottom: 8px; }
+        .timestamp { color: #666; font-size: 14px; margin-bottom: 20px; }
+        .stats-bar { display: flex; gap: 20px; margin-bottom: 24px; flex-wrap: wrap; }
+        .stat { background: #0f0f23; padding: 12px 20px; border-radius: 8px; }
+        .stat-value { font-size: 24px; font-weight: bold; color: #00d9ff; }
+        .stat-label { font-size: 12px; color: #666; }
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th { text-align: left; padding: 10px 8px; background: #0f0f23; color: #888; font-size: 12px; text-transform: uppercase; }
+        td { padding: 10px 8px; border-bottom: 1px solid #222; font-size: 13px; }
+        tr:hover { background: #1a1a3e; }
+        .mac { font-family: monospace; color: #00d9ff; }
+        .rssi-good { color: #4ade80; }
+        .rssi-fair { color: #fbbf24; }
+        .rssi-poor { color: #f87171; }
+        .trend-up { color: #4ade80; }
+        .trend-down { color: #f87171; }
+        .trend-stable { color: #888; }
+        
+        .packet { background: #0f0f23; border-radius: 8px; padding: 12px; margin-bottom: 8px; border-left: 3px solid #00d9ff; }
+        .packet-header { display: flex; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+        .packet-info { display: flex; gap: 16px; flex-wrap: wrap; }
+        .packet-data { font-family: monospace; font-size: 11px; color: #666; background: #050510; padding: 8px; border-radius: 4px; margin-top: 8px; word-break: break-all; }
+        
+        .section { margin-bottom: 32px; }
+        .empty { color: #555; font-style: italic; }
+        .trend-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        .trend-approaching { background: #1a3a2a; color: #4ade80; }
+        .trend-away { background: #3a1a1a; color: #f87171; }
+        .trend-stable { background: #2a2a2a; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📡 BLE Scan Report</h1>
+        <div class="timestamp">Generated: "#);
+
+    html.push_str(&chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string());
+    html.push_str(&format!(" | Last {} minutes", minutes));
+    html.push_str("</div>");
+
+    // Stats bar
+    html.push_str("<div class=\"stats-bar\">");
+    html.push_str(&format!("<div class=\"stat\"><div class=\"stat-value\">{}</div><div class=\"stat-label\">Devices</div></div>", devices.len()));
+    html.push_str(&format!("<div class=\"stat\"><div class=\"stat-value\">{}</div><div class=\"stat-label\">Packets</div></div>", packets.len()));
+    html.push_str(&format!("<div class=\"stat\"><div class=\"stat-value\">{}</div><div class=\"stat-label\">RSSI Trends</div></div>", rssi_trends.len()));
+    html.push_str("</div>");
+
+    // RSSI Trends section
+    if !rssi_trends.is_empty() {
+        html.push_str("<div class=\"section\">");
+        html.push_str("<h2>📶 RSSI Trends (Last 24h)</h2>");
+        html.push_str("<table>");
+        html.push_str("<tr><th>MAC</th><th>Trend</th><th>Delta</th><th>Samples</th></tr>");
+
+        for (mac, trend, delta, count) in &rssi_trends {
+            let trend_class = if trend.contains("approaching") {
+                "trend-approaching"
+            } else if trend.contains("moving") {
+                "trend-away"
+            } else {
+                "trend-stable"
+            };
+
+            html.push_str("<tr>");
+            html.push_str(&format!("<td class=\"mac\">{}</td>", mac));
+            html.push_str(&format!(
+                "<td><span class=\"trend-badge {}\">{}</span></td>",
+                trend_class, trend
+            ));
+            html.push_str(&format!(
+                "<td class=\"{}\">{} dBm</td>",
+                if *delta > 0 {
+                    "trend-up"
+                } else if *delta < 0 {
+                    "trend-down"
+                } else {
+                    "trend-stable"
+                },
+                if *delta > 0 {
+                    format!("+{}", delta)
+                } else {
+                    format!("{}", delta)
+                }
+            ));
+            html.push_str(&format!("<td>{}</td>", count));
+            html.push_str("</tr>");
+        }
+        html.push_str("</table>");
+        html.push_str("</div>");
+    }
+
+    // Devices section
+    html.push_str("<div class=\"section\">");
+    html.push_str("<h2>📱 Detected Devices</h2>");
+
+    if devices.is_empty() {
+        html.push_str("<p class=\"empty\">No devices detected in this period</p>");
+    } else {
+        html.push_str("<table>");
+        html.push_str("<tr><th>MAC</th><th>Name</th><th>RSSI</th><th>Manufacturer</th><th>First Seen</th><th>Last Seen</th><th>Packets</th></tr>");
+
+        for (mac, name, rssi, manufacturer, first_seen, last_seen, count) in &devices {
+            let rssi_class = if *rssi >= -50 {
+                "rssi-good"
+            } else if *rssi >= -70 {
+                "rssi-fair"
+            } else {
+                "rssi-poor"
+            };
+
+            html.push_str("<tr>");
+            html.push_str(&format!("<td class=\"mac\">{}</td>", mac));
+            html.push_str(&format!("<td>{}</td>", name.as_deref().unwrap_or("-")));
+            html.push_str(&format!("<td class=\"{}\">{} dBm</td>", rssi_class, rssi));
+            html.push_str(&format!(
+                "<td>{}</td>",
+                manufacturer.as_deref().unwrap_or("-")
+            ));
+            html.push_str(&format!("<td>{}</td>", parse_and_format_time(first_seen)));
+            html.push_str(&format!("<td>{}</td>", parse_and_format_time(last_seen)));
+            html.push_str(&format!("<td>{}</td>", count));
+            html.push_str("</tr>");
+        }
+        html.push_str("</table>");
+    }
+    html.push_str("</div>");
+
+    // Raw packets section
+    html.push_str("<div class=\"section\">");
+    html.push_str("<h2>📦 Raw Packets</h2>");
+
+    if packets.is_empty() {
+        html.push_str("<p class=\"empty\">No packets captured in this period</p>");
+    } else {
+        for (mac, timestamp, rssi, ad_data, phy, channel, frame_type, name, first_seen) in
+            packets.iter().take(50)
+        {
+            let rssi_class = if *rssi >= -50 {
+                "rssi-good"
+            } else if *rssi >= -70 {
+                "rssi-fair"
+            } else {
+                "rssi-poor"
+            };
+
+            html.push_str("<div class=\"packet\">");
+            html.push_str("<div class=\"packet-header\">");
+            html.push_str(&format!("<span class=\"mac\">{}</span>", mac));
+            html.push_str(&format!(
+                "<span class=\"{}\"><strong>{} dBm</strong></span>",
+                rssi_class, rssi
+            ));
+            html.push_str("</div>");
+            html.push_str("<div class=\"packet-info\">");
+            html.push_str(&format!("<span>{}</span>", name.as_deref().unwrap_or("-")));
+            html.push_str(&format!("<span>CH:{}</span>", channel));
+            html.push_str(&format!("<span>{}</span>", phy));
+            html.push_str(&format!("<span>{}</span>", frame_type));
+            html.push_str(&format!(
+                "<span>{}</span>",
+                parse_and_format_time(timestamp)
+            ));
+            html.push_str("</div>");
+            html.push_str(&format!("<div class=\"packet-data\">{}</div>", ad_data));
+            html.push_str("</div>");
+        }
+
+        if packets.len() > 50 {
+            html.push_str(&format!(
+                "<p class=\"empty\">... and {} more packets</p>",
+                packets.len() - 50
+            ));
+        }
+    }
+    html.push_str("</div>");
+
+    html.push_str("</div></body></html>");
 
     Ok(html)
 }
@@ -744,8 +1082,11 @@ async fn send_html_file(html_content: &str, filename: &str) -> Result<(), String
         return Ok(());
     }
 
-    let url = format!("https://api.telegram.org/bot{}/sendDocument", config.bot_token);
-    
+    let url = format!(
+        "https://api.telegram.org/bot{}/sendDocument",
+        config.bot_token
+    );
+
     let client = reqwest::Client::builder()
         .use_native_tls()
         .danger_accept_invalid_certs(true)
@@ -787,33 +1128,44 @@ fn format_rssi_trends_report() -> String {
     let mut message = String::new();
 
     message.push_str("<b>📈 RSSI TREND ANALYSIS</b>\n");
-    message.push_str(&format!("🕐 {}\n\n", chrono::Local::now().format("%H:%M:%S")));
+    message.push_str(&format!(
+        "🕐 {}\n\n",
+        chrono::Local::now().format("%H:%M:%S")
+    ));
 
     // Get global snapshot
     let snapshot = crate::rssi_trend_manager::GLOBAL_RSSI_MANAGER.get_snapshot();
-    
+
     if snapshot.devices.is_empty() {
         message.push_str("Brak danych o trendach (oczekiwanie na skanowanie)\n");
         return message;
     }
 
     // Approaching devices
-    let approaching: Vec<_> = snapshot.devices.iter()
+    let approaching: Vec<_> = snapshot
+        .devices
+        .iter()
         .filter(|d| d.trend == "approaching")
         .collect();
-    
+
     // Leaving devices
-    let leaving: Vec<_> = snapshot.devices.iter()
+    let leaving: Vec<_> = snapshot
+        .devices
+        .iter()
         .filter(|d| d.trend == "leaving")
         .collect();
-    
+
     // Still devices
-    let still: Vec<_> = snapshot.devices.iter()
+    let still: Vec<_> = snapshot
+        .devices
+        .iter()
         .filter(|d| d.motion == "still")
         .collect();
-    
+
     // Moving devices
-    let moving: Vec<_> = snapshot.devices.iter()
+    let moving: Vec<_> = snapshot
+        .devices
+        .iter()
         .filter(|d| d.motion == "moving")
         .collect();
 
@@ -865,10 +1217,12 @@ fn format_rssi_trends_report() -> String {
     }
 
     // Top devices by signal quality (best connected)
-    let sorted: Vec<_> = snapshot.devices.iter()
+    let sorted: Vec<_> = snapshot
+        .devices
+        .iter()
         .map(|d| (d, d.rssi as i32))
         .collect();
-    
+
     if !sorted.is_empty() {
         message.push_str("<b>🔝 TOP SYGNAŁY (Strongest signals)</b>\n");
         let mut top = sorted;
@@ -898,36 +1252,47 @@ fn format_rssi_trends_report() -> String {
 /// Print RSSI trends to terminal with colors
 pub fn print_rssi_trends_terminal() {
     let snapshot = crate::rssi_trend_manager::GLOBAL_RSSI_MANAGER.get_snapshot();
-    
+
     if snapshot.devices.is_empty() {
         return;
     }
 
     println!("\n{}", "═".repeat(80));
-    println!(" 📈 RSSI TREND ANALYSIS - {} devices tracked", snapshot.devices.len());
+    println!(
+        " 📈 RSSI TREND ANALYSIS - {} devices tracked",
+        snapshot.devices.len()
+    );
     println!("{}", "═".repeat(80));
 
-    let approaching: Vec<_> = snapshot.devices.iter()
+    let approaching: Vec<_> = snapshot
+        .devices
+        .iter()
         .filter(|d| d.trend == "approaching")
         .collect();
-    
-    let leaving: Vec<_> = snapshot.devices.iter()
+
+    let leaving: Vec<_> = snapshot
+        .devices
+        .iter()
         .filter(|d| d.trend == "leaving")
         .collect();
 
     if !approaching.is_empty() {
         println!("\n📶 APPROACHING ({} devices):", approaching.len());
         for d in approaching.iter().take(5) {
-            println!("   {} {} {} dBm (slope: {:.3} dB/s)", 
-                "→", d.mac, d.rssi as i32, d.slope);
+            println!(
+                "   {} {} {} dBm (slope: {:.3} dB/s)",
+                "→", d.mac, d.rssi as i32, d.slope
+            );
         }
     }
 
     if !leaving.is_empty() {
         println!("\n📉 LEAVING ({} devices):", leaving.len());
         for d in leaving.iter().take(5) {
-            println!("   {} {} {} dBm (slope: {:.3} dB/s)", 
-                "←", d.mac, d.rssi as i32, d.slope);
+            println!(
+                "   {} {} {} dBm (slope: {:.3} dB/s)",
+                "←", d.mac, d.rssi as i32, d.slope
+            );
         }
     }
 
@@ -949,7 +1314,7 @@ pub async fn send_rssi_trends_report() -> Result<(), String> {
 pub async fn periodic_rssi_trends_report() -> Result<(), String> {
     // Send both to terminal and Telegram
     print_rssi_trends_terminal();
-    
+
     if is_enabled() {
         if let Err(e) = send_rssi_trends_report().await {
             log::warn!("Failed to send RSSI trends to Telegram: {}", e);

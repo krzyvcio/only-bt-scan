@@ -1484,6 +1484,40 @@ pub fn get_raw_rssi_measurements(
     Ok(result)
 }
 
+/// Get RSSI measurements from last 24 hours
+pub fn get_raw_rssi_measurements_24h(device_mac: &str) -> SqliteResult<Vec<RssiMeasurement>> {
+    let conn = Connection::open(DB_PATH)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT timestamp, rssi
+         FROM ble_advertisement_frames
+         WHERE mac_address = ?1
+           AND timestamp > datetime('now', '-24 hours')
+         ORDER BY timestamp ASC",
+    )?;
+
+    let measurements = stmt.query_map(params![device_mac], |row| {
+        let ts_str: String = row.get(0)?;
+        let timestamp = DateTime::parse_from_rfc3339(&ts_str)
+            .unwrap_or_else(|_| {
+                chrono::Local::now().with_timezone(&chrono::FixedOffset::east_opt(0).unwrap())
+            })
+            .with_timezone(&Utc);
+
+        let rssi: i32 = row.get(1)?;
+        let signal_quality = get_signal_quality(rssi as f64);
+
+        Ok(RssiMeasurement {
+            timestamp,
+            rssi,
+            signal_quality,
+        })
+    })?;
+
+    let result: Vec<RssiMeasurement> = measurements.collect::<Result<Vec<_>, _>>()?;
+    Ok(result)
+}
+
 /// Get last N raw RSSI measurements using pooled connection
 pub fn get_raw_rssi_measurements_pooled(
     device_mac: &str,
