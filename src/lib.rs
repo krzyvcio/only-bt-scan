@@ -897,7 +897,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
                 }
                 // ═══════════════════════════════════════════════════════════════
 
-                // Save devices to database
+                // Save devices to database and broadcast to WebSocket clients
                 if let Err(e) = BluetoothScanner::new(config.clone())
                     .save_devices_to_db(devices)
                     .await
@@ -906,15 +906,26 @@ pub async fn run() -> Result<(), anyhow::Error> {
                     log::error!("Failed to save devices: {}", e);
                 } else {
                     log::info!("✅ Devices saved to database");
+                    // Broadcast devices to WebSocket subscribers
+                    for device in devices {
+                        let api_device = web_server::convert_to_api_device(device);
+                        web_server::broadcast_new_device(&api_device);
+                    }
                 }
 
-                // Save raw packets to database
+                // Save raw packets to database and broadcast
                 if let Ok(conn) = rusqlite::Connection::open("./bluetooth_scan.db") {
                     if let Err(e) =
                         db_frames::insert_raw_packets_from_scan(&conn, &results.raw_packets)
                     {
                         writeln!(stdout(), "{}", format!("⚠️  DB Packets: {}", e).yellow())?;
                         log::error!("Failed to insert raw packets: {}", e);
+                    } else {
+                        // Broadcast raw packets to WebSocket subscribers
+                        for packet in &results.raw_packets {
+                            let raw_packet = web_server::convert_to_raw_packet(packet);
+                            web_server::broadcast_raw_packet(&raw_packet);
+                        }
                     }
                 } else {
                     writeln!(

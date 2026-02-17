@@ -626,6 +626,49 @@ pub fn init_database() -> SqliteResult<()> {
         [],
     )?;
 
+    // GATT Services table - stores discovered GATT services for connectable devices
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS gatt_services (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mac_address TEXT NOT NULL,
+            service_uuid TEXT NOT NULL,
+            service_uuid16 INTEGER,
+            service_name TEXT,
+            is_primary BOOLEAN DEFAULT 1,
+            characteristic_count INTEGER DEFAULT 0,
+            discovered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(mac_address, service_uuid)
+        )",
+        [],
+    )?;
+
+    // GATT Characteristics table - stores characteristics for each service
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS gatt_characteristics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mac_address TEXT NOT NULL,
+            service_uuid TEXT NOT NULL,
+            char_uuid TEXT NOT NULL,
+            char_uuid16 INTEGER,
+            char_name TEXT,
+            properties INTEGER DEFAULT 0,
+            properties_text TEXT,
+            discovered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(mac_address, service_uuid, char_uuid)
+        )",
+        [],
+    )?;
+
+    // Create indexes for GATT queries
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_gatt_services_mac ON gatt_services(mac_address)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_gatt_characteristics_mac ON gatt_characteristics(mac_address)",
+        [],
+    )?;
+
     // Initialize frame storage tables (ble_advertisement_frames, frame_statistics)
     db_frames::init_frame_storage(&conn)?;
 
@@ -1533,4 +1576,152 @@ pub fn get_raw_rssi_measurements_pooled(
     } else {
         get_raw_rssi_measurements(device_mac, limit)
     }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GattServiceRecord {
+    pub id: i64,
+    pub mac_address: String,
+    pub service_uuid: String,
+    pub service_uuid16: Option<u16>,
+    pub service_name: Option<String>,
+    pub is_primary: bool,
+    pub characteristic_count: i32,
+    pub discovered_at: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GattCharacteristicRecord {
+    pub id: i64,
+    pub mac_address: String,
+    pub service_uuid: String,
+    pub char_uuid: String,
+    pub char_uuid16: Option<u16>,
+    pub char_name: Option<String>,
+    pub properties: i32,
+    pub properties_text: Option<String>,
+    pub discovered_at: String,
+}
+
+pub struct GattServiceInput {
+    pub service_uuid: String,
+    pub service_uuid16: Option<u16>,
+    pub service_name: Option<String>,
+    pub is_primary: bool,
+    pub characteristic_count: i32,
+}
+
+pub struct GattCharacteristicInput {
+    pub char_uuid: String,
+    pub char_uuid16: Option<u16>,
+    pub char_name: Option<String>,
+    pub properties: i32,
+    pub properties_text: Option<String>,
+}
+
+/// Save discovered GATT services for a device
+pub fn save_gatt_services(mac_address: &str, services: &[GattServiceInput]) -> SqliteResult<()> {
+    let conn = Connection::open(DB_PATH)?;
+    let now = Utc::now();
+
+    for service in services {
+        conn.execute(
+            "INSERT OR REPLACE INTO gatt_services 
+             (mac_address, service_uuid, service_uuid16, service_name, is_primary, characteristic_count, discovered_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                mac_address,
+                service.service_uuid,
+                service.service_uuid16,
+                service.service_name,
+                service.is_primary,
+                service.characteristic_count,
+                now
+            ],
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Save discovered GATT characteristics for a device
+pub fn save_gatt_characteristics(
+    mac_address: &str,
+    service_uuid: &str,
+    characteristics: &[GattCharacteristicInput],
+) -> SqliteResult<()> {
+    let conn = Connection::open(DB_PATH)?;
+    let now = Utc::now();
+
+    for char in characteristics {
+        conn.execute(
+            "INSERT OR REPLACE INTO gatt_characteristics 
+             (mac_address, service_uuid, char_uuid, char_uuid16, char_name, properties, properties_text, discovered_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                mac_address,
+                service_uuid,
+                char.char_uuid,
+                char.char_uuid16,
+                char.char_name,
+                char.properties,
+                char.properties_text,
+                now
+            ],
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Get all GATT services for a device
+pub fn get_gatt_services(mac_address: &str) -> SqliteResult<Vec<GattServiceRecord>> {
+    let conn = Connection::open(DB_PATH)?;
+    let mut stmt = conn.prepare(
+        "SELECT id, mac_address, service_uuid, service_uuid16, service_name, is_primary, characteristic_count, discovered_at
+         FROM gatt_services WHERE mac_address = ?1 ORDER BY service_name"
+    )?;
+
+    let records = stmt.query_map(params![mac_address], |row| {
+        Ok(GattServiceRecord {
+            id: row.get(0)?,
+            mac_address: row.get(1)?,
+            service_uuid: row.get(2)?,
+            service_uuid16: row.get(3)?,
+            service_name: row.get(4)?,
+            is_primary: row.get::<_, i32>(5)? != 0,
+            characteristic_count: row.get(6)?,
+            discovered_at: row.get(7)?,
+        })
+    })?;
+
+    records.collect()
+}
+
+/// Get all GATT characteristics for a device's service
+pub fn get_gatt_characteristics(
+    mac_address: &str,
+    service_uuid: &str,
+) -> SqliteResult<Vec<GattCharacteristicRecord>> {
+    let conn = Connection::open(DB_PATH)?;
+    let mut stmt = conn.prepare(
+        "SELECT id, mac_address, service_uuid, char_uuid, char_uuid16, char_name, properties, properties_text, discovered_at
+         FROM gatt_characteristics WHERE mac_address = ?1 AND service_uuid = ?2 ORDER BY char_name"
+    )?;
+
+    let records = stmt.query_map(params![mac_address, service_uuid], |row| {
+        Ok(GattCharacteristicRecord {
+            id: row.get(0)?,
+            mac_address: row.get(1)?,
+            service_uuid: row.get(2)?,
+            char_uuid: row.get(3)?,
+            char_uuid16: row.get(4)?,
+            char_name: row.get(5)?,
+            properties: row.get(6)?,
+            properties_text: row.get(7)?,
+            discovered_at: row.get(8)?,
+        })
+    })?;
+
+    records.collect()
 }

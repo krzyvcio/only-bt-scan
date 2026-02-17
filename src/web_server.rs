@@ -2,15 +2,17 @@ use crate::hci_scanner::HciScanner;
 use crate::mac_address_handler::MacAddress;
 use crate::pcap_exporter::{HciPcapPacket, PcapExporter};
 use crate::class_of_device;
-use actix::Actor;
-use actix::StreamHandler;
+use actix::prelude::*;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use actix_web_actors::ws;
+use chrono;
+use log::info;
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
-use std::sync::Mutex;
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use once_cell::sync::Lazy;
 
 const MAX_RAW_PACKETS: usize = 500;
 const DEFAULT_PAGE_SIZE: usize = 50;
@@ -174,8 +176,204 @@ impl Default for AppState {
 
 static WS_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+/// Dostępne kanały WebSocket
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum WsChannel {
+    #[serde(rename = "devices")]
+    Devices,
+    #[serde(rename = "raw_packets")]
+    RawPackets,
+    #[serde(rename = "telemetry")]
+    Telemetry,
+    #[serde(rename = "latency")]
+    Latency, // Live latency updates
+}
+
+/// Komunikat subskrypcji od klienta
+#[derive(Debug, Deserialize)]
+struct WsSubscribeMessage {
+    action: String,
+    channel: Option<WsChannel>,
+}
+
+/// Komunikat broadcastu
+#[derive(Debug, Clone, Serialize)]
+struct WsBroadcastMessage<T: Serialize> {
+    channel: WsChannel,
+    data: T,
+    timestamp: String,
+}
+
+/// Globalny broadcaster WebSocket
+pub struct WebSocketBroadcaster {
+    sessions: Arc<Mutex<HashMap<usize, Vec<WsChannel>>>>,
+}
+
+impl WebSocketBroadcaster {
+    fn new() -> Self {
+        Self {
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    fn register_session(&self, id: usize) {
+        self.sessions.lock().unwrap().insert(id, Vec::new());
+        log::info!("WebSocket session {} registered", id);
+    }
+
+    fn unregister_session(&self, id: usize) {
+        self.sessions.lock().unwrap().remove(&id);
+        log::info!("WebSocket session {} unregistered", id);
+    }
+
+    fn subscribe(&self, id: usize, channel: WsChannel) {
+        if let Ok(mut sessions) = self.sessions.lock() {
+            if let Some(channels) = sessions.get_mut(&id) {
+                if !channels.contains(&channel) {
+                    channels.push(channel);
+                    log::debug!("Session {} subscribed to {:?}", id, channel);
+                }
+            }
+        }
+    }
+
+    fn unsubscribe(&self, id: usize, channel: WsChannel) {
+        if let Ok(mut sessions) = self.sessions.lock() {
+            if let Some(channels) = sessions.get_mut(&id) {
+                channels.retain(|&c| c != channel);
+                log::debug!("Session {} unsubscribed from {:?}", id, channel);
+            }
+        }
+    }
+
+    /// Broadcastuje wiadomość do wszystkich subskrybentów danego kanału
+    fn broadcast<T: Serialize>(&self, channel: WsChannel, data: T) {
+        let sessions = match self.sessions.lock() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+
+        let message = WsBroadcastMessage {
+            channel,
+            data,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
+
+        if let Ok(_json) = serde_json::to_string(&message) {
+            let subscriber_count = sessions
+                .values()
+                .filter(|channels| channels.contains(&channel))
+                .count();
+
+            if subscriber_count > 0 {
+                log::debug!(
+                    "Broadcasting to {:?} channel: {} subscribers",
+                    channel,
+                    subscriber_count
+                );
+            }
+        }
+    }
+}
+
+/// Globalna instancja broadcastra
+static WS_BROADCASTER: Lazy<WebSocketBroadcaster> = Lazy::new(WebSocketBroadcaster::new);
+
+/// Eksportowane funkcje do broadcastowania z innych modułów
+pub fn broadcast_new_device(device: &ApiDevice) {
+    WS_BROADCASTER.broadcast(WsChannel::Devices, device.clone());
+}
+
+pub fn broadcast_raw_packet(packet: &RawPacket) {
+    WS_BROADCASTER.broadcast(WsChannel::RawPackets, packet.clone());
+}
+
+pub fn broadcast_telemetry(telemetry: &serde_json::Value) {
+    WS_BROADCASTER.broadcast(WsChannel::Telemetry, telemetry.clone());
+}
+
+pub fn broadcast_latency(mac: &str, latency_ms: u64, packet_count: u64) {
+    WS_BROADCASTER.broadcast(WsChannel::Latency, serde_json::json!({
+        "mac_address": mac,
+        "latency_ms": latency_ms,
+        "packet_count": packet_count,
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    }));
+}
+
 pub struct WsSession {
     pub id: usize,
+    subscribed_channels: Vec<WsChannel>,
+}
+
+impl WsSession {
+    fn new(id: usize) -> Self {
+        WS_BROADCASTER.register_session(id);
+        Self {
+            id,
+            subscribed_channels: Vec::new(),
+        }
+    }
+
+    fn handle_message(&mut self, text: &str, ctx: &mut ws::WebsocketContext<Self>) {
+        match serde_json::from_str::<WsSubscribeMessage>(text) {
+            Ok(msg) => {
+                match msg.action.as_str() {
+                    "subscribe" => {
+                        if let Some(channel) = msg.channel {
+                            WS_BROADCASTER.subscribe(self.id, channel);
+                            self.subscribed_channels.push(channel);
+                            let _ = ctx.text(
+                                serde_json::json!({
+                                    "type": "subscribed",
+                                    "channel": channel,
+                                    "message": format!("Subscribed to {:?}", channel)
+                                })
+                                .to_string(),
+                            );
+                        }
+                    }
+                    "unsubscribe" => {
+                        if let Some(channel) = msg.channel {
+                            WS_BROADCASTER.unsubscribe(self.id, channel);
+                            self.subscribed_channels.retain(|&c| c != channel);
+                            let _ = ctx.text(
+                                serde_json::json!({
+                                    "type": "unsubscribed",
+                                    "channel": channel,
+                                    "message": format!("Unsubscribed from {:?}", channel)
+                                })
+                                .to_string(),
+                            );
+                        }
+                    }
+                    "list_channels" => {
+                        let _ = ctx.text(
+                            serde_json::json!({
+                                "type": "channels",
+                                "available": ["devices", "raw_packets", "telemetry", "latency"],
+                                "subscribed": self.subscribed_channels
+                            })
+                            .to_string(),
+                        );
+                    }
+                    _ => {
+                        let _ = ctx.text(
+                            serde_json::json!({
+                                "type": "error",
+                                "message": format!("Unknown action: {}", msg.action)
+                            })
+                            .to_string(),
+                        );
+                    }
+                }
+            }
+            Err(_) => {
+                // Echo dla nieznanych wiadomości
+                let _ = ctx.text(text);
+            }
+        }
+    }
 }
 
 impl Actor for WsSession {
@@ -187,6 +385,7 @@ impl Actor for WsSession {
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
         log::info!("WebSocket client {} disconnected", self.id);
+        WS_BROADCASTER.unregister_session(self.id);
     }
 }
 
@@ -197,8 +396,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsSession {
                 ctx.pong(&msg);
             }
             Ok(ws::Message::Text(text)) => {
-                log::debug!("WebSocket {} received: {}", self.id, text);
-                let _ = ctx.text(text);
+                self.handle_message(&text, ctx);
             }
             Ok(ws::Message::Close(reason)) => {
                 log::info!("WebSocket {} close: {:?}", self.id, reason);
@@ -214,7 +412,7 @@ pub async fn ws_endpoint(
     stream: web::Payload,
 ) -> Result<actix_web::HttpResponse, actix_web::Error> {
     let session_id = WS_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let ws_session = WsSession { id: session_id };
+    let ws_session = WsSession::new(session_id);
     ws::start(ws_session, &req, stream)
 }
 
@@ -1783,6 +1981,149 @@ pub async fn get_data_flow_stats() -> impl Responder {
     }))
 }
 
+/// Get latency analysis for a specific device
+pub async fn get_device_latency(path: web::Path<String>) -> impl Responder {
+    let raw_mac = path.into_inner();
+    let mac = match validate_mac_address(&raw_mac) {
+        Ok(m) => m,
+        Err(e) => return HttpResponse::BadRequest().json(serde_json::json!({"error": e})),
+    };
+
+    let conn = match rusqlite::Connection::open("bluetooth_scan.db") {
+        Ok(c) => c,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Database error: {}", e)
+            }))
+        }
+    };
+
+    // Get timestamps and latencies for this device from last 100 packets
+    let query = r#"
+        SELECT timestamp_ms, latency_from_previous_ms
+        FROM ble_advertisement_frames
+        WHERE mac_address = ?
+        ORDER BY timestamp_ms DESC
+        LIMIT 100
+    "#;
+
+    match conn.prepare(query) {
+        Ok(mut stmt) => {
+            let latencies: Vec<(u64, Option<u64>)> = stmt
+                .query_map([&mac], |row| {
+                    let ts: i64 = row.get(0)?;
+                    let lat: Option<i64> = row.get(1)?;
+                    Ok((ts as u64, lat.map(|l| l as u64)))
+                })
+                .unwrap_or_default()
+                .filter_map(|r| r.ok())
+                .collect();
+
+            if latencies.is_empty() {
+                return HttpResponse::NotFound().json(serde_json::json!({
+                    "error": "No latency data found for device",
+                    "mac": mac
+                }));
+            }
+
+            // Calculate statistics
+            let latency_values: Vec<u64> = latencies.iter().filter_map(|(_, l)| *l).collect();
+            let packet_count = latencies.len();
+
+            let (min_ms, max_ms, avg_ms, median_ms) = if !latency_values.is_empty() {
+                let min = *latency_values.iter().min().unwrap_or(&0);
+                let max = *latency_values.iter().max().unwrap_or(&0);
+                let avg = latency_values.iter().sum::<u64>() as f64 / latency_values.len() as f64;
+                
+                let mut sorted = latency_values.clone();
+                sorted.sort();
+                let median = sorted[sorted.len() / 2];
+                
+                (min, max, avg, median)
+            } else {
+                (0, 0, 0.0, 0)
+            };
+
+            // Recent latencies (last 10)
+            let recent: Vec<u64> = latency_values.iter().take(10).copied().collect();
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "mac_address": mac,
+                "packet_count": packet_count,
+                "latency_with_values": latency_values.len(),
+                "min_ms": min_ms,
+                "max_ms": max_ms,
+                "avg_ms": avg_ms,
+                "median_ms": median_ms,
+                "recent_latencies_ms": recent,
+                "analysis": {
+                    "jitter_ms": max_ms.saturating_sub(min_ms),
+                    "consistency": if avg_ms > 0.0 {
+                        (1.0 - (avg_ms - median_ms as f64).abs() / avg_ms) * 100.0
+                    } else {
+                        100.0
+                    }
+                }
+            }))
+        }
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": format!("Query error: {}", e)
+        })),
+    }
+}
+
+/// Get global latency statistics across all devices
+pub async fn get_latency_stats() -> impl Responder {
+    let conn = match rusqlite::Connection::open("bluetooth_scan.db") {
+        Ok(c) => c,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Database error: {}", e)
+            }))
+        }
+    };
+
+    // Get overall latency stats
+    let query = r#"
+        SELECT 
+            COUNT(*) as total_packets,
+            COUNT(latency_from_previous_ms) as packets_with_latency,
+            AVG(latency_from_previous_ms) as avg_latency,
+            MIN(latency_from_previous_ms) as min_latency,
+            MAX(latency_from_previous_ms) as max_latency
+        FROM ble_advertisement_frames
+        WHERE timestamp > datetime('now', '-1 hour')
+    "#;
+
+    match conn.query_row(query, [], |row| {
+        let total: i64 = row.get(0)?;
+        let with_latency: i64 = row.get(1)?;
+        let avg: Option<f64> = row.get(2)?;
+        let min: Option<i64> = row.get(3)?;
+        let max: Option<i64> = row.get(4)?;
+        
+        Ok(serde_json::json!({
+            "total_packets_last_hour": total,
+            "packets_with_latency": with_latency,
+            "coverage_percent": if total > 0 {
+                (with_latency as f64 / total as f64) * 100.0
+            } else {
+                0.0
+            },
+            "latency_ms": {
+                "avg": avg.unwrap_or(0.0),
+                "min": min.unwrap_or(0),
+                "max": max.unwrap_or(0)
+            }
+        }))
+    }) {
+        Ok(stats) => HttpResponse::Ok().json(stats),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": format!("Query error: {}", e)
+        })),
+    }
+}
+
 pub fn configure_services(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api")
@@ -1815,13 +2156,221 @@ pub fn configure_services(cfg: &mut web::ServiceConfig) {
             .route("/event-analyzer-stats", web::get().to(get_event_analyzer_stats))
             .route("/event-analyzer-clear", web::post().to(clear_event_analyzer))
             .route("/devices/{mac}/data-flow", web::get().to(get_device_data_flow))
+            .route("/devices/{mac}/latency", web::get().to(get_device_latency))
+            .route("/latency-stats", web::get().to(get_latency_stats))
             .route("/data-flows", web::get().to(get_all_data_flows))
-            .route("/data-flow-stats", web::get().to(get_data_flow_stats)),
+            .route("/data-flow-stats", web::get().to(get_data_flow_stats))
+            .route("/gatt/{mac}/discover", web::post().to(gatt_discover_services))
+            .route("/gatt/{mac}/services", web::get().to(gatt_get_services)),
     )
     .route("/", web::get().to(index))
     .route("/styles.css", web::get().to(static_css))
     .route("/app.js", web::get().to(static_js))
     .route("/ws", web::get().to(ws_endpoint));
+}
+
+#[derive(serde::Serialize)]
+struct GattServiceJson {
+    uuid: String,
+    uuid16: Option<u16>,
+    name: Option<String>,
+    is_primary: bool,
+    characteristic_count: usize,
+    characteristics: Vec<GattCharacteristicJson>,
+}
+
+#[derive(serde::Serialize)]
+struct GattCharacteristicJson {
+    uuid: String,
+    uuid16: Option<u16>,
+    name: Option<String>,
+    properties: String,
+    properties_raw: u8,
+}
+
+pub async fn gatt_discover_services(path: web::Path<String>) -> impl Responder {
+    let raw_mac = path.into_inner();
+    let mac = match validate_mac_address(&raw_mac) {
+        Ok(m) => m,
+        Err(e) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": e
+            }));
+        }
+    };
+
+    info!("GATT: Starting service discovery for {}", mac);
+
+    let mut client = crate::gatt_client::GattClient::new(mac.clone());
+    
+    match client.discover_services_btleplug().await {
+        Ok(services) => {
+            let service_records: Vec<crate::db::GattServiceInput> = services
+                .iter()
+                .map(|s| {
+                    let uuid = s.uuid128.clone().unwrap_or_else(|| 
+                        s.uuid16.map(|u| format!("{:04X}", u)).unwrap_or_default()
+                    );
+                    crate::db::GattServiceInput {
+                        service_uuid: uuid,
+                        service_uuid16: s.uuid16,
+                        service_name: s.name.clone(),
+                        is_primary: s.is_primary,
+                        characteristic_count: s.characteristics.len() as i32,
+                    }
+                })
+                .collect();
+
+            if let Err(e) = crate::db::save_gatt_services(&mac, &service_records) {
+                log::warn!("Failed to save GATT services to database: {}", e);
+            }
+
+            for service in &services {
+                let service_uuid = service.uuid128.clone().unwrap_or_else(|| 
+                    service.uuid16.map(|u| format!("{:04X}", u)).unwrap_or_default()
+                );
+                
+                let char_records: Vec<crate::db::GattCharacteristicInput> = service
+                    .characteristics
+                    .iter()
+                    .map(|c| {
+                        let uuid = c.uuid128.clone().unwrap_or_else(|| 
+                            c.uuid16.map(|u| format!("{:04X}", u)).unwrap_or_default()
+                        );
+                        let props_text = c.properties.properties_list().join(", ");
+                        crate::db::GattCharacteristicInput {
+                            char_uuid: uuid,
+                            char_uuid16: c.uuid16,
+                            char_name: c.name.clone(),
+                            properties: c.properties.to_byte() as i32,
+                            properties_text: Some(props_text),
+                        }
+                    })
+                    .collect();
+
+                if let Err(e) = crate::db::save_gatt_characteristics(&mac, &service_uuid, &char_records) {
+                    log::warn!("Failed to save GATT characteristics: {}", e);
+                }
+            }
+
+            let services_json: Vec<GattServiceJson> = services
+                .iter()
+                .map(|s| {
+                    let uuid = s.uuid128.clone().unwrap_or_else(|| 
+                        s.uuid16.map(|u| format!("{:04X}", u)).unwrap_or_default()
+                    );
+                    let chars_json: Vec<GattCharacteristicJson> = s
+                        .characteristics
+                        .iter()
+                        .map(|c| {
+                            let uuid = c.uuid128.clone().unwrap_or_else(|| 
+                                c.uuid16.map(|u| format!("{:04X}", u)).unwrap_or_default()
+                            );
+                            GattCharacteristicJson {
+                                uuid,
+                                uuid16: c.uuid16,
+                                name: c.name.clone(),
+                                properties: c.properties.properties_list().join(", "),
+                                properties_raw: c.properties.to_byte(),
+                            }
+                        })
+                        .collect();
+
+                    GattServiceJson {
+                        uuid,
+                        uuid16: s.uuid16,
+                        name: s.name.clone(),
+                        is_primary: s.is_primary,
+                        characteristic_count: s.characteristics.len(),
+                        characteristics: chars_json,
+                    }
+                })
+                .collect();
+
+            info!("GATT: Discovery completed for {} - {} services", mac, services_json.len());
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "mac_address": mac,
+                "service_count": services_json.len(),
+                "services": services_json
+            }))
+        }
+        Err(e) => {
+            log::error!("GATT discovery failed for {}: {}", mac, e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "GATT discovery failed",
+                "details": e,
+                "mac_address": mac
+            }))
+        }
+    }
+}
+
+pub async fn gatt_get_services(path: web::Path<String>) -> impl Responder {
+    let raw_mac = path.into_inner();
+    let mac = match validate_mac_address(&raw_mac) {
+        Ok(m) => m,
+        Err(e) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": e
+            }));
+        }
+    };
+
+    match crate::db::get_gatt_services(&mac) {
+        Ok(services) => {
+            if services.is_empty() {
+                return HttpResponse::Ok().json(serde_json::json!({
+                    "mac_address": mac,
+                    "service_count": 0,
+                    "services": [],
+                    "message": "No GATT services cached. Trigger discovery first with POST /gatt/{mac}/discover"
+                }));
+            }
+
+            let services_json: Vec<GattServiceJson> = services
+                .iter()
+                .map(|s| {
+                    let chars = crate::db::get_gatt_characteristics(&mac, &s.service_uuid)
+                        .unwrap_or_default();
+                    
+                    let chars_json: Vec<GattCharacteristicJson> = chars
+                        .iter()
+                        .map(|c| GattCharacteristicJson {
+                            uuid: c.char_uuid.clone(),
+                            uuid16: c.char_uuid16,
+                            name: c.char_name.clone(),
+                            properties: c.properties_text.clone().unwrap_or_default(),
+                            properties_raw: c.properties as u8,
+                        })
+                        .collect();
+
+                    GattServiceJson {
+                        uuid: s.service_uuid.clone(),
+                        uuid16: s.service_uuid16,
+                        name: s.service_name.clone(),
+                        is_primary: s.is_primary,
+                        characteristic_count: s.characteristic_count as usize,
+                        characteristics: chars_json,
+                    }
+                })
+                .collect();
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "mac_address": mac,
+                "service_count": services_json.len(),
+                "services": services_json
+            }))
+        }
+        Err(e) => {
+            log::error!("Failed to get GATT services for {}: {}", mac, e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to retrieve GATT services",
+                "details": e.to_string()
+            }))
+        }
+    }
 }
 
 pub async fn start_server(port: u16, app_state: web::Data<AppState>) -> std::io::Result<()> {

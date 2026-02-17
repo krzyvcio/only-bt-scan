@@ -98,6 +98,7 @@ pub struct RawPacketModel {
     pub mac_address: String, // Which device sent this
     pub timestamp: DateTime<Utc>,
     pub timestamp_ms: u64, // Milliseconds since epoch (for temporal analysis)
+    pub latency_from_previous_ms: Option<u64>, // Time from previous packet for this device (real-time calculated)
 
     // === Physical Layer ===
     pub phy: String, // "LE 1M", "LE 2M", "LE Coded"
