@@ -288,6 +288,66 @@ pub fn broadcast_raw_packet(packet: &RawPacket) {
     WS_BROADCASTER.broadcast(WsChannel::RawPackets, packet.clone());
 }
 
+/// Convert BluetoothDevice to ApiDevice for broadcasting
+pub fn convert_to_api_device(device: &crate::bluetooth_scanner::BluetoothDevice) -> ApiDevice {
+    let first_seen = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(
+        device.first_detected_ns / 1_000_000,
+    ).unwrap_or_else(|| chrono::Utc::now());
+    
+    let last_seen = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(
+        device.last_detected_ns / 1_000_000,
+    ).unwrap_or_else(|| chrono::Utc::now());
+
+    ApiDevice {
+        id: None,
+        mac_address: device.mac_address.clone(),
+        device_name: device.name.clone(),
+        rssi: device.rssi,
+        first_seen: first_seen.to_rfc3339(),
+        last_seen: last_seen.to_rfc3339(),
+        manufacturer_id: device.manufacturer_id,
+        manufacturer_name: device.manufacturer_name.clone(),
+        device_type: Some(format!("{:?}", device.device_type)),
+        number_of_scan: 1,
+        mac_type: device.mac_type.clone(),
+        is_rpa: device.is_rpa,
+        security_level: device.security_level.clone(),
+        pairing_method: device.pairing_method.clone(),
+        services: Vec::new(),
+        detection_count: None,
+        avg_rssi: None,
+        detection_percentage: 0.0,
+        is_authenticated: false,
+        device_class: None,
+        service_classes: None,
+        bt_device_type: None,
+        ad_local_name: device.name.clone(),
+        ad_tx_power: None,
+        ad_flags: None,
+        ad_appearance: None,
+        ad_service_uuids: device.services.iter().filter_map(|s| s.uuid128.clone()).collect(),
+        ad_manufacturer_name: device.manufacturer_name.clone(),
+        ad_manufacturer_data: device.manufacturer_data.iter().next().map(|(_, d)| hex::encode(d)),
+        frame_interval_ms: None,
+        frames_per_second: None,
+    }
+}
+
+/// Convert RawPacketModel to RawPacket for broadcasting
+pub fn convert_to_raw_packet(packet: &crate::data_models::RawPacketModel) -> RawPacket {
+    RawPacket {
+        id: packet.packet_id as i64,
+        mac_address: packet.mac_address.clone(),
+        rssi: packet.rssi,
+        advertising_data: packet.advertising_data_hex.clone(),
+        phy: packet.phy.clone(),
+        channel: packet.channel as i32,
+        frame_type: packet.packet_type.clone(),
+        timestamp: packet.timestamp.to_rfc3339(),
+        scan_number: None,
+    }
+}
+
 pub fn broadcast_telemetry(telemetry: &serde_json::Value) {
     WS_BROADCASTER.broadcast(WsChannel::Telemetry, telemetry.clone());
 }
@@ -1442,6 +1502,48 @@ pub async fn static_js() -> impl Responder {
         .body(js)
 }
 
+pub async fn static_api_js() -> impl Responder {
+    let js = include_str!("../frontend/api.js");
+    HttpResponse::Ok()
+        .content_type("application/javascript; charset=utf-8")
+        .body(js)
+}
+
+pub async fn static_devices_js() -> impl Responder {
+    let js = include_str!("../frontend/devices.js");
+    HttpResponse::Ok()
+        .content_type("application/javascript; charset=utf-8")
+        .body(js)
+}
+
+pub async fn static_packets_js() -> impl Responder {
+    let js = include_str!("../frontend/packets.js");
+    HttpResponse::Ok()
+        .content_type("application/javascript; charset=utf-8")
+        .body(js)
+}
+
+pub async fn static_rssi_js() -> impl Responder {
+    let js = include_str!("../frontend/rssi.js");
+    HttpResponse::Ok()
+        .content_type("application/javascript; charset=utf-8")
+        .body(js)
+}
+
+pub async fn static_modals_js() -> impl Responder {
+    let js = include_str!("../frontend/modals.js");
+    HttpResponse::Ok()
+        .content_type("application/javascript; charset=utf-8")
+        .body(js)
+}
+
+pub async fn ws_demo() -> impl Responder {
+    let html = include_str!("../frontend/ws_demo.html");
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html)
+}
+
 pub async fn get_telemetry() -> impl Responder {
     match crate::telemetry::get_global_telemetry() {
         Some(snapshot) => HttpResponse::Ok().json(snapshot),
@@ -1645,6 +1747,18 @@ pub async fn get_rssi_24h(path: web::Path<String>) -> impl Responder {
             let rssi_values: Vec<i32> = measurements.iter().map(|m| m.rssi).collect();
             let avg_rssi = rssi_values.iter().sum::<i32>() as f64 / rssi_values.len() as f64;
 
+            let mut distribution = std::collections::HashMap::new();
+            distribution.insert("excellent".to_string(), 0);
+            distribution.insert("good".to_string(), 0);
+            distribution.insert("fair".to_string(), 0);
+            distribution.insert("poor".to_string(), 0);
+            distribution.insert("very_poor".to_string(), 0);
+
+            for m in &measurements {
+                let quality = m.signal_quality.clone();
+                *distribution.entry(quality).or_insert(0) += 1;
+            }
+
             HttpResponse::Ok().json(serde_json::json!({
                 "success": true,
                 "device_mac": mac,
@@ -1655,6 +1769,7 @@ pub async fn get_rssi_24h(path: web::Path<String>) -> impl Responder {
                     "max": rssi_values.iter().max().copied().unwrap_or(0),
                     "avg": avg_rssi
                 },
+                "signal_quality_distribution": distribution,
                 "trend": {
                     "direction": trend,
                     "delta": rssi_delta,
@@ -2007,7 +2122,7 @@ pub async fn get_device_latency(path: web::Path<String>) -> impl Responder {
         LIMIT 100
     "#;
 
-    match conn.prepare(query) {
+    let response = match conn.prepare(query) {
         Ok(mut stmt) => {
             let latencies: Vec<(u64, Option<u64>)> = stmt
                 .query_map([&mac], |row| {
@@ -2015,9 +2130,8 @@ pub async fn get_device_latency(path: web::Path<String>) -> impl Responder {
                     let lat: Option<i64> = row.get(1)?;
                     Ok((ts as u64, lat.map(|l| l as u64)))
                 })
-                .unwrap_or_default()
-                .filter_map(|r| r.ok())
-                .collect();
+                .map(|rows| rows.filter_map(|r| r.ok()).collect::<Vec<_>>())
+                .unwrap_or_default();
 
             if latencies.is_empty() {
                 return HttpResponse::NotFound().json(serde_json::json!({
@@ -2069,7 +2183,9 @@ pub async fn get_device_latency(path: web::Path<String>) -> impl Responder {
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": format!("Query error: {}", e)
         })),
-    }
+    };
+
+    response
 }
 
 /// Get global latency statistics across all devices
@@ -2164,8 +2280,14 @@ pub fn configure_services(cfg: &mut web::ServiceConfig) {
             .route("/gatt/{mac}/services", web::get().to(gatt_get_services)),
     )
     .route("/", web::get().to(index))
+    .route("/ws-demo", web::get().to(ws_demo))
     .route("/styles.css", web::get().to(static_css))
     .route("/app.js", web::get().to(static_js))
+    .route("/api.js", web::get().to(static_api_js))
+    .route("/devices.js", web::get().to(static_devices_js))
+    .route("/packets.js", web::get().to(static_packets_js))
+    .route("/rssi.js", web::get().to(static_rssi_js))
+    .route("/modals.js", web::get().to(static_modals_js))
     .route("/ws", web::get().to(ws_endpoint));
 }
 

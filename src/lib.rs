@@ -719,13 +719,15 @@ pub async fn run() -> Result<(), anyhow::Error> {
         )?;
     }
     writeln!(stdout())?; // Replaced stdout!() with stdout
-
-    // Main event loop — w trybie ciągłym: odświeżanie w miejscu (bez przewijania), bez przerwy
+    // Main event loop
     let start_line = ui_renderer::get_device_list_start_line();
     let mut scan_count = 0;
     let app_start_time = std::time::Instant::now();
 
     while !shutdown_in_progress.load(std::sync::atomic::Ordering::Relaxed) {
+        // Increment global scan counter in DB
+        let _ = db::get_next_scan_number();
+
         // Clear only the content area and show scan status
         log::debug!("Clearing content area");
         ui_renderer::clear_content_area().map_err(|e| {

@@ -243,6 +243,7 @@ impl RawPacketParser {
             mac_address: packet.mac_address.clone(),
             timestamp,
             timestamp_ms,
+            latency_from_previous_ms: None,
             phy: "LE 1M".to_string(),
             channel: 37, // Default advertising channel
             rssi: packet.rssi,

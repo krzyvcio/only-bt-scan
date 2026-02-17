@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLE Scanner - WebSocket Demo</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 {
+            color: #00d9ff;
+            font-size: 28px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+        }
+        .connection-panel {
+            background: #0f0f23;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #00d9ff;
+        }
+        .status {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .status.connected { background: #1a3a2a; color: #4ade80; }
+        .status.disconnected { background: #3a1a1a; color: #f87171; }
+        .status.connecting { background: #3a3a1a; color: #fbbf24; }
+        .channels-panel {
+            background: #0f0f23;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .channels-title {
+            color: #ff6b6b;
+            font-size: 18px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 8px;
+        }
+        .channel-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+        .channel-card {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 15px;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+        .channel-card:hover { border-color: #00d9ff; }
+        .channel-card.subscribed { border-color: #4ade80; }
+        .channel-name {
+            font-size: 16px;
+            font-weight: bold;
+            color: #00d9ff;
+            margin-bottom: 5px;
+        }
+        .channel-desc {
+            font-size: 13px;
+            color: #888;
+            margin-bottom: 10px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        .btn-subscribe {
+            background: #1a3a2a;
+            color: #4ade80;
+        }
+        .btn-subscribe:hover { background: #2a4a3a; }
+        .btn-unsubscribe {
+            background: #3a1a1a;
+            color: #f87171;
+        }
+        .btn-unsubscribe:hover { background: #4a2a2a; }
+        .messages-panel {
+            background: #0f0f23;
+            border-radius: 12px;
+            padding: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .messages-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+        .messages-title {
+            color: #ff6b6b;
+            font-size: 18px;
+        }
+        .message-count {
+            background: #16213e;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #888;
+        }
+        .message {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-left: 3px solid #00d9ff;
+            font-size: 13px;
+        }
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            color: #00d9ff;
+            font-weight: bold;
+        }
+        .message-time {
+            color: #666;
+            font-size: 12px;
+        }
+        .message-data {
+            color: #ccc;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .message.channel-devices { border-left-color: #4ade80; }
+        .message.channel-raw_packets { border-left-color: #fbbf24; }
+        .message.channel-telemetry { border-left-color: #a78bfa; }
+        .stats-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .stat-card {
+            background: #0f0f23;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #00d9ff;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #888;
+            margin-top: 5px;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #00d9ff;
+            text-decoration: none;
+        }
+        .back-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Powrót do skanera</a>
+        <h1>🔌 WebSocket Demo</h1>
+        <p class="subtitle">Testowanie kanałów w czasie rzeczywistym</p>
+
+        <div class="connection-panel">
+            <h3 style="margin-bottom: 15px;">Status połączenia</h3>
+            <span id="ws-status" class="status disconnected">Rozłączony</span>
+            <span id="ws-info" style="margin-left: 15px; color: #666;">Kliknij aby połączyć...</span>
+        </div>
+
+        <div class="channels-panel">
+            <div class="channels-title">📡 Dostępne kanały</div>
+            <div class="channel-grid">
+                <div class="channel-card" id="channel-devices">
+                    <div class="channel-name">devices</div>
+                    <div class="channel-desc">Nowe i zaktualizowane urządzenia BLE</div>
+                    <button class="btn btn-subscribe" onclick="toggleChannel('devices')">
+                        Subskrybuj
+                    </button>
+                </div>
+                <div class="channel-card" id="channel-raw_packets">
+                    <div class="channel-name">raw_packets</div>
+                    <div class="channel-desc">Surowe pakiety reklamowe BLE</div>
+                    <button class="btn btn-subscribe" onclick="toggleChannel('raw_packets')">
+                        Subskrybuj
+                    </button>
+                </div>
+                <div class="channel-card" id="channel-telemetry">
+                    <div class="channel-name">telemetry</div>
+                    <div class="channel-desc">Statystyki telemetryczne</div>
+                    <button class="btn btn-subscribe" onclick="toggleChannel('telemetry')">
+                        Subskrybuj
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="messages-panel" id="messages-container">
+            <div class="messages-header">
+                <span class="messages-title">📨 Odebrane wiadomości</span>
+                <span class="message-count" id="msg-count">0 wiadomości</span>
+            </div>
+            <div id="messages-list"></div>
+        </div>
+
+        <div class="stats-panel">
+            <div class="stat-card">
+                <div class="stat-value" id="stat-devices">0</div>
+                <div class="stat-label">Urządzeń</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-packets">0</div>
+                <div class="stat-label">Pakietów</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-telemetry">0</div>
+                <div class="stat-label">Telemetria</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-total">0</div>
+                <div class="stat-label">Wszystkich</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let messageCount = 0;
+        const stats = { devices: 0, raw_packets: 0, telemetry: 0 };
+        const subscribedChannels = new Set();
+
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+
+        function updateStatus(status, text) {
+            const statusEl = document.getElementById('ws-status');
+            const infoEl = document.getElementById('ws-info');
+            
+            statusEl.className = `status ${status}`;
+            statusEl.textContent = text;
+            
+            if (status === 'connected') {
+                infoEl.textContent = 'Połączony z WebSocket';
+            } else if (status === 'connecting') {
+                infoEl.textContent = 'Łączenie...';
+            } else {
+                infoEl.textContent = 'Kliknij aby połączyć';
+            }
+        }
+
+        function connect() {
+            if (ws) return;
+            
+            updateStatus('connecting', 'Łączenie...');
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                updateStatus('connected', 'Połączony');
+                addMessage('system', 'Połączono z WebSocket', {});
+                
+                // Auto-subskrybuj wszystkie kanały
+                ['devices', 'raw_packets', 'telemetry'].forEach(ch => {
+                    ws.send(JSON.stringify({ action: 'subscribe', channel: ch }));
+                });
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    handleMessage(msg);
+                } catch (e) {
+                    addMessage('raw', event.data, {});
+                }
+            };
+            
+            ws.onclose = () => {
+                updateStatus('disconnected', 'Rozłączony');
+                addMessage('system', 'Rozłączono z WebSocket', {});
+                ws = null;
+                
+                // Auto-reconnect po 3s
+                setTimeout(connect, 3000);
+            };
+            
+            ws.onerror = (error) => {
+                updateStatus('disconnected', 'Błąd');
+                addMessage('error', 'Błąd WebSocket', { error: error.toString() });
+            };
+        }
+
+        function handleMessage(msg) {
+            if (msg.type === 'subscribed' || msg.type === 'unsubscribed') {
+                const channel = msg.channel;
+                if (msg.type === 'subscribed') {
+                    subscribedChannels.add(channel);
+                    document.getElementById(`channel-${channel}`).classList.add('subscribed');
+                    document.querySelector(`#channel-${channel} button`).textContent = 'Anuluj';
+                    document.querySelector(`#channel-${channel} button`).className = 'btn btn-unsubscribe';
+                } else {
+                    subscribedChannels.delete(channel);
+                    document.getElementById(`channel-${channel}`).classList.remove('subscribed');
+                    document.querySelector(`#channel-${channel} button`).textContent = 'Subskrybuj';
+                    document.querySelector(`#channel-${channel} button`).className = 'btn btn-subscribe';
+                }
+                addMessage('system', msg.message, { channel });
+                return;
+            }
+            
+            if (msg.channel) {
+                const channel = msg.channel;
+                stats[channel] = (stats[channel] || 0) + 1;
+                updateStats();
+                addMessage(`channel-${channel}`, `Kanał: ${channel}`, msg.data);
+            } else {
+                addMessage('raw', JSON.stringify(msg), msg);
+            }
+        }
+
+        function toggleChannel(channel) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('Najpierw połącz się z WebSocket');
+                return;
+            }
+            
+            const action = subscribedChannels.has(channel) ? 'unsubscribe' : 'subscribe';
+            ws.send(JSON.stringify({ action, channel }));
+        }
+
+        function addMessage(type, header, data) {
+            messageCount++;
+            document.getElementById('msg-count').textContent = `${messageCount} wiadomości`;
+            
+            const container = document.getElementById('messages-list');
+            const msgEl = document.createElement('div');
+            msgEl.className = `message ${type}`;
+            
+            const time = new Date().toLocaleTimeString('pl-PL');
+            const dataStr = JSON.stringify(data, null, 2);
+            
+            msgEl.innerHTML = `
+                <div class="message-header">
+                    <span>${header}</span>
+                    <span class="message-time">${time}</span>
+                </div>
+                <div class="message-data">${dataStr}</div>
+            `;
+            
+            container.insertBefore(msgEl, container.firstChild);
+            
+            // Limit do 50 wiadomości
+            while (container.children.length > 50) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('stat-devices').textContent = stats.devices;
+            document.getElementById('stat-packets').textContent = stats.raw_packets;
+            document.getElementById('stat-telemetry').textContent = stats.telemetry;
+            document.getElementById('stat-total').textContent = 
+                stats.devices + stats.raw_packets + stats.telemetry;
+        }
+
+        // Auto-connect przy załadowaniu
+        document.addEventListener('DOMContentLoaded', connect);
+    </script>
+</body>
+</html>

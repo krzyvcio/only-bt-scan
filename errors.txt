@@ -1,0 +1,63 @@
+    Checking only-bt-scan v0.1.0 (C:\projekty\only-bt-scan)
+error[E0425]: cannot find function `convert_to_api_device` in module `web_server`
+   --> src\lib.rs:911:54
+    |
+911 |                         let api_device = web_server::convert_to_api_device(device);
+    |                                                      ^^^^^^^^^^^^^^^^^^^^^ not found in `web_server`
+
+error[E0425]: cannot find function `convert_to_raw_packet` in module `web_server`
+   --> src\lib.rs:926:58
+    |
+926 | ...                   let raw_packet = web_server::convert_to_raw_packet(packet);
+    |                                                    ^^^^^^^^^^^^^^^^^^^^^ not found in `web_server`
+
+error[E0308]: mismatched types
+   --> src\gatt_client.rs:270:70
+    |
+270 |                 let properties = CharacteristicProperties::from_byte(char.properties);
+    |                                  ----------------------------------- ^^^^^^^^^^^^^^^ expected `u8`, found `CharPropFlags`
+    |                                  |
+    |                                  arguments to this function are incorrect
+    |
+note: associated function defined here
+   --> src\gatt_client.rs:44:12
+    |
+ 44 |     pub fn from_byte(byte: u8) -> Self {
+    |            ^^^^^^^^^ --------
+
+error[E0277]: the trait bound `MappedRows<'_, {closure@src\web_server.rs:2013:36: 2013:41}>: Default` is not satisfied
+    --> src\web_server.rs:2018:18
+     |
+2018 |                 .unwrap_or_default()
+     |                  ^^^^^^^^^^^^^^^^^ the trait `Default` is not implemented for `MappedRows<'_, {closure@src\web_server.rs:2013:36: 2013:41}>`
+     |
+note: required by a bound in `Result::<T, E>::unwrap_or_default`
+    --> C:\Users\Micha┼é\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\src\result.rs:1267:12
+     |
+1265 |     pub const fn unwrap_or_default(self) -> T
+     |                  ----------------- required by a bound in this associated function
+1266 |     where
+1267 |         T: [const] Default + [const] Destruct,
+     |            ^^^^^^^^^^^^^^^ required by this bound in `Result::<T, E>::unwrap_or_default`
+
+error[E0063]: missing field `latency_from_previous_ms` in initializer of `RawPacketModel`
+   --> src\data_models.rs:313:9
+    |
+313 |         Self {
+    |         ^^^^ missing `latency_from_previous_ms`
+
+error[E0063]: missing field `latency_from_previous_ms` in initializer of `RawPacketModel`
+   --> src\raw_packet_parser.rs:241:9
+    |
+241 |         RawPacketModel {
+    |         ^^^^^^^^^^^^^^ missing `latency_from_previous_ms`
+
+error[E0063]: missing field `latency_from_previous_ms` in initializer of `RawPacketModel`
+   --> src\scanner_integration.rs:195:18
+    |
+195 |     let packet = RawPacketModel {
+    |                  ^^^^^^^^^^^^^^ missing `latency_from_previous_ms`
+
+Some errors have detailed explanations: E0063, E0277, E0308, E0425.
+For more information about an error, try `rustc --explain E0063`.
+error: could not compile `only-bt-scan` (lib) due to 7 previous errors

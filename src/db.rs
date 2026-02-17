@@ -672,6 +672,15 @@ pub fn init_database() -> SqliteResult<()> {
     // Initialize frame storage tables (ble_advertisement_frames, frame_statistics)
     db_frames::init_frame_storage(&conn)?;
 
+    // Initialize scan counter table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS scan_counter (
+            id INTEGER PRIMARY KEY,
+            counter INTEGER DEFAULT 0
+        )",
+        [],
+    )?;
+
     Ok(())
 }
 

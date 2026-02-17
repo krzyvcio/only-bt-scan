@@ -45,21 +45,21 @@ function setupEventListeners() {
     tabButtons.forEach(btn => {
         btn.addEventListener('click', () => {
             const tabId = btn.dataset.tab;
-            
+
             // Update active tab button
             tabButtons.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            
+
             // Show corresponding tab content
             document.querySelectorAll('.tab-content').forEach(content => {
                 content.classList.remove('active');
             });
-            
+
             const targetContent = document.getElementById(`tab-${tabId}`);
             if (targetContent) {
                 targetContent.classList.add('active');
             }
-            
+
             // Load data for specific tabs
             if (tabId === 'telemetry') {
                 loadTelemetry();
@@ -78,9 +78,11 @@ function setupEventListeners() {
     });
 
     // Auto-scroll toggle
-    const autoScrollBtn = document.getElementById('auto-scroll-toggle');
+    const autoScrollBtn = document.getElementById('auto-scroll');
     if (autoScrollBtn) {
-        autoScrollBtn.addEventListener('click', toggleAutoScroll);
+        autoScrollBtn.addEventListener('change', (e) => {
+            isAutoScrollEnabled = e.target.checked;
+        });
     }
 
     // Search functionality
@@ -132,9 +134,9 @@ function stopPolling() {
 async function loadStats() {
     const data = await loadStatsFromApi();
     if (data) {
-        document.getElementById('total-devices').textContent = data.total_devices || 0;
-        document.getElementById('total-packets').textContent = data.total_packets || 0;
-        document.getElementById('scan-sessions').textContent = data.scan_sessions || 0;
+        if (document.getElementById('total-devices')) document.getElementById('total-devices').textContent = data.total_devices || 0;
+        if (document.getElementById('total-packets')) document.getElementById('total-packets').textContent = data.total_packets || 0;
+        if (document.getElementById('total-scans')) document.getElementById('total-scans').textContent = data.total_scans || 0;
     }
 }
 
@@ -157,17 +159,17 @@ function filterDevices() {
     const rssiFilter = document.getElementById('filter-rssi')?.value || '';
     const manufacturerFilter = document.getElementById('filter-manufacturer')?.value || '';
     const macTypeFilter = document.getElementById('filter-mac-type')?.value || '';
-    
+
     const rows = document.querySelectorAll('#devices-tbody tr');
-    
+
     rows.forEach(row => {
         const text = row.textContent.toLowerCase();
         const rssiValue = row.querySelector('.rssi-value');
         const manufacturerCell = row.querySelector('.manufacturer');
         const macTypeCell = row.querySelector('.mac-type');
-        
+
         const matchesText = query === '' || text.includes(query);
-        
+
         let matchesRssi = true;
         if (rssiFilter) {
             const rssi = rssiValue ? parseInt(rssiValue.textContent) : -100;
@@ -178,13 +180,13 @@ function filterDevices() {
                 case 'poor': matchesRssi = rssi < -70; break;
             }
         }
-        
-        const matchesManufacturer = !manufacturerFilter || 
+
+        const matchesManufacturer = !manufacturerFilter ||
             (manufacturerCell && manufacturerCell.textContent.toLowerCase() === manufacturerFilter.toLowerCase());
-        
-        const matchesMacType = !macTypeFilter || 
+
+        const matchesMacType = !macTypeFilter ||
             (macTypeCell && macTypeCell.textContent.toLowerCase().includes(macTypeFilter.toLowerCase()));
-        
+
         row.style.display = (matchesText && matchesRssi && matchesManufacturer && matchesMacType) ? '' : 'none';
     });
 }
@@ -198,7 +200,7 @@ function populateManufacturerFilter() {
             manufacturers.add(mfgCell.textContent.trim());
         }
     });
-    
+
     const select = document.getElementById('filter-manufacturer');
     if (select) {
         const currentValue = select.value;
@@ -224,11 +226,11 @@ function showToast(type, message) {
     toast.className = `toast toast-${type}`;
     toast.textContent = message;
     document.body.appendChild(toast);
-    
+
     setTimeout(() => {
         toast.classList.add('show');
     }, 10);
-    
+
     setTimeout(() => {
         toast.classList.remove('show');
         setTimeout(() => toast.remove(), 300);
@@ -238,20 +240,20 @@ function showToast(type, message) {
 // Advertising Data Parser
 function parseAdvertisingData(hexString) {
     if (!hexString) return { structures: [], summary: [] };
-    
+
     const bytes = hexString.split(/\s+/).map(b => parseInt(b, 16));
     const structures = [];
     let i = 0;
-    
+
     while (i < bytes.length) {
         const length = bytes[i];
         if (length === 0 || i + length > bytes.length) break;
-        
+
         const type = bytes[i + 1];
         const data = bytes.slice(i + 2, i + 1 + length);
-        
+
         const typeInfo = getAdTypeInfo(type);
-        
+
         structures.push({
             length,
             type,
@@ -262,10 +264,10 @@ function parseAdvertisingData(hexString) {
             description: typeInfo.description,
             isStructure: true
         });
-        
+
         i += 1 + length;
     }
-    
+
     const summary = [];
     structures.forEach(s => {
         if (s.type === 0x09) { // Complete Local Name
@@ -282,7 +284,7 @@ function parseAdvertisingData(hexString) {
             }
         }
     });
-    
+
     return { structures, summary };
 }
 
@@ -313,7 +315,7 @@ function getAdTypeInfo(type) {
         0x2A19: { name: 'Battery Level', description: 'Poziom baterii' },
         0xFF: { name: 'Manufacturer Specific Data', description: 'Dane specyficzne producenta' },
     };
-    
+
     return types[type] || { name: `Unknown (0x${type.toString(16)})`, description: 'Nieznany typ' };
 }
 

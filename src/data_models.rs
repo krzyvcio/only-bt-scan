@@ -315,6 +315,7 @@ impl RawPacketModel {
             mac_address,
             timestamp,
             timestamp_ms,
+            latency_from_previous_ms: None,
             phy: "LE 1M".to_string(),
             channel: 37,
             rssi: -70,

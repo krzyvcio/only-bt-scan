@@ -267,7 +267,7 @@ impl GattClient {
                     .and_then(|id| get_gatt_characteristic_name(id))
                     .map(|s| s.to_string());
 
-                let properties = CharacteristicProperties::from_byte(char.properties);
+                let properties = CharacteristicProperties::from_byte(char.properties.bits() as u8);
 
                 characteristics.push(GattCharacteristic {
                     uuid16: char_uuid16,
