@@ -104,3 +104,26 @@ Nadal nieużywane ale zostawione:
 8. **Multi-Adapter Support** - wiele adapterów BT jednocześnie
 9. **Data Export** - JSON/CSV/PCAP
 10. **Extended Advertising Parsing** - BLE 5.0
+
+---
+
+## 2026-02-17: Subagenci - równoległe zadania
+
+### Zadanie 1: DB Index (Data & Protocol)
+- Dodano indeks: `idx_devices_rssi ON devices(rssi)`
+- Większość indeksów już istniała
+
+### Zadanie 2: Device Filtering UI (Frontend Dev)
+- Dodano dropdowny filtrowania:
+  - RSSI Range (Excellent/Good/Fair/Poor)
+  - Manufacturer (dynamicznie z listy urządzeń)
+  - MAC Type (Public/Random)
+- Filtrowanie działa w czasie rzeczywistym
+
+### Zadanie 3: WebSocket (Web API Dev)
+- Dodano endpoint `/ws` dla połączeń WebSocket
+- Dodano zależności: actix-web-actors, actix
+- Struct WsSession do obsługi połączeń
+- Broadcasting gotowy do integracji ze scannerem
+
+### Warningi: 336 -> 295 (-41)
