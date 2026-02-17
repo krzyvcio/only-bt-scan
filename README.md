@@ -6,7 +6,16 @@ A Rust-based BLE/Bluetooth Low Energy scanner application for Windows with Teleg
 
 1. Clone the repository
 2. Install Rust from https://rustup.rs/
-3. Configure your `.env` file with Telegram credentials (optional)
+3. **Clone Bluetooth SIG data repository** (required for BLE specifications):
+   ```powershell
+   cd src
+   git clone https://bitbucket.org/bluetooth-SIG/public.git data
+   ```
+   This downloads official Bluetooth SIG specifications including:
+   - Company IDs and manufacturer names
+   - GATT Service/Characteristic definitions
+   - Assigned numbers and UUIDs
+4. Configure your `.env` file with Telegram credentials (optional)
 
 ## Running the Application
 
