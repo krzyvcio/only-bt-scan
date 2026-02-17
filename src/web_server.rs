@@ -2,11 +2,15 @@ use crate::hci_scanner::HciScanner;
 use crate::mac_address_handler::MacAddress;
 use crate::pcap_exporter::{HciPcapPacket, PcapExporter};
 use crate::class_of_device;
+use actix::Actor;
+use actix::StreamHandler;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
+use actix_web_actors::ws;
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const MAX_RAW_PACKETS: usize = 500;
 const DEFAULT_PAGE_SIZE: usize = 50;
@@ -166,6 +170,52 @@ impl Default for AppState {
             last_scan_time: Mutex::new(None),
         }
     }
+}
+
+static WS_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+pub struct WsSession {
+    pub id: usize,
+}
+
+impl Actor for WsSession {
+    type Context = ws::WebsocketContext<Self>;
+
+    fn started(&mut self, _ctx: &mut Self::Context) {
+        log::info!("WebSocket client {} connected", self.id);
+    }
+
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
+        log::info!("WebSocket client {} disconnected", self.id);
+    }
+}
+
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsSession {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        match msg {
+            Ok(ws::Message::Ping(msg)) => {
+                ctx.pong(&msg);
+            }
+            Ok(ws::Message::Text(text)) => {
+                log::debug!("WebSocket {} received: {}", self.id, text);
+                let _ = ctx.text(text);
+            }
+            Ok(ws::Message::Close(reason)) => {
+                log::info!("WebSocket {} close: {:?}", self.id, reason);
+                ctx.close(reason);
+            }
+            _ => {}
+        }
+    }
+}
+
+pub async fn ws_endpoint(
+    req: actix_web::HttpRequest,
+    stream: web::Payload,
+) -> Result<actix_web::HttpResponse, actix_web::Error> {
+    let session_id = WS_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let ws_session = WsSession { id: session_id };
+    ws::start(ws_session, &req, stream)
 }
 
 pub fn update_devices(devices: Vec<ApiDevice>) {
@@ -1770,7 +1820,8 @@ pub fn configure_services(cfg: &mut web::ServiceConfig) {
     )
     .route("/", web::get().to(index))
     .route("/styles.css", web::get().to(static_css))
-    .route("/app.js", web::get().to(static_js));
+    .route("/app.js", web::get().to(static_js))
+    .route("/ws", web::get().to(ws_endpoint));
 }
 
 pub async fn start_server(port: u16, app_state: web::Data<AppState>) -> std::io::Result<()> {

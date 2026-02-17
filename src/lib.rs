@@ -49,6 +49,8 @@ mod raw_packet_parser;
 mod raw_sniffer;
 mod scanner_integration;
 mod telegram_notifier;
+#[cfg(test)]
+mod telegram_simulator;
 mod telemetry;
 mod unified_scan;
 mod vendor_protocols;
@@ -406,6 +408,9 @@ pub async fn run() -> Result<(), anyhow::Error> {
     adapter_info::log_adapter_info(&adapter);
     log::info!("Using adapter: {} ({})", adapter.name, adapter.address);
 
+    // Setup shutdown flag early (before any async tasks)
+    let shutdown_in_progress = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
     // Initialize Telegram notifications
     if telegram_notifier::is_enabled() {
         if let Err(e) = telegram_notifier::init_telegram_notifications() {
@@ -438,14 +443,40 @@ pub async fn run() -> Result<(), anyhow::Error> {
             }
         });
 
-        // Spawn telegram periodic report task in separate thread with Tokio runtime
+        // Spawn telegram periodic report task in separate thread with own Tokio runtime
         log::info!("[Telegram] Spawning periodic report task (every 1 minute)");
+        let shutdown_telegram = shutdown_in_progress.clone();
         std::thread::spawn(move || {
             eprintln!("[TELEGRAM] Thread started, creating Tokio runtime...");
-            let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime for Telegram");
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create Tokio runtime for Telegram");
+            
             eprintln!("[TELEGRAM] Runtime created, starting periodic task...");
             rt.block_on(async {
-                telegram_notifier::run_periodic_report_task().await;
+                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                
+                loop {
+                    tokio::select! {
+                        _ = interval.tick() => {
+                            if shutdown_telegram.load(std::sync::atomic::Ordering::Relaxed) {
+                                eprintln!("[TELEGRAM] Shutdown signal received, exiting");
+                                break;
+                            }
+                            if let Err(e) = telegram_notifier::send_periodic_report().await {
+                                eprintln!("[TELEGRAM] Failed to send periodic report: {}", e);
+                                log::warn!("Failed to send periodic Telegram report: {}", e);
+                            }
+                        }
+                        _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
+                            if shutdown_telegram.load(std::sync::atomic::Ordering::Relaxed) {
+                                break;
+                            }
+                        }
+                    }
+                }
             });
             eprintln!("[TELEGRAM] Thread ending");
         });
@@ -603,7 +634,6 @@ pub async fn run() -> Result<(), anyhow::Error> {
     let mut _all_devices: Vec<bluetooth_scanner::BluetoothDevice> = Vec::new();
 
     // Setup Ctrl+C handler with graceful and forced shutdown
-    let shutdown_in_progress = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let shutdown_in_progress_clone = shutdown_in_progress.clone();
 
     ctrlc::set_handler(move || {

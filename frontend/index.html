@@ -76,6 +76,23 @@
                         </svg>
                         <input type="text" id="search-input" placeholder="Szukaj urządzenia...">
                     </div>
+                    <div class="filter-box">
+                        <select id="filter-rssi" class="filter-select">
+                            <option value="">Sygnał (wszystkie)</option>
+                            <option value="excellent">Excellent (-50+)</option>
+                            <option value="good">Good (-60+)</option>
+                            <option value="fair">Fair (-70+)</option>
+                            <option value="poor">Poor (-80+)</option>
+                        </select>
+                        <select id="filter-manufacturer" class="filter-select">
+                            <option value="">Producent (wszystkie)</option>
+                        </select>
+                        <select id="filter-mac-type" class="filter-select">
+                            <option value="">Typ MAC (wszystkie)</option>
+                            <option value="Public">Public</option>
+                            <option value="Random">Random</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="devices-table-container">
                     <table class="devices-table" id="devices-table">

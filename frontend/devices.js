@@ -106,7 +106,12 @@ async function loadDevices() {
         devicesTotalPages = Math.ceil(devicesTotal / 50);
         devicesPage = data.page || 1;
         renderDevices(devices);
-       Pagination updateDevices();
+        if (typeof populateManufacturerFilter === 'function') {
+            populateManufacturerFilter();
+        }
+        if (typeof updateDevicesPagination === 'function') {
+            updateDevicesPagination();
+        }
     }
 }
 

@@ -87,8 +87,22 @@ function setupEventListeners() {
     const searchInput = document.getElementById('search-input');
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
-            filterDevices(e.target.value);
+            filterDevices();
         });
+    }
+
+    // Filter dropdowns
+    const filterRssi = document.getElementById('filter-rssi');
+    if (filterRssi) {
+        filterRssi.addEventListener('change', filterDevices);
+    }
+    const filterManufacturer = document.getElementById('filter-manufacturer');
+    if (filterManufacturer) {
+        filterManufacturer.addEventListener('change', filterDevices);
+    }
+    const filterMacType = document.getElementById('filter-mac-type');
+    if (filterMacType) {
+        filterMacType.addEventListener('change', filterDevices);
     }
 }
 
@@ -138,14 +152,65 @@ async function loadAnomalies() {
     // Load anomalies for first device or selected...
 }
 
-function filterDevices(query) {
+function filterDevices() {
+    const query = document.getElementById('search-input')?.value?.toLowerCase() || '';
+    const rssiFilter = document.getElementById('filter-rssi')?.value || '';
+    const manufacturerFilter = document.getElementById('filter-manufacturer')?.value || '';
+    const macTypeFilter = document.getElementById('filter-mac-type')?.value || '';
+    
     const rows = document.querySelectorAll('#devices-tbody tr');
-    const lowerQuery = query.toLowerCase();
     
     rows.forEach(row => {
         const text = row.textContent.toLowerCase();
-        row.style.display = text.includes(lowerQuery) ? '' : 'none';
+        const rssiValue = row.querySelector('.rssi-value');
+        const manufacturerCell = row.querySelector('.manufacturer');
+        const macTypeCell = row.querySelector('.mac-type');
+        
+        const matchesText = query === '' || text.includes(query);
+        
+        let matchesRssi = true;
+        if (rssiFilter) {
+            const rssi = rssiValue ? parseInt(rssiValue.textContent) : -100;
+            switch (rssiFilter) {
+                case 'excellent': matchesRssi = rssi >= -50; break;
+                case 'good': matchesRssi = rssi >= -60 && rssi < -50; break;
+                case 'fair': matchesRssi = rssi >= -70 && rssi < -60; break;
+                case 'poor': matchesRssi = rssi < -70; break;
+            }
+        }
+        
+        const matchesManufacturer = !manufacturerFilter || 
+            (manufacturerCell && manufacturerCell.textContent.toLowerCase() === manufacturerFilter.toLowerCase());
+        
+        const matchesMacType = !macTypeFilter || 
+            (macTypeCell && macTypeCell.textContent.toLowerCase().includes(macTypeFilter.toLowerCase()));
+        
+        row.style.display = (matchesText && matchesRssi && matchesManufacturer && matchesMacType) ? '' : 'none';
     });
+}
+
+function populateManufacturerFilter() {
+    const manufacturers = new Set();
+    const rows = document.querySelectorAll('#devices-tbody tr[data-mac]');
+    rows.forEach(row => {
+        const mfgCell = row.querySelector('.manufacturer');
+        if (mfgCell && mfgCell.textContent && mfgCell.textContent !== '-') {
+            manufacturers.add(mfgCell.textContent.trim());
+        }
+    });
+    
+    const select = document.getElementById('filter-manufacturer');
+    if (select) {
+        const currentValue = select.value;
+        select.innerHTML = '<option value="">Producent (wszystkie)</option>';
+        Array.from(manufacturers).sort().forEach(mfg => {
+            const option = document.createElement('option');
+            option.value = mfg;
+            option.textContent = mfg;
+            select.appendChild(option);
+        });
+        select.value = currentValue;
+    }
 }
 
 function formatTimestamp(ts) {

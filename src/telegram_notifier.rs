@@ -42,8 +42,40 @@ pub fn is_enabled() -> bool {
     get_config().enabled
 }
 
+fn open_db_with_wal() -> Result<rusqlite::Connection, rusqlite::Error> {
+    let conn = rusqlite::Connection::open("bluetooth_scan.db")?;
+    // Enable WAL mode for concurrent read/write without blocking
+    conn.execute_batch(
+        "PRAGMA journal_mode = WAL;
+         PRAGMA busy_timeout = 10000;
+         PRAGMA synchronous = NORMAL;"
+    )?;
+    Ok(conn)
+}
+
+/// Retry logic for DB operations that might fail due to locks
+async fn with_db_retry<T, F>(mut operation: F, max_retries: u32) -> Result<T, String>
+where
+    F: FnMut() -> Result<T, String>,
+{
+    let mut last_error = String::new();
+    for attempt in 0..max_retries {
+        match operation() {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                last_error = e;
+                if attempt < max_retries - 1 {
+                    let delay = std::time::Duration::from_millis(100 * (attempt + 1) as u64);
+                    tokio::time::sleep(delay).await;
+                }
+            }
+        }
+    }
+    Err(format!("DB operation failed after {} retries: {}", max_retries, last_error))
+}
+
 pub fn init_telegram_notifications() -> Result<(), String> {
-    let conn = rusqlite::Connection::open("bluetooth_scan.db").map_err(|e| e.to_string())?;
+    let conn = open_db_with_wal().map_err(|e| e.to_string())?;
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS telegram_reports (
@@ -93,7 +125,7 @@ pub async fn send_initial_device_report() -> Result<(), String> {
         return Ok(());
     }
 
-    let conn = rusqlite::Connection::open("bluetooth_scan.db").map_err(|e| e.to_string())?;
+    let conn = open_db_with_wal().map_err(|e| e.to_string())?;
 
     let devices = get_all_current_devices(&conn).map_err(|e| e.to_string())?;
 
@@ -228,7 +260,7 @@ fn get_hostname() -> String {
 }
 
 fn get_scan_session_number() -> Result<u32, String> {
-    let conn = rusqlite::Connection::open("bluetooth_scan.db").map_err(|e| e.to_string())?;
+    let conn = open_db_with_wal().map_err(|e| e.to_string())?;
     let session_number: u32 = conn
         .query_row(
             "SELECT scan_session_number FROM telegram_reports WHERE id = 1",
@@ -450,7 +482,7 @@ fn get_raw_packets_for_device(
     mac_address: &str,
     minutes: i64,
 ) -> Result<Vec<RawPacketInfo>, Box<dyn std::error::Error>> {
-    let time_filter = format!("-{} minutes", minutes);
+    let _time_filter = format!("-{} minutes", minutes);
 
     let query = format!(
         "SELECT timestamp, rssi, advertising_data, phy, channel, frame_type
@@ -500,7 +532,7 @@ fn get_devices_from_last_minutes(
     conn: &rusqlite::Connection,
     minutes: i64,
 ) -> Result<Vec<DeviceReport>, Box<dyn std::error::Error>> {
-    let time_filter = format!("-{} minutes", minutes);
+    let _time_filter = format!("-{} minutes", minutes);
 
     let query = format!(
         "SELECT 
@@ -616,13 +648,15 @@ pub async fn run_periodic_report_task() -> Result<(), String> {
     }
 }
 
-async fn send_periodic_report() -> Result<(), String> {
+pub async fn send_periodic_report() -> Result<(), String> {
     log::info!("[Telegram] 📤 Sending periodic report (every 1 minute)...");
 
-    let conn = rusqlite::Connection::open("bluetooth_scan.db").map_err(|e| e.to_string())?;
-
-    let devices = get_devices_from_last_minutes(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
-        .map_err(|e| e.to_string())?;
+    // Run DB operations in spawn_blocking with retry logic
+    let devices = with_db_retry(|| {
+        let conn = open_db_with_wal().map_err(|e| e.to_string())?;
+        get_devices_from_last_minutes(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
+            .map_err(|e| e.to_string())
+    }, 3).await?;
 
     log::info!(
         "[Telegram] Sending device report for {} devices...",
@@ -630,14 +664,21 @@ async fn send_periodic_report() -> Result<(), String> {
     );
     send_devices_report(&devices).await?;
 
-    // Generate enhanced HTML report with all data
-    let html_content = generate_enhanced_html_report(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
-        .map_err(|e| e.to_string())?;
+    // Generate HTML report with retry
+    let html_content = with_db_retry(|| {
+        let conn = open_db_with_wal().map_err(|e| e.to_string())?;
+        generate_enhanced_html_report(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
+            .map_err(|e| e.to_string())
+    }, 3).await?;
 
     log::info!("[Telegram] Sending enhanced HTML attachment...");
     send_html_file(&html_content, "ble_scan_report.html").await?;
 
-    update_last_report_time(&conn).map_err(|e| e.to_string())?;
+    // Update timestamp with retry
+    with_db_retry(|| {
+        let conn = open_db_with_wal().map_err(|e| e.to_string())?;
+        update_last_report_time(&conn).map_err(|e| e.to_string())
+    }, 3).await?;
 
     log::info!("[+] Sent Telegram report with {} device(s)", devices.len());
 
@@ -1029,7 +1070,7 @@ fn generate_enhanced_html_report(
     if packets.is_empty() {
         html.push_str("<p class=\"empty\">No packets captured in this period</p>");
     } else {
-        for (mac, timestamp, rssi, ad_data, phy, channel, frame_type, name, first_seen) in
+        for (mac, timestamp, rssi, ad_data, phy, channel, frame_type, name, _first_seen) in
             packets.iter().take(50)
         {
             let rssi_class = if *rssi >= -50 {

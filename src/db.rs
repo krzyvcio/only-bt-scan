@@ -569,6 +569,10 @@ pub fn init_database() -> SqliteResult<()> {
         [],
     )?;
     conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_devices_rssi ON devices(rssi)",
+        [],
+    )?;
+    conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_ble_services_device ON ble_services(device_id)",
         [],
     )?;
