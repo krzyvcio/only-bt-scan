@@ -1,7 +1,10 @@
+use btleplug::api::{Central, Manager as ManagerTrait, Peripheral as PeripheralTrait};
+use btleplug::platform::Manager;
 use log::{debug, info};
-/// GATT Client - BLE Service and Characteristic Discovery
-/// Allows connecting to BLE devices and discovering their service structure
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
+use std::time::Duration;
+use tokio::time::timeout;
 
 /// GATT Service information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,6 +148,154 @@ impl GattClient {
 
         // For now, return empty services
         Ok(())
+    }
+
+    /// Discover GATT services using btleplug - connects to device and reads services/characteristics
+    pub async fn discover_services_btleplug(&mut self) -> Result<Vec<GattService>, String> {
+        info!("GATT Discovery: Starting for {}", self.mac_address);
+
+        // Parse MAC address
+        let mac = btleplug::api::BDAddr::from_str(&self.mac_address.replace('-', ":").to_uppercase())
+            .map_err(|e| format!("Invalid MAC address: {}", e))?;
+
+        // Get platform manager
+        let manager = Manager::new().await.map_err(|e| format!("Failed to create manager: {}", e))?;
+        
+        // Get adapters
+        let adapters = manager.adapters().await.map_err(|e| format!("No adapters found: {}", e))?;
+        if adapters.is_empty() {
+            return Err("No Bluetooth adapters available".to_string());
+        }
+
+        // Find the peripheral - get properties for each peripheral to match MAC
+        let adapter = &adapters[0];
+        let peripherals = adapter.peripherals().await
+            .map_err(|e| format!("Failed to list peripherals: {}", e))?;
+        
+        let mut peripheral = None;
+        for p in peripherals {
+            if let Ok(Some(props)) = p.properties().await {
+                if props.address == mac {
+                    peripheral = Some(p);
+                    break;
+                }
+            }
+        }
+
+        let peripheral = peripheral.ok_or_else(|| format!("Device {} not found - device must be advertising", self.mac_address))?;
+
+        // Connect with timeout
+        info!("GATT Discovery: Connecting to {}", self.mac_address);
+        match timeout(Duration::from_secs(10), peripheral.connect()).await {
+            Ok(Ok(_)) => {
+                info!("GATT Discovery: Connected to {}", self.mac_address);
+            }
+            Ok(Err(e)) => {
+                return Err(format!("Failed to connect: {}", e));
+            }
+            Err(_) => {
+                return Err("Connection timeout".to_string());
+            }
+        }
+
+        // Discover services with timeout
+        match timeout(Duration::from_secs(10), peripheral.discover_services()).await {
+            Ok(Ok(_)) => {
+                info!("GATT Discovery: Services discovered");
+            }
+            Ok(Err(e)) => {
+                let _ = peripheral.disconnect().await;
+                return Err(format!("Service discovery failed: {}", e));
+            }
+            Err(_) => {
+                let _ = peripheral.disconnect().await;
+                return Err("Service discovery timeout".to_string());
+            }
+        };
+
+        // Get services from peripheral after discovery - services() returns a BTreeSet directly
+        let discovered_services = peripheral.services();
+
+        info!("GATT Discovery: Found {} services", discovered_services.len());
+
+        // Parse services and characteristics
+        let mut gatt_services = Vec::new();
+
+        for service in &discovered_services {
+            let uuid = service.uuid.clone();
+            
+            // Try to parse UUID
+            let uuid_str = uuid.to_string();
+            let uuid128 = if uuid_str.len() == 4 {
+                // 16-bit UUID
+                None
+            } else {
+                Some(uuid_str.clone())
+            };
+            
+            let uuid16 = if uuid_str.len() == 4 {
+                u16::from_str_radix(&uuid_str[0..4], 16).ok()
+            } else {
+                None
+            };
+
+            // Get service name from standard UUIDs
+            let name = uuid16
+                .and_then(|id| get_gatt_service_name(id))
+                .map(|s| s.to_string());
+
+            // Get characteristics
+            let mut characteristics = Vec::new();
+            
+            for char in &service.characteristics {
+                let char_uuid = char.uuid.clone();
+                let char_uuid_str = char_uuid.to_string();
+                
+                let char_uuid128 = if char_uuid_str.len() == 4 {
+                    None
+                } else {
+                    Some(char_uuid_str.clone())
+                };
+                
+                let char_uuid16 = if char_uuid_str.len() == 4 {
+                    u16::from_str_radix(&char_uuid_str[0..4], 16).ok()
+                } else {
+                    None
+                };
+
+                let char_name = char_uuid16
+                    .and_then(|id| get_gatt_characteristic_name(id))
+                    .map(|s| s.to_string());
+
+                let properties = CharacteristicProperties::from_byte(char.properties.bits() as u8);
+
+                characteristics.push(GattCharacteristic {
+                    uuid16: char_uuid16,
+                    uuid128: char_uuid128,
+                    name: char_name,
+                    properties,
+                    value: None,
+                    descriptors: Vec::new(),
+                });
+            }
+
+            gatt_services.push(GattService {
+                uuid16,
+                uuid128,
+                name,
+                is_primary: true,
+                characteristics,
+            });
+        }
+
+        self.services = gatt_services.clone();
+
+        // Disconnect
+        let _ = peripheral.disconnect().await;
+
+        info!("GATT Discovery: Completed for {} - {} services", self.mac_address, gatt_services.len());
+        
+        Ok(gatt_services)
     }
 
     /// Read characteristic value

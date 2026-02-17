@@ -197,6 +197,7 @@ fn create_raw_packet_from_device(device: &BluetoothDevice, packet_id: u64) -> Ra
         mac_address: device.mac_address.clone(),
         timestamp,
         timestamp_ms,
+        latency_from_previous_ms: None,
         phy: "LE 1M".to_string(),
         channel: 37, // Default advertising channel
         rssi: device.rssi,

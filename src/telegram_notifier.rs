@@ -42,8 +42,40 @@ pub fn is_enabled() -> bool {
     get_config().enabled
 }
 
+fn open_db_with_wal() -> Result<rusqlite::Connection, rusqlite::Error> {
+    let conn = rusqlite::Connection::open("bluetooth_scan.db")?;
+    // Enable WAL mode for concurrent read/write without blocking
+    conn.execute_batch(
+        "PRAGMA journal_mode = WAL;
+         PRAGMA busy_timeout = 10000;
+         PRAGMA synchronous = NORMAL;"
+    )?;
+    Ok(conn)
+}
+
+/// Retry logic for DB operations that might fail due to locks
+async fn with_db_retry<T, F>(mut operation: F, max_retries: u32) -> Result<T, String>
+where
+    F: FnMut() -> Result<T, String>,
+{
+    let mut last_error = String::new();
+    for attempt in 0..max_retries {
+        match operation() {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                last_error = e;
+                if attempt < max_retries - 1 {
+                    let delay = std::time::Duration::from_millis(100 * (attempt + 1) as u64);
+                    tokio::time::sleep(delay).await;
+                }
+            }
+        }
+    }
+    Err(format!("DB operation failed after {} retries: {}", max_retries, last_error))
+}
+
 pub fn init_telegram_notifications() -> Result<(), String> {
-    let conn = rusqlite::Connection::open("bluetooth_scan.db").map_err(|e| e.to_string())?;
+    let conn = open_db_with_wal().map_err(|e| e.to_string())?;
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS telegram_reports (
@@ -93,7 +125,7 @@ pub async fn send_initial_device_report() -> Result<(), String> {
         return Ok(());
     }
 
-    let conn = rusqlite::Connection::open("bluetooth_scan.db").map_err(|e| e.to_string())?;
+    let conn = open_db_with_wal().map_err(|e| e.to_string())?;
 
     let devices = get_all_current_devices(&conn).map_err(|e| e.to_string())?;
 
@@ -228,7 +260,7 @@ fn get_hostname() -> String {
 }
 
 fn get_scan_session_number() -> Result<u32, String> {
-    let conn = rusqlite::Connection::open("bluetooth_scan.db").map_err(|e| e.to_string())?;
+    let conn = open_db_with_wal().map_err(|e| e.to_string())?;
     let session_number: u32 = conn
         .query_row(
             "SELECT scan_session_number FROM telegram_reports WHERE id = 1",
@@ -619,13 +651,15 @@ pub async fn run_periodic_report_task() -> Result<(), String> {
     }
 }
 
-async fn send_periodic_report() -> Result<(), String> {
+pub async fn send_periodic_report() -> Result<(), String> {
     log::info!("[Telegram] 📤 Sending periodic report (every 1 minute)...");
 
-    let conn = rusqlite::Connection::open("bluetooth_scan.db").map_err(|e| e.to_string())?;
-
-    let devices = get_devices_from_last_minutes(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
-        .map_err(|e| e.to_string())?;
+    // Run DB operations in spawn_blocking with retry logic
+    let devices = with_db_retry(|| {
+        let conn = open_db_with_wal().map_err(|e| e.to_string())?;
+        get_devices_from_last_minutes(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
+            .map_err(|e| e.to_string())
+    }, 3).await?;
 
     log::info!(
         "[Telegram] Sending device report for {} devices...",
@@ -633,14 +667,21 @@ async fn send_periodic_report() -> Result<(), String> {
     );
     send_devices_report(&devices).await?;
 
-    // Generate enhanced HTML report with all data
-    let html_content = generate_enhanced_html_report(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
-        .map_err(|e| e.to_string())?;
+    // Generate HTML report with retry
+    let html_content = with_db_retry(|| {
+        let conn = open_db_with_wal().map_err(|e| e.to_string())?;
+        generate_enhanced_html_report(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
+            .map_err(|e| e.to_string())
+    }, 3).await?;
 
     log::info!("[Telegram] Sending enhanced HTML attachment...");
     send_html_file(&html_content, "ble_scan_report.html").await?;
 
-    update_last_report_time(&conn).map_err(|e| e.to_string())?;
+    // Update timestamp with retry
+    with_db_retry(|| {
+        let conn = open_db_with_wal().map_err(|e| e.to_string())?;
+        update_last_report_time(&conn).map_err(|e| e.to_string())
+    }, 3).await?;
 
     log::info!("[+] Sent Telegram report with {} device(s)", devices.len());
 
@@ -1325,4 +1366,305 @@ pub async fn periodic_rssi_trends_report() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 📱 TELEGRAM BOT COMMANDS
+// ═══════════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct TelegramUpdate {
+    update_id: i64,
+    message: Option<TelegramMessage>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct TelegramMessage {
+    message_id: i64,
+    from: Option<TelegramUser>,
+    chat: TelegramChat,
+    text: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct TelegramUser {
+    id: i64,
+    #[serde(default)]
+    is_bot: bool,
+    #[serde(default)]
+    first_name: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct TelegramChat {
+    id: i64,
+}
+
+fn format_help_message() -> String {
+    let mut msg = String::new();
+    msg.push_str("<b>📡 BLE Scanner Bot</b>\n\n");
+    msg.push_str("<b>Dostępne komendy:</b>\n\n");
+    msg.push_str("/start - Pokaz ten help\n");
+    msg.push_str("/help - Pokaz dostepne komendy\n");
+    msg.push_str("/stats - Szybkie statystyki\n");
+    msg.push_str("/device [MAC] - Szczegoly urzadzenia\n");
+    msg.push_str("/export - Eksport CSV\n\n");
+    msg.push_str("<i>Przyklady:</i>\n");
+    msg.push_str("<code>/device AA:BB:CC:DD:EE:FF</code>\n");
+    msg
+}
+
+fn format_stats_message() -> String {
+    let conn = match open_db_with_wal() {
+        Ok(c) => c,
+        Err(e) => return format!("<b>Błąd bazy danych:</b> {}", e),
+    };
+
+    let device_count: i32 = conn
+        .query_row("SELECT COUNT(*) FROM devices", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    let packet_count: i32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM ble_advertisement_frames WHERE timestamp > datetime('now', '-60 minutes')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    let session_count: i32 = conn
+        .query_row("SELECT scan_session_number FROM telegram_reports WHERE id = 1", [], |row| row.get(0))
+        .unwrap_or(1);
+
+    let mut msg = String::new();
+    msg.push_str("<b>📊 STATYSTYKI</b>\n\n");
+    msg.push_str(&format!("📱 Urzadzenia: <b>{}</b>\n", device_count));
+    msg.push_str(&format!("📦 Pakiety (60min): <b>{}</b>\n", packet_count));
+    msg.push_str(&format!("🔢 Sesja: <b>#{}</b>\n", session_count));
+    msg.push_str(&format!("\n🕐 {}", chrono::Local::now().format("%H:%M:%S")));
+    msg
+}
+
+fn get_device_by_mac(mac: &str) -> String {
+    let conn = match open_db_with_wal() {
+        Ok(c) => c,
+        Err(e) => return format!("<b>Błąd bazy danych:</b> {}", e),
+    };
+
+    let mac_clean = mac.trim().to_uppercase().replace("-", ":");
+
+    let device: Option<(String, String, i8, String, String, i32)> = conn
+        .query_row(
+            "SELECT mac_address, device_name, rssi, manufacturer_name, last_seen, number_of_scan 
+             FROM devices WHERE mac_address = ?",
+            [&mac_clean],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+        )
+        .ok();
+
+    match device {
+        Some((mac_addr, name, rssi, mfg, last_seen, packets)) => {
+            let mut msg = String::new();
+            msg.push_str("<b>📱 SZCZEGÓŁY URZĄDZENIA</b>\n\n");
+            msg.push_str(&format!("<b>MAC:</b> <code>{}</code>\n", mac_addr));
+            msg.push_str(&format!("<b>Nazwa:</b> {}\n", if name.is_empty() { "N/A" } else { &name }));
+            msg.push_str(&format!("<b>Producent:</b> {}\n", if mfg.is_empty() { "N/A" } else { &mfg }));
+            msg.push_str(&format!("<b>RSSI:</b> {} dBm\n", rssi));
+            msg.push_str(&format!("<b>Pakiety:</b> {}\n", packets));
+            msg.push_str(&format!("<b>Ostatnie:</b> {}", parse_and_format_time(&last_seen)));
+            msg
+        }
+        None => format!("<b>Nie znaleziono urzadzenia:</b>\n<code>{}</code>", mac_clean),
+    }
+}
+
+fn generate_csv_export() -> Result<String, String> {
+    let conn = open_db_with_wal().map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT mac_address, device_name, rssi, manufacturer_name, first_seen, last_seen, number_of_scan
+             FROM devices
+             WHERE last_seen > datetime('now', '-24 hours')
+             ORDER BY last_seen DESC
+             LIMIT 1000",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let devices: Vec<(String, Option<String>, i8, Option<String>, String, String, i32)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut csv = String::new();
+    csv.push_str("MAC,Name,RSSI,Manufacturer,First_Seen,Last_Seen,Packet_Count\n");
+
+    for (mac, name, rssi, mfg, first, last, count) in devices {
+        csv.push_str(&format!(
+            "{},{},{},{},{},{},{}\n",
+            mac,
+            name.unwrap_or_default().replace(",", ";"),
+            rssi,
+            mfg.unwrap_or_default().replace(",", ";"),
+            first,
+            last,
+            count
+        ));
+    }
+
+    Ok(csv)
+}
+
+async fn send_csv_file(csv_content: &str, filename: &str) -> Result<(), String> {
+    let config = get_config();
+    if !config.enabled {
+        return Ok(());
+    }
+
+    let url = format!("https://api.telegram.org/bot{}/sendDocument", config.bot_token);
+
+    let client = reqwest::Client::builder()
+        .use_native_tls()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .map_err(|e| format!("Client build failed: {}", e))?;
+
+    let part = reqwest::multipart::Part::text(csv_content.to_string())
+        .file_name(filename.to_string())
+        .mime_str("text/csv")
+        .map_err(|e| e.to_string())?;
+
+    let form = reqwest::multipart::Form::new()
+        .text("chat_id", config.chat_id.clone())
+        .text("caption", "<b>📊 Export urzadzen BLE (CSV)</b>")
+        .part("document", part);
+
+    let response = client
+        .post(&url)
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("Telegram API error: {} - {}", status, body))
+    }
+}
+
+async fn handle_command(text: &str) -> Option<String> {
+    let text = text.trim();
+    
+    if text == "/start" || text == "/help" {
+        return Some(format_help_message());
+    }
+    
+    if text == "/stats" {
+        return Some(format_stats_message());
+    }
+    
+    if text.starts_with("/device ") {
+        let mac = text.trim_start_matches("/device ");
+        return Some(get_device_by_mac(mac));
+    }
+    
+    if text.starts_with("/device") {
+        return Some("<b>Użycie:</b>\n<code>/device AA:BB:CC:DD:EE:FF</code>".to_string());
+    }
+    
+    if text == "/export" {
+        return match generate_csv_export() {
+            Ok(csv) => {
+                if let Err(e) = send_csv_file(&csv, "ble_export.csv").await {
+                    Some(format!("<b>Błąd wysyłania:</b> {}", e))
+                } else {
+                    Some("<b>📤 Wyslano export CSV!</b>".to_string())
+                }
+            }
+            Err(e) => Some(format!("<b>Błąd generowania:</b> {}", e)),
+        };
+    }
+    
+    None
+}
+
+async fn process_update(update: &TelegramUpdate) -> Option<String> {
+    let msg = update.message.as_ref()?;
+    let text = msg.text.as_ref()?;
+    
+    if text.starts_with('/') {
+        handle_command(text).await
+    } else {
+        None
+    }
+}
+
+pub async fn start_bot_polling() {
+    if !is_enabled() {
+        return;
+    }
+
+    let config = get_config();
+    let client = reqwest::Client::builder()
+        .use_native_tls()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .expect("Failed to build client");
+
+    let mut offset: i64 = 0;
+
+    eprintln!("[TELEGRAM BOT] Started polling...");
+
+    loop {
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+        let url = format!(
+            "https://api.telegram.org/bot{}/getUpdates?timeout=20&offset={}",
+            config.bot_token, offset
+        );
+
+        match client.get(&url).send().await {
+            Ok(response) => {
+                if let Ok(updates) = response.json::<serde_json::Value>().await {
+                    if let Some(results) = updates.get("result").and_then(|v| v.as_array()) {
+                        for update in results {
+                            if let Ok(telegram_update) =
+                                serde_json::from_value::<TelegramUpdate>(update.clone())
+                            {
+                                if let Some(reply) = process_update(&telegram_update).await {
+                                    if let Some(ref msg) = telegram_update.message {
+                                        let chat_id = msg.chat.id;
+                                        let _ = send_telegram_message(
+                                            &config.bot_token,
+                                            &chat_id.to_string(),
+                                            &reply,
+                                        )
+                                        .await;
+                                    }
+                                }
+                                offset = telegram_update.update_id + 1;
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[TELEGRAM BOT] Polling error: {}", e);
+            }
+        }
+    }
 }

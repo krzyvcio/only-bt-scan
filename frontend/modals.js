@@ -5,13 +5,13 @@
 // PACKET DETAILS MODAL
 function showPacketDetails(index) {
     if (!packets || !packets[index]) return;
-    
+
     const packet = packets[index];
     const modal = document.getElementById('packet-details-modal');
     const modalBody = document.getElementById('packet-modal-body');
-    
+
     const parsed = parseAdvertisingData(packet.advertising_data || '');
-    
+
     modalBody.innerHTML = `
         <div class="packet-detail-section">
             <h4>📋 Informacje o pakiecie</h4>
@@ -88,51 +88,90 @@ function showPacketDetails(index) {
             </div>
         </div>
     `;
-    
+
     modal.classList.add('active');
 }
 
 // DEVICE HISTORY MODAL
 async function showDeviceHistory(mac) {
     const modal = document.getElementById('device-history-modal');
-    const modalBody = document.getElementById('device-history-body');
-    
-    modalBody.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><span>Ładowanie historii...</span></div>';
+    const modalBody = document.getElementById('modal-body'); // Matching index.html
+    const deviceNameHeader = document.getElementById('modal-device-name');
+
+    if (deviceNameHeader) deviceNameHeader.textContent = `Historia urządzenia: ${mac}`;
+    if (modalBody) modalBody.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><span>Ładowanie informacji...</span></div>';
+
     modal.classList.add('active');
-    
+
+    // Default to info tab
+    switchTab('info-tab');
+
     const data = await loadDeviceHistory(mac);
-    
-    if (data && data.history && data.history.length > 0) {
+
+    if (data && data.scan_history && data.scan_history.length > 0) {
         modalBody.innerHTML = `
-            <h3>Historia urządzenia: ${mac}</h3>
             <table class="history-table">
                 <thead>
                     <tr>
                         <th>Czas</th>
                         <th>RSSI</th>
-                        <th>Nazwa</th>
-                        <th>Producent</th>
+                        <th>Akcja</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${data.history.map(h => `
+                    ${data.scan_history.map(h => `
                         <tr>
-                            <td>${formatTimestamp(h.timestamp)}</td>
+                            <td>${formatTimestamp(h.scan_timestamp)}</td>
                             <td class="${getRssiClass(h.rssi)}">${h.rssi} dBm</td>
-                            <td>${h.device_name || '-'}</td>
-                            <td>${h.manufacturer_name || '-'}</td>
+                            <td>Skan #${h.scan_number}</td>
                         </tr>
                     `).join('')}
                 </tbody>
             </table>
         `;
     } else {
-        modalBody.innerHTML = `<h3>Brak historii dla: ${mac}</h3><p>Brak zapisanych danych historycznych</p>`;
+        modalBody.innerHTML = `<p class="empty-msg">Brak zapisanych danych historycznych dla ${mac}</p>`;
+    }
+
+    // Load RSSI chart if tab is switched
+    if (typeof loadRssiTrend === 'function') {
+        loadRssiTrend(mac);
     }
 }
 
+function switchTab(tabId) {
+    // Hide all tab contents
+    document.querySelectorAll('.modal-tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+
+    // Deactivate all tab buttons
+    document.querySelectorAll('.modal-tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    // Show selected tab content
+    const selectedTab = document.getElementById(tabId);
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+    }
+
+    // Activate clicked button
+    const btn = document.querySelector(`.modal-tab-btn[onclick="switchTab('${tabId}')"]`);
+    if (btn) {
+        btn.classList.add('active');
+    }
+}
+
+function trackRssi(mac) {
+    // Switch to RSSI tab and initialize tracking
+    showDeviceHistory(mac);
+    setTimeout(() => switchTab('rssi-tab'), 100);
+}
+
 function closeModal(modalId) {
-    document.getElementById(modalId).classList.remove('active');
+    const modal = document.getElementById(modalId);
+    if (modal) modal.classList.remove('active');
 }
 
 // Setup modal close handlers
@@ -141,23 +180,23 @@ function setupModals() {
     const closePacketModal = document.getElementById('close-packet-modal');
     if (closePacketModal) {
         closePacketModal.addEventListener('click', () => {
-            document.getElementById('packet-details-modal').classList.remove('active');
+            closeModal('packet-details-modal');
         });
     }
-    
+
     // Device history modal
-    const closeHistoryModal = document.getElementById('close-history-modal');
+    const closeHistoryModal = document.getElementById('close-modal'); // Corrected to match index.html
     if (closeHistoryModal) {
         closeHistoryModal.addEventListener('click', () => {
-            document.getElementById('device-history-modal').classList.remove('active');
+            closeModal('device-history-modal');
         });
     }
-    
+
     // Close on background click
-    document.querySelectorAll('.modal-overlay').forEach(overlay => {
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                overlay.classList.remove('active');
+    document.querySelectorAll('.modal').forEach(modal => {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.classList.remove('active');
             }
         });
     });

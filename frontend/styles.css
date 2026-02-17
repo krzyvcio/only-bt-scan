@@ -314,6 +314,33 @@ body::before {
     color: var(--text-muted);
 }
 
+.filter-box {
+    display: flex;
+    gap: 8px;
+}
+
+.filter-select {
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    cursor: pointer;
+    outline: none;
+    min-width: 140px;
+}
+
+.filter-select:hover {
+    border-color: var(--accent-cyan);
+}
+
+.filter-select:focus {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.2);
+}
+
 /* Devices Table */
 .devices-table-container {
     flex: 1;

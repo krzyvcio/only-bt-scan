@@ -36,7 +36,7 @@ function getRssiClass(rssi) {
 
 function renderDevices(deviceList) {
     const tbody = document.getElementById('devices-tbody');
-    
+
     if (!deviceList || deviceList.length === 0) {
         tbody.innerHTML = `
             <tr>
@@ -69,7 +69,7 @@ function renderDevices(deviceList) {
         const manufacturer = device.manufacturer_name || '-';
         const securityLevel = device.security_level || '-';
         const isRpa = device.is_rpa ? '<span class="rpa-badge">RPA</span>' : '';
-        
+
         return `
             <tr data-mac="${device.mac_address}">
                 <td>
@@ -100,13 +100,18 @@ function renderDevices(deviceList) {
 
 async function loadDevices() {
     const data = await loadDevicesFromApi();
-    if (data && data.devices) {
-        devices = data.devices;
+    if (data && data.data) {
+        devices = data.data;
         devicesTotal = data.total || devices.length;
         devicesTotalPages = Math.ceil(devicesTotal / 50);
         devicesPage = data.page || 1;
         renderDevices(devices);
-       Pagination updateDevices();
+        if (typeof populateManufacturerFilter === 'function') {
+            populateManufacturerFilter();
+        }
+        if (typeof updateDevicesPagination === 'function') {
+            updateDevicesPagination();
+        }
     }
 }
 

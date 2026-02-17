@@ -1,0 +1,2643 @@
+warning: struct `AndroidBleConfig` is never constructed
+ --> src\android_ble_bridge.rs:7:12
+  |
+7 | pub struct AndroidBleConfig {
+  |            ^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: struct `AndroidBleDevice` is never constructed
+  --> src\android_ble_bridge.rs:36:12
+   |
+36 | pub struct AndroidBleDevice {
+   |            ^^^^^^^^^^^^^^^^
+
+warning: struct `AndroidGattProfile` is never constructed
+  --> src\android_ble_bridge.rs:53:12
+   |
+53 | pub struct AndroidGattProfile {
+   |            ^^^^^^^^^^^^^^^^^^
+
+warning: struct `GattService` is never constructed
+  --> src\android_ble_bridge.rs:63:12
+   |
+63 | pub struct GattService {
+   |            ^^^^^^^^^^^
+
+warning: struct `GattCharacteristic` is never constructed
+  --> src\android_ble_bridge.rs:70:12
+   |
+70 | pub struct GattCharacteristic {
+   |            ^^^^^^^^^^^^^^^^^^
+
+warning: struct `AndroidBleScanner` is never constructed
+  --> src\android_ble_bridge.rs:78:12
+   |
+78 | pub struct AndroidBleScanner {
+   |            ^^^^^^^^^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> src\android_ble_bridge.rs:86:12
+    |
+ 85 | impl AndroidBleScanner {
+    | ---------------------- associated items in this implementation
+ 86 |     pub fn new(config: AndroidBleConfig) -> Self {
+    |            ^^^
+...
+ 95 |     pub fn default() -> Self {
+    |            ^^^^^^^
+...
+ 99 |     pub fn start_scan(&mut self) -> Result<(), String> {
+    |            ^^^^^^^^^^
+...
+108 |     pub fn stop_scan(&mut self) -> Result<(), String> {
+    |            ^^^^^^^^^
+...
+116 |     pub fn add_device(&mut self, device: AndroidBleDevi...
+    |            ^^^^^^^^^^
+...
+120 |     pub fn get_devices(&self) -> Vec<AndroidBleDevice> {
+    |            ^^^^^^^^^^^
+...
+124 |     pub fn scan_duration_ms(&self) -> u32 {
+    |            ^^^^^^^^^^^^^^^^
+...
+128 |     pub fn connect_device(&mut self, address: &str) -> ...
+    |            ^^^^^^^^^^^^^^
+...
+144 |     pub fn disconnect_device(&mut self, address: &str) ...
+    |            ^^^^^^^^^^^^^^^^^
+...
+154 |     pub fn discover_services(&mut self, address: &str) ...
+    |            ^^^^^^^^^^^^^^^^^
+...
+167 |     pub fn get_connected_devices(&self) -> Vec<AndroidG...
+    |            ^^^^^^^^^^^^^^^^^^^^^
+...
+171 |     pub fn get_stats(&self) -> (u32, u32) {
+    |            ^^^^^^^^^
+
+warning: struct `BackgroundConfig` is never constructed
+  --> src\background.rs:76:12
+   |
+76 | pub struct BackgroundConfig {
+   |            ^^^^^^^^^^^^^^^^
+
+warning: function `init_background_mode` is never used
+  --> src\background.rs:95:8
+   |
+95 | pub fn init_background_mode(config: BackgroundConfig) ->...
+   |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `setup_file_logging` is never used
+   --> src\background.rs:119:8
+    |
+119 | pub fn setup_file_logging(log_path: &str) -> Result<(),...
+    |        ^^^^^^^^^^^^^^^^^^
+
+warning: function `hide_console_window` is never used
+  --> src\background.rs:11:12
+   |
+11 |     pub fn hide_console_window() {
+   |            ^^^^^^^^^^^^^^^^^^^
+
+warning: function `show_console_window` is never used
+  --> src\background.rs:26:12
+   |
+26 |     pub fn show_console_window() {
+   |            ^^^^^^^^^^^^^^^^^^^
+
+warning: function `daemonize` is never used
+  --> src\background.rs:69:12
+   |
+69 |     pub fn daemonize() -> Result<(), Box<dyn std::error:...
+   |            ^^^^^^^^^
+
+warning: function `format_security_summary` is never used
+   --> src\ble_security.rs:179:8
+    |
+179 | pub fn format_security_summary(info: &SecurityInfo) -> ...
+    |        ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_known_128bit_service` is never used
+ --> src\ble_uuids.rs:6:8
+  |
+6 | pub fn get_known_128bit_service(uuid: &str) -> Option<&'s...
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `is_adopted_16bit_uuid` is never used
+   --> src\ble_uuids.rs:251:8
+    |
+251 | pub fn is_adopted_16bit_uuid(uuid_bytes: &[u8; 16]) -> ...
+    |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `extract_16bit_from_uuid` is never used
+   --> src\ble_uuids.rs:263:8
+    |
+263 | pub fn extract_16bit_from_uuid(uuid_bytes: &[u8; 16]) -...
+    |        ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `is_le_audio_service` is never used
+   --> src\ble_uuids.rs:272:8
+    |
+272 | pub fn is_le_audio_service(uuid16: u16) -> bool {
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `is_fitness_wearable_service` is never used
+   --> src\ble_uuids.rs:287:8
+    |
+287 | pub fn is_fitness_wearable_service(uuid16: u16) -> bool {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `is_iot_smart_service` is never used
+   --> src\ble_uuids.rs:304:8
+    |
+304 | pub fn is_iot_smart_service(uuid16: u16) -> bool {
+    |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `is_bt50_or_later_service` is never used
+   --> src\ble_uuids.rs:319:8
+    |
+319 | pub fn is_bt50_or_later_service(uuid16: u16) -> bool {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `is_bt52_or_later_service` is never used
+   --> src\ble_uuids.rs:330:8
+    |
+330 | pub fn is_bt52_or_later_service(uuid16: u16) -> bool {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `PairedDevice` is never constructed
+  --> src\bluetooth_manager.rs:18:12
+   |
+18 | pub struct PairedDevice {
+   |            ^^^^^^^^^^^^
+
+warning: enum `DeviceType` is never used
+  --> src\bluetooth_manager.rs:26:10
+   |
+26 | pub enum DeviceType {
+   |          ^^^^^^^^^^
+
+warning: enum `BluetoothManagerError` is never used
+  --> src\bluetooth_manager.rs:43:10
+   |
+43 | pub enum BluetoothManagerError {
+   |          ^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `BluetoothManager` is never constructed
+  --> src\bluetooth_manager.rs:69:12
+   |
+69 | pub struct BluetoothManager;
+   |            ^^^^^^^^^^^^^^^^
+
+warning: associated items `new`, `list_paired_devices`, `connect_device`, `disconnect_device`, and `is_device_connected` are never used
+   --> src\bluetooth_manager.rs:72:12
+    |
+ 71 | impl BluetoothManager {
+    | --------------------- associated items in this implementation
+ 72 |     pub fn new() -> Self {
+    |            ^^^
+...
+ 77 |     pub async fn list_paired_devices(&self) -> Result<V...
+    |                  ^^^^^^^^^^^^^^^^^^^
+...
+157 |     pub async fn connect_device(&self, identifier: &str...
+    |                  ^^^^^^^^^^^^^^
+...
+236 |     pub async fn disconnect_device(&self, identifier: &...
+    |                  ^^^^^^^^^^^^^^^^^
+...
+316 |     pub async fn is_device_connected(&self, identifier:...
+    |                  ^^^^^^^^^^^^^^^^^^^
+
+warning: fields `detected_bt_version` and `supported_features` are never read
+  --> src\bluetooth_scanner.rs:38:9
+   |
+21 | pub struct BluetoothDevice {
+   |            --------------- fields in this struct
+...
+38 |     pub detected_bt_version: Option<BluetoothVersion>,
+   |         ^^^^^^^^^^^^^^^^^^^
+39 |     /// Obs┼éugiwane funkcje wykryte z tego urz─ůdzenia
+40 |     pub supported_features: Vec<BluetoothFeature>,
+   |         ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `BluetoothDevice` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: variant `BrEdr` is never constructed
+  --> src\bluetooth_scanner.rs:52:5
+   |
+50 | pub enum DeviceType {
+   |          ---------- variant in this enum
+51 |     BleOnly,
+52 |     BrEdr,
+   |     ^^^^^
+   |
+   = note: `DeviceType` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: associated items `concurrent_scan_all_methods`, `scan_ble_advanced`, `format_device_info`, `detect_device_version`, and `scan_ble_hci_direct` are never used
+   --> src\bluetooth_scanner.rs:369:18
+    |
+119 | impl BluetoothScanner {
+    | --------------------- associated items in this implementation
+...
+369 |     pub async fn concurrent_scan_all_methods(
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+445 |     pub async fn scan_ble_advanced(
+    |                  ^^^^^^^^^^^^^^^^^
+...
+603 |     pub fn format_device_info(device: &BluetoothDevice)...
+    |            ^^^^^^^^^^^^^^^^^^
+...
+627 |     pub fn detect_device_version(device: &mut Bluetooth...
+    |            ^^^^^^^^^^^^^^^^^^^^^
+...
+736 |     pub async fn scan_ble_hci_direct(
+    |                  ^^^^^^^^^^^^^^^^^^^
+
+warning: function `convert_peripheral_to_device_advanced` is never used
+   --> src\bluetooth_scanner.rs:852:10
+    |
+852 | async fn convert_peripheral_to_device_advanced(
+    |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `BlueyConfig` is never constructed
+  --> src\bluey_integration.rs:17:12
+   |
+17 | pub struct BlueyConfig {
+   |            ^^^^^^^^^^^
+
+warning: struct `BlueyScanner` is never constructed
+  --> src\bluey_integration.rs:36:12
+   |
+36 | pub struct BlueyScanner {
+   |            ^^^^^^^^^^^^
+
+warning: associated items `new`, `scan_with_bluey`, `discover_gatt_services`, `scan_bluey_impl`, and `discover_gatt_impl` are never used
+   --> src\bluey_integration.rs:41:12
+    |
+ 40 | impl BlueyScanner {
+    | ----------------- associated items in this implementation
+ 41 |     pub fn new(config: BlueyConfig) -> Self {
+    |            ^^^
+...
+ 46 |     pub async fn scan_with_bluey(&self) -> Result<Vec<D...
+    |                  ^^^^^^^^^^^^^^^
+...
+ 64 |     pub async fn discover_gatt_services(
+    |                  ^^^^^^^^^^^^^^^^^^^^^^
+...
+103 |     async fn scan_bluey_impl(&self) -> Result<Vec<Devic...
+    |              ^^^^^^^^^^^^^^^
+...
+132 |     async fn discover_gatt_impl(
+    |              ^^^^^^^^^^^^^^^^^^
+
+warning: struct `BlueyCapabilities` is never constructed
+   --> src\bluey_integration.rs:142:12
+    |
+142 | pub struct BlueyCapabilities {
+    |            ^^^^^^^^^^^^^^^^^
+
+warning: associated items `current` and `info` are never used
+   --> src\bluey_integration.rs:151:12
+    |
+150 | impl BlueyCapabilities {
+    | ---------------------- associated items in this implementation
+151 |     pub fn current() -> Self {
+    |            ^^^^^^^
+...
+175 |     pub fn info(&self) -> String {
+    |            ^^^^
+
+warning: struct `HybridScanner` is never constructed
+   --> src\bluey_integration.rs:195:12
+    |
+195 | pub struct HybridScanner {
+    |            ^^^^^^^^^^^^^
+
+warning: associated items `new` and `hybrid_scan` are never used
+   --> src\bluey_integration.rs:202:12
+    |
+201 | impl HybridScanner {
+    | ------------------ associated items in this implementation
+202 |     pub fn new(bluey_config: BlueyConfig) -> Self {
+    |            ^^^
+...
+224 |     pub async fn hybrid_scan(
+    |                  ^^^^^^^^^^^
+
+warning: function `get_major_class_name` is never used
+   --> src\class_of_device.rs:189:8
+    |
+189 | pub fn get_major_class_name(major: u8) -> Option<String> {
+    |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_minor_class_name` is never used
+   --> src\class_of_device.rs:193:8
+    |
+193 | pub fn get_minor_class_name(major: u8, minor: u8) -> Op...
+    |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `lookup_company_id_u32` is never used
+  --> src\company_id_reference.rs:83:8
+   |
+83 | pub fn lookup_company_id_u32(company_id: u32) -> Option<...
+   |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `all_company_ids` is never used
+  --> src\company_id_reference.rs:91:8
+   |
+91 | pub fn all_company_ids() -> Vec<u16> {
+   |        ^^^^^^^^^^^^^^^
+
+warning: function `search_company_by_name` is never used
+   --> src\company_id_reference.rs:108:8
+    |
+108 | pub fn search_company_by_name(pattern: &str) -> Vec<(u1...
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `is_registered_company_id` is never used
+   --> src\company_id_reference.rs:123:8
+    |
+123 | pub fn is_registered_company_id(company_id: u16) -> bool {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `all_companies` is never used
+   --> src\company_id_reference.rs:161:8
+    |
+161 | pub fn all_companies() -> &'static BTreeMap<u16, String> {
+    |        ^^^^^^^^^^^^^
+
+warning: function `get_company_name_u32` is never used
+  --> src\company_ids.rs:20:8
+   |
+20 | pub fn get_company_name_u32(mfg_id: u32) -> Option<Strin...
+   |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `search_company` is never used
+  --> src\company_ids.rs:66:8
+   |
+66 | pub fn search_company(pattern: &str) -> Vec<(u16, String...
+   |        ^^^^^^^^^^^^^^
+
+warning: function `is_registered` is never used
+  --> src\company_ids.rs:74:8
+   |
+74 | pub fn is_registered(mfg_id: u16) -> bool {
+   |        ^^^^^^^^^^^^^
+
+warning: constant `RSSI_SMOOTHING_FACTOR` is never used
+  --> src\config_params.rs:14:11
+   |
+14 | pub const RSSI_SMOOTHING_FACTOR: f64 = 0.3;
+   |           ^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `RSSI_VARIANCE_LIMIT` is never used
+  --> src\config_params.rs:18:11
+   |
+18 | pub const RSSI_VARIANCE_LIMIT: f64 = 15.0;
+   |           ^^^^^^^^^^^^^^^^^^^
+
+warning: constant `SIGNAL_LOSS_TIMEOUT_MS` is never used
+  --> src\config_params.rs:22:11
+   |
+22 | pub const SIGNAL_LOSS_TIMEOUT_MS: u64 = 5000; // 5 seconds
+   |           ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `MIN_PACKET_INTERVAL_MS` is never used
+  --> src\config_params.rs:33:11
+   |
+33 | pub const MIN_PACKET_INTERVAL_MS: u64 = 50;
+   |           ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `TIMESTAMP_PRECISION_MS` is never used
+  --> src\config_params.rs:37:11
+   |
+37 | pub const TIMESTAMP_PRECISION_MS: bool = true; // Use mi...
+   |           ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `CoreBluetoothConfig` is never constructed
+  --> src\core_bluetooth_integration.rs:13:12
+   |
+13 | pub struct CoreBluetoothConfig {
+   |            ^^^^^^^^^^^^^^^^^^^
+
+warning: struct `CoreBluetoothScanner` is never constructed
+  --> src\core_bluetooth_integration.rs:36:12
+   |
+36 | pub struct CoreBluetoothScanner {
+   |            ^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> src\core_bluetooth_integration.rs:41:12
+    |
+ 40 | impl CoreBluetoothScanner {
+    | ------------------------- associated items in this implementation
+ 41 |     pub fn new(config: CoreBluetoothConfig) -> Self {
+    |            ^^^
+...
+ 46 |     pub async fn scan(&self) -> Result<Vec<DeviceModel>...
+    |                  ^^^^
+...
+ 70 |     pub async fn extract_l2cap_channels(
+    |                  ^^^^^^^^^^^^^^^^^^^^^^
+...
+ 96 |     pub async fn get_device_connection_info(
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+139 |     async fn scan_macos(&self) -> Result<Vec<DeviceMode...
+    |              ^^^^^^^^^^
+...
+158 |     async fn scan_ios(&self) -> Result<Vec<DeviceModel>...
+    |              ^^^^^^^^
+...
+190 |     async fn extract_l2cap_macos(
+    |              ^^^^^^^^^^^^^^^^^^^
+...
+207 |     async fn extract_l2cap_ios(
+    |              ^^^^^^^^^^^^^^^^^
+...
+239 |     async fn get_connection_info_macos(
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+265 |     async fn get_connection_info_ios(
+    |              ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `DeviceConnectionInfo` is never constructed
+   --> src\core_bluetooth_integration.rs:275:12
+    |
+275 | pub struct DeviceConnectionInfo {
+    |            ^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `L2CapChannelInfo` is never constructed
+   --> src\core_bluetooth_integration.rs:287:12
+    |
+287 | pub struct L2CapChannelInfo {
+    |            ^^^^^^^^^^^^^^^^
+
+warning: enum `ConnectionState` is never used
+   --> src\core_bluetooth_integration.rs:295:10
+    |
+295 | pub enum ConnectionState {
+    |          ^^^^^^^^^^^^^^^
+
+warning: struct `CoreBluetoothCapabilities` is never constructed
+   --> src\core_bluetooth_integration.rs:304:12
+    |
+304 | pub struct CoreBluetoothCapabilities {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: associated items `current` and `info` are never used
+   --> src\core_bluetooth_integration.rs:313:12
+    |
+312 | impl CoreBluetoothCapabilities {
+    | ------------------------------ associated items in this implementation
+313 |     pub fn current() -> Self {
+    |            ^^^^^^^
+...
+348 |     pub fn info(&self) -> String {
+    |            ^^^^
+
+warning: struct `EnhancedCoreBluetoothScanner` is never constructed
+   --> src\core_bluetooth_integration.rs:364:12
+    |
+364 | pub struct EnhancedCoreBluetoothScanner {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: associated items `new`, `scan`, `get_device_with_l2cap`, `is_available`, and `platform` are never used
+   --> src\core_bluetooth_integration.rs:370:12
+    |
+369 | impl EnhancedCoreBluetoothScanner {
+    | --------------------------------- associated items in this implementation
+370 |     pub fn new(config: CoreBluetoothConfig) -> Self {
+    |            ^^^
+...
+383 |     pub async fn scan(&self) -> Result<Vec<DeviceModel>...
+    |                  ^^^^
+...
+393 |     pub async fn get_device_with_l2cap(
+    |                  ^^^^^^^^^^^^^^^^^^^^^
+...
+405 |     pub fn is_available(&self) -> bool {
+    |            ^^^^^^^^^^^^
+...
+409 |     pub fn platform(&self) -> &'static str {
+    |            ^^^^^^^^
+
+warning: fields `min_packet_interval_to_detect_connection_ms` and `rssi_stability_window_ms` are never read
+   --> src\data_flow_estimator.rs:196:9
+    |
+195 | pub struct EstimatorConfig {
+    |            --------------- fields in this struct
+196 |     pub min_packet_interval_to_detect_connection_ms: u64,
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+197 |     pub high_frequency_threshold_hz: f64,
+198 |     pub rssi_stability_window_ms: u64,
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `EstimatorConfig` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: methods `generate_summary` and `export_estimates` are never used
+   --> src\data_flow_estimator.rs:489:12
+    |
+211 | impl DataFlowEstimator {
+    | ---------------------- methods in this implementation
+...
+489 |     pub fn generate_summary(&self) -> DataFlowSummary {
+    |            ^^^^^^^^^^^^^^^^
+...
+520 |     pub fn export_estimates(&mut self) -> Result<String...
+    |            ^^^^^^^^^^^^^^^^
+
+warning: struct `DataFlowSummary` is never constructed
+   --> src\data_flow_estimator.rs:535:12
+    |
+535 | pub struct DataFlowSummary {
+    |            ^^^^^^^^^^^^^^^
+
+warning: struct `DeviceModel` is never constructed
+  --> src\data_models.rs:21:12
+   |
+21 | pub struct DeviceModel {
+   |            ^^^^^^^^^^^
+
+warning: enum `DeviceType` is never used
+  --> src\data_models.rs:65:10
+   |
+65 | pub enum DeviceType {
+   |          ^^^^^^^^^^
+
+warning: struct `GattServiceInfo` is never constructed
+  --> src\data_models.rs:74:12
+   |
+74 | pub struct GattServiceInfo {
+   |            ^^^^^^^^^^^^^^^
+
+warning: struct `VendorProtocolInfo` is never constructed
+  --> src\data_models.rs:83:12
+   |
+83 | pub struct VendorProtocolInfo {
+   |            ^^^^^^^^^^^^^^^^^^
+
+warning: struct `DevicePacketRelationship` is never constructed
+   --> src\data_models.rs:158:12
+    |
+158 | pub struct DevicePacketRelationship {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `DeviceWithPackets` is never constructed
+   --> src\data_models.rs:173:12
+    |
+173 | pub struct DeviceWithPackets {
+    |            ^^^^^^^^^^^^^^^^^
+
+warning: struct `PaginatedDevices` is never constructed
+   --> src\data_models.rs:181:12
+    |
+181 | pub struct PaginatedDevices {
+    |            ^^^^^^^^^^^^^^^^
+
+warning: struct `PaginatedPackets` is never constructed
+   --> src\data_models.rs:191:12
+    |
+191 | pub struct PaginatedPackets {
+    |            ^^^^^^^^^^^^^^^^
+
+warning: struct `ScanResultsModel` is never constructed
+   --> src\data_models.rs:201:12
+    |
+201 | pub struct ScanResultsModel {
+    |            ^^^^^^^^^^^^^^^^
+
+warning: struct `DeviceRow` is never constructed
+   --> src\data_models.rs:215:12
+    |
+215 | pub struct DeviceRow {
+    |            ^^^^^^^^^
+
+warning: struct `PacketRow` is never constructed
+   --> src\data_models.rs:234:12
+    |
+234 | pub struct PacketRow {
+    |            ^^^^^^^^^
+
+warning: associated items `new` and `add_rssi` are never used
+   --> src\data_models.rs:251:12
+    |
+250 | impl DeviceModel {
+    | ---------------- associated items in this implementation
+251 |     pub fn new(mac_address: String) -> Self {
+    |            ^^^
+...
+280 |     pub fn add_rssi(&mut self, rssi: i8) {
+    |            ^^^^^^^^
+
+warning: fields `frame_interval_ms` and `frames_per_second` are never read
+  --> src\db.rs:21:9
+   |
+11 | pub struct ParsedAdvertisementData {
+   |            ----------------------- fields in this struct
+...
+21 |     pub frame_interval_ms: Option<i32>, // Time since la...
+   |         ^^^^^^^^^^^^^^^^^
+22 |     pub frames_per_second: Option<f32>, // Rate this dev...
+   |         ^^^^^^^^^^^^^^^^^
+   |
+   = note: `ParsedAdvertisementData` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: function `get_parsed_advertisement_with_timing` is never used
+  --> src\db.rs:27:8
+   |
+27 | pub fn get_parsed_advertisement_with_timing(mac_address:...
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple fields are never read
+   --> src\db.rs:387:9
+    |
+382 | pub struct ScannedDevice {
+    |            ------------- fields in this struct
+...
+387 |     pub last_seen: DateTime<Utc>,
+    |         ^^^^^^^^^
+...
+395 |     pub device_class: Option<String>,
+    |         ^^^^^^^^^^^^
+396 |     pub service_classes: Option<String>,
+    |         ^^^^^^^^^^^^^^^
+397 |     pub device_type: Option<String>,
+    |         ^^^^^^^^^^^
+398 |     pub ad_flags: Option<String>,
+    |         ^^^^^^^^
+399 |     pub ad_local_name: Option<String>,
+    |         ^^^^^^^^^^^^^
+400 |     pub ad_tx_power: Option<i8>,
+    |         ^^^^^^^^^^^
+401 |     pub ad_appearance: Option<String>,
+    |         ^^^^^^^^^^^^^
+402 |     pub ad_service_uuids: Option<String>,
+    |         ^^^^^^^^^^^^^^^^
+403 |     pub ad_manufacturer_data: Option<String>,
+    |         ^^^^^^^^^^^^^^^^^^^^
+404 |     pub ad_service_data: Option<String>,
+    |         ^^^^^^^^^^^^^^^
+    |
+    = note: `ScannedDevice` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: struct `BleService` is never constructed
+   --> src\db.rs:437:12
+    |
+437 | pub struct BleService {
+    |            ^^^^^^^^^^
+
+warning: function `get_next_scan_number` is never used
+   --> src\db.rs:784:8
+    |
+784 | pub fn get_next_scan_number() -> SqliteResult<i32> {
+    |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `record_scan_rssi` is never used
+   --> src\db.rs:813:8
+    |
+813 | pub fn record_scan_rssi(device_id: i32, rssi: i8, scan_...
+    |        ^^^^^^^^^^^^^^^^
+
+warning: function `get_all_devices` is never used
+   --> src\db.rs:827:8
+    |
+827 | pub fn get_all_devices() -> SqliteResult<Vec<ScannedDev...
+    |        ^^^^^^^^^^^^^^^
+
+warning: function `get_device` is never used
+   --> src\db.rs:860:8
+    |
+860 | pub fn get_device(mac_address: &str) -> SqliteResult<Op...
+    |        ^^^^^^^^^^
+
+warning: function `get_device_services` is never used
+   --> src\db.rs:895:8
+    |
+895 | pub fn get_device_services(device_id: i32) -> SqliteRes...
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_recent_devices` is never used
+   --> src\db.rs:917:8
+    |
+917 | pub fn get_recent_devices(minutes: u32) -> SqliteResult...
+    |        ^^^^^^^^^^^^^^^^^^
+
+warning: function `get_device_count` is never used
+   --> src\db.rs:952:8
+    |
+952 | pub fn get_device_count() -> SqliteResult<i32> {
+    |        ^^^^^^^^^^^^^^^^
+
+warning: function `cleanup_old_scans` is never used
+   --> src\db.rs:958:8
+    |
+958 | pub fn cleanup_old_scans(days: u32) -> SqliteResult<usi...
+    |        ^^^^^^^^^^^^^^^^^
+
+warning: struct `TelemetrySnapshot` is never constructed
+   --> src\db.rs:973:12
+    |
+973 | pub struct TelemetrySnapshot {
+    |            ^^^^^^^^^^^^^^^^^
+
+warning: struct `DeviceTelemetryRecord` is never constructed
+   --> src\db.rs:981:12
+    |
+981 | pub struct DeviceTelemetryRecord {
+    |            ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_telemetry_snapshots` is never used
+    --> src\db.rs:1055:8
+     |
+1055 | pub fn get_telemetry_snapshots(hours: u32) -> SqliteRe...
+     |        ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_snapshot_device_telemetry` is never used
+    --> src\db.rs:1086:8
+     |
+1086 | pub fn get_snapshot_device_telemetry(snapshot_id: i32)...
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `insert_advertisement_frame_pooled` is never used
+    --> src\db.rs:1188:8
+     |
+1188 | pub fn insert_advertisement_frame_pooled(
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `insert_advertisement_frame_inner` is never used
+    --> src\db.rs:1225:4
+     |
+1225 | fn insert_advertisement_frame_inner(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_device_pooled` is never used
+    --> src\db.rs:1292:8
+     |
+1292 | pub fn get_device_pooled(mac_address: &str) -> SqliteR...
+     |        ^^^^^^^^^^^^^^^^^
+
+warning: function `get_device_inner` is never used
+    --> src\db.rs:1302:4
+     |
+1302 | fn get_device_inner(conn: &Connection, mac_address: &s...
+     |    ^^^^^^^^^^^^^^^^
+
+warning: function `get_all_devices_pooled` is never used
+    --> src\db.rs:1333:8
+     |
+1333 | pub fn get_all_devices_pooled() -> SqliteResult<Vec<Sc...
+     |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_all_devices_inner` is never used
+    --> src\db.rs:1343:4
+     |
+1343 | fn get_all_devices_inner(conn: &Connection) -> SqliteR...
+     |    ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_device_count_pooled` is never used
+    --> src\db.rs:1375:8
+     |
+1375 | pub fn get_device_count_pooled() -> SqliteResult<i32> {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_recent_devices_pooled` is never used
+    --> src\db.rs:1385:8
+     |
+1385 | pub fn get_recent_devices_pooled(minutes: u32) -> Sqli...
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_recent_devices_inner` is never used
+    --> src\db.rs:1395:4
+     |
+1395 | fn get_recent_devices_inner(conn: &Connection, minutes...
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `get` is never used
+  --> src\db_pool.rs:30:12
+   |
+16 | impl DbPool {
+   | ----------- method in this implementation
+...
+30 |     pub fn get(&self) -> DbGuard<'_> {
+   |            ^^^
+
+warning: struct `DbGuard` is never constructed
+  --> src\db_pool.rs:47:12
+   |
+47 | pub struct DbGuard<'a> {
+   |            ^^^^^^^
+
+warning: methods `as_conn` and `as_conn_mut` are never used
+  --> src\db_pool.rs:53:12
+   |
+51 | impl<'a> DbGuard<'a> {
+   | -------------------- methods in this implementation
+52 |     /// Get immutable reference to connection
+53 |     pub fn as_conn(&self) -> &Connection {
+   |            ^^^^^^^
+...
+58 |     pub fn as_conn_mut(&mut self) -> &mut Connection {
+   |            ^^^^^^^^^^^
+
+warning: function `pool` is never used
+  --> src\db_pool.rs:82:8
+   |
+82 | pub fn pool() -> Arc<DbPool> {
+   |        ^^^^
+
+warning: field `rx` is never read
+  --> src\device_events.rs:15:5
+   |
+13 | pub struct DeviceEventListener {
+   |            ------------------- field in this struct
+14 |     tx: mpsc::UnboundedSender<DeviceEventNotification>,
+15 |     rx: Option<mpsc::UnboundedReceiver<DeviceEventNotifi...
+   |     ^^
+
+warning: fields `timestamp` and `event` are never read
+  --> src\device_events.rs:20:9
+   |
+19 | pub struct DeviceEventNotification {
+   |            ----------------------- fields in this struct
+20 |     pub timestamp: std::time::SystemTime,
+   |         ^^^^^^^^^
+21 |     pub event: BluetoothDeviceEvent,
+   |         ^^^^^
+   |
+   = note: `DeviceEventNotification` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: fields `mac_address`, `name`, `rssi`, `is_ble`, and `is_bredr` are never read
+  --> src\device_events.rs:27:9
+   |
+26 |     DeviceDiscovered {
+   |     ---------------- fields in this variant
+27 |         mac_address: String,
+   |         ^^^^^^^^^^^
+28 |         name: Option<String>,
+   |         ^^^^
+29 |         rssi: i8,
+   |         ^^^^
+30 |         is_ble: bool,
+   |         ^^^^^^
+31 |         is_bredr: bool,
+   |         ^^^^^^^^
+   |
+   = note: `BluetoothDeviceEvent` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: variants `DeviceUpdated`, `DeviceRemoved`, `DeviceConnected`, `DeviceDisconnected`, `PairingRequested`, and `PairingCompleted` are never constructed
+  --> src\device_events.rs:33:5
+   |
+25 | pub enum BluetoothDeviceEvent {
+   |          -------------------- variants in this enum
+...
+33 |     DeviceUpdated {
+   |     ^^^^^^^^^^^^^
+...
+38 |     DeviceRemoved {
+   |     ^^^^^^^^^^^^^
+...
+41 |     DeviceConnected {
+   |     ^^^^^^^^^^^^^^^
+...
+45 |     DeviceDisconnected {
+   |     ^^^^^^^^^^^^^^^^^^
+...
+49 |     PairingRequested {
+   |     ^^^^^^^^^^^^^^^^
+...
+54 |     PairingCompleted {
+   |     ^^^^^^^^^^^^^^^^
+   |
+   = note: `BluetoothDeviceEvent` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: variants `BLE`, `BrEdr`, and `DualMode` are never constructed
+  --> src\device_events.rs:62:5
+   |
+61 | pub enum ConnectionType {
+   |          -------------- variants in this enum
+62 |     BLE,
+   |     ^^^
+63 |     BrEdr,
+   |     ^^^^^
+64 |     DualMode,
+   |     ^^^^^^^^
+   |
+   = note: `ConnectionType` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: variants `JustWorks`, `NumericComparison`, `PasskeyEntry`, and `OutOfBand` are never constructed
+  --> src\device_events.rs:69:5
+   |
+68 | pub enum PairingMethod {
+   |          ------------- variants in this enum
+69 |     JustWorks,
+   |     ^^^^^^^^^
+70 |     NumericComparison,
+   |     ^^^^^^^^^^^^^^^^^
+71 |     PasskeyEntry,
+   |     ^^^^^^^^^^^^
+72 |     OutOfBand,
+   |     ^^^^^^^^^
+   |
+   = note: `PairingMethod` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: methods `get_receiver` and `listen` are never used
+  --> src\device_events.rs:82:12
+   |
+75 | impl DeviceEventListener {
+   | ------------------------ methods in this implementation
+...
+82 |     pub fn get_receiver(&mut self) -> Option<mpsc::Unbou...
+   |            ^^^^^^^^^^^^
+...
+99 |     pub async fn listen(&mut self) -> Result<(), Box<dyn...
+   |                  ^^^^^^
+
+warning: function `listen_windows_device_events` is never used
+   --> src\device_events.rs:106:14
+    |
+106 | pub async fn listen_windows_device_events(
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `run_event_logger` is never used
+   --> src\device_events.rs:127:14
+    |
+127 | pub async fn run_event_logger(mut rx: mpsc::UnboundedRe...
+    |              ^^^^^^^^^^^^^^^^
+
+warning: function `get` is never used
+  --> src\env_config.rs:57:8
+   |
+57 | pub fn get(key: &str) -> Option<&str> {
+   |        ^^^
+
+warning: method `get_events` is never used
+  --> src\event_analyzer.rs:49:12
+   |
+32 | impl EventAnalyzerState {
+   | ----------------------- method in this implementation
+...
+49 |     pub fn get_events(&self) -> &[TimelineEvent] {
+   |            ^^^^^^^^^^
+
+warning: constant `TELEMETRY_WINDOW_SIZE` is never used
+  --> src\device_tracker.rs:20:7
+   |
+20 | const TELEMETRY_WINDOW_SIZE: usize = 20;
+   |       ^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `TELEMETRY_EMA_ALPHA` is never used
+  --> src\device_tracker.rs:21:7
+   |
+21 | const TELEMETRY_EMA_ALPHA: f64 = 0.3;
+   |       ^^^^^^^^^^^^^^^^^^^
+
+warning: constant `TELEMETRY_SLOPE_EPS` is never used
+  --> src\device_tracker.rs:22:7
+   |
+22 | const TELEMETRY_SLOPE_EPS: f64 = 0.15;
+   |       ^^^^^^^^^^^^^^^^^^^
+
+warning: constant `TELEMETRY_VAR_EPS` is never used
+  --> src\device_tracker.rs:23:7
+   |
+23 | const TELEMETRY_VAR_EPS: f64 = 2.0;
+   |       ^^^^^^^^^^^^^^^^^
+
+warning: constant `TELEMETRY_MIN_SAMPLES` is never used
+  --> src\device_tracker.rs:24:7
+   |
+24 | const TELEMETRY_MIN_SAMPLES: usize = 6;
+   |       ^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `Sample` is never constructed
+  --> src\device_tracker.rs:28:12
+   |
+28 | pub struct Sample {
+   |            ^^^^^^
+
+warning: struct `SampleWindow` is never constructed
+  --> src\device_tracker.rs:35:12
+   |
+35 | pub struct SampleWindow {
+   |            ^^^^^^^^^^^^
+
+warning: associated items `new`, `push`, `samples`, `len`, and `is_empty` are never used
+  --> src\device_tracker.rs:41:12
+   |
+40 | impl SampleWindow {
+   | ----------------- associated items in this implementation
+41 |     pub fn new(max_size: usize) -> Self {
+   |            ^^^
+...
+48 |     pub fn push(&mut self, s: Sample) {
+   |            ^^^^
+...
+55 |     pub fn samples(&self) -> &VecDeque<Sample> {
+   |            ^^^^^^^
+...
+59 |     pub fn len(&self) -> usize {
+   |            ^^^
+...
+63 |     pub fn is_empty(&self) -> bool {
+   |            ^^^^^^^^
+
+warning: enum `Trend` is never used
+  --> src\device_tracker.rs:70:10
+   |
+70 | pub enum Trend {
+   |          ^^^^^
+
+warning: method `as_str` is never used
+  --> src\device_tracker.rs:78:12
+   |
+77 | impl Trend {
+   | ---------- method in this implementation
+78 |     pub fn as_str(&self) -> &'static str {
+   |            ^^^^^^
+
+warning: enum `Motion` is never used
+  --> src\device_tracker.rs:90:10
+   |
+90 | pub enum Motion {
+   |          ^^^^^^
+
+warning: method `as_str` is never used
+  --> src\device_tracker.rs:97:12
+   |
+96 | impl Motion {
+   | ----------- method in this implementation
+97 |     pub fn as_str(&self) -> &'static str {
+   |            ^^^^^^
+
+warning: struct `DeviceState` is never constructed
+   --> src\device_tracker.rs:108:12
+    |
+108 | pub struct DeviceState {
+    |            ^^^^^^^^^^^
+
+warning: function `compute_slope` is never used
+   --> src\device_tracker.rs:131:4
+    |
+131 | fn compute_slope(samples: &VecDeque<Sample>) -> f64 {
+    |    ^^^^^^^^^^^^^
+
+warning: function `compute_variance` is never used
+   --> src\device_tracker.rs:158:4
+    |
+158 | fn compute_variance(samples: &VecDeque<Sample>) -> f64 {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: struct `DeviceTracker` is never constructed
+   --> src\device_tracker.rs:178:12
+    |
+178 | pub struct DeviceTracker {
+    |            ^^^^^^^^^^^^^
+
+warning: associated items `new`, `record_detection`, `update_telemetry`, `duration_detected`, `print_verbose`, and `persist_to_db` are never used
+   --> src\device_tracker.rs:214:12
+    |
+212 | impl DeviceTracker {
+    | ------------------ associated items in this implementation
+213 |     /// Create new device tracker
+214 |     pub fn new(mac: String) -> Self {
+    |            ^^^
+...
+242 |     pub fn record_detection(
+    |            ^^^^^^^^^^^^^^^^
+...
+287 |     fn update_telemetry(&mut self) {
+    |        ^^^^^^^^^^^^^^^^
+...
+346 |     pub fn duration_detected(&self) -> chrono::Duration {
+    |            ^^^^^^^^^^^^^^^^^
+...
+351 |     pub fn print_verbose(&self) {
+    |            ^^^^^^^^^^^^^
+...
+457 |     pub fn persist_to_db(&mut self) -> Result<i32, Stri...
+    |            ^^^^^^^^^^^^^
+
+warning: struct `DeviceTrackerManager` is never constructed
+   --> src\device_tracker.rs:503:12
+    |
+503 | pub struct DeviceTrackerManager {
+    |            ^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> src\device_tracker.rs:510:12
+    |
+508 | impl DeviceTrackerManager {
+    | ------------------------- associated items in this implementation
+509 |     /// Create new manager with default limit (10000 de...
+510 |     pub fn new() -> Self {
+    |            ^^^
+...
+518 |     pub fn with_limit(max_devices: usize) -> Self {
+    |            ^^^^^^^^^^
+...
+527 |     pub fn get_or_create(&self, mac: &str) -> Arc<Mutex...
+    |            ^^^^^^^^^^^^^
+...
+547 |     pub fn record_detection(
+    |            ^^^^^^^^^^^^^^^^
+...
+596 |     pub fn get_all_devices(&self) -> Vec<DeviceTracker> {
+    |            ^^^^^^^^^^^^^^^
+...
+604 |     pub fn get_device(&self, mac: &str) -> Option<Devic...
+    |            ^^^^^^^^^^
+...
+610 |     pub fn print_summary(&self) {
+    |            ^^^^^^^^^^^^^
+...
+654 |     pub fn persist_all(&self) -> Result<usize, String> {
+    |            ^^^^^^^^^^^
+...
+674 |     pub fn export_detailed_report(&self) -> String {
+    |            ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `format_duration` is never used
+   --> src\device_tracker.rs:721:4
+    |
+721 | fn format_duration(duration: chrono::Duration) -> String {
+    |    ^^^^^^^^^^^^^^^
+
+warning: field `id` is never read
+   --> src\rssi_analyzer.rs:109:9
+    |
+108 | pub struct DeviceTracker {
+    |            ------------- field in this struct
+109 |     pub id: String, // MAC address
+    |         ^^
+
+warning: methods `discover_services`, `read_characteristic`, `write_characteristic`, and `get_summary` are never used
+   --> src\gatt_client.rs:140:18
+    |
+131 | impl GattClient {
+    | --------------- methods in this implementation
+...
+140 |     pub async fn discover_services(&mut self) -> Result...
+    |                  ^^^^^^^^^^^^^^^^^
+...
+302 |     pub async fn read_characteristic(
+    |                  ^^^^^^^^^^^^^^^^^^^
+...
+345 |     pub async fn write_characteristic(
+    |                  ^^^^^^^^^^^^^^^^^^^^
+...
+390 |     pub fn get_summary(&self) -> GattSummary {
+    |            ^^^^^^^^^^^
+
+warning: struct `GattSummary` is never constructed
+   --> src\gatt_client.rs:430:12
+    |
+430 | pub struct GattSummary {
+    |            ^^^^^^^^^^^
+
+warning: function `parse_characteristic_properties` is never used
+   --> src\gatt_client.rs:442:8
+    |
+442 | pub fn parse_characteristic_properties(byte: u8) -> Cha...
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: enum `PhyType` is never used
+   --> src\hci_packet_parser.rs:123:10
+    |
+123 | pub enum PhyType {
+    |          ^^^^^^^
+
+warning: associated items `from_u8` and `name` are never used
+   --> src\hci_packet_parser.rs:130:12
+    |
+129 | impl PhyType {
+    | ------------ associated items in this implementation
+130 |     pub fn from_u8(value: u8) -> Option<Self> {
+    |            ^^^^^^^
+...
+139 |     pub fn name(&self) -> &'static str {
+    |            ^^^^
+
+warning: enum `HciPacketType` is never used
+  --> src\hci_realtime_capture.rs:13:10
+   |
+13 | pub enum HciPacketType {
+   |          ^^^^^^^^^^^^^
+
+warning: struct `HciEventPacket` is never constructed
+  --> src\hci_realtime_capture.rs:23:12
+   |
+23 | pub struct HciEventPacket {
+   |            ^^^^^^^^^^^^^^
+
+warning: struct `HciAclPacket` is never constructed
+  --> src\hci_realtime_capture.rs:31:12
+   |
+31 | pub struct HciAclPacket {
+   |            ^^^^^^^^^^^^
+
+warning: associated items `stop`, `parse_le_meta_event`, `parse_le_advertising_report`, `parse_mac`, and `simulate_hci_event` are never used
+   --> src\hci_realtime_capture.rs:68:12
+    |
+ 45 | impl HciRealTimeSniffer {
+    | ----------------------- associated items in this implementation
+...
+ 68 |     pub fn stop(&self) {
+    |            ^^^^
+...
+ 94 |     pub fn parse_le_meta_event(&self, parameters: &[u8]...
+    |            ^^^^^^^^^^^^^^^^^^^
+...
+111 |     fn parse_le_advertising_report(&self, data: &[u8]) ...
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+159 |     fn parse_mac(bytes: &[u8]) -> String {
+    |        ^^^^^^^^^
+...
+171 |     pub fn simulate_hci_event(&self, event_data: &[u8]) {
+    |            ^^^^^^^^^^^^^^^^^^
+
+warning: methods `get_stats`, `get_hci_events`, `get_l2cap_packets`, and `clear` are never used
+   --> src\hci_scanner.rs:171:12
+    |
+ 81 | impl HciScanner {
+    | --------------- methods in this implementation
+...
+171 |     pub fn get_stats(&self) -> HciScanStatistics {
+    |            ^^^^^^^^^
+...
+175 |     pub fn get_hci_events(&self) -> Vec<HciEvent> {
+    |            ^^^^^^^^^^^^^^
+...
+179 |     pub fn get_l2cap_packets(&self) -> Vec<L2CapPacketI...
+    |            ^^^^^^^^^^^^^^^^^
+...
+191 |     pub fn clear(&mut self) {
+    |            ^^^^^
+
+warning: function `format_duration_human` is never used
+ --> src\html_report.rs:9:4
+  |
+9 | fn format_duration_human(ms: u64) -> String {
+  |    ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `generate_html_report` is never used
+  --> src\html_report.rs:26:8
+   |
+26 | pub fn generate_html_report(
+   |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `generate_html_content` is never used
+  --> src\html_report.rs:63:4
+   |
+63 | fn generate_html_content(
+   |    ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `html_escape` is never used
+   --> src\html_report.rs:427:4
+    |
+427 | fn html_escape(s: &str) -> String {
+    |    ^^^^^^^^^^^
+
+warning: struct `InteractiveUI` is never constructed
+  --> src\interactive_ui.rs:15:12
+   |
+15 | pub struct InteractiveUI {
+   |            ^^^^^^^^^^^^^
+
+warning: associated items `new`, `run`, `event_loop`, `handle_key`, and `draw` are never used
+  --> src\interactive_ui.rs:22:12
+   |
+21 | impl InteractiveUI {
+   | ------------------ associated items in this implementation
+22 |     pub fn new(devices: Vec<BluetoothDevice>) -> Self {
+   |            ^^^
+...
+31 |     pub fn run(&mut self) -> io::Result<()> {
+   |            ^^^
+...
+46 |     fn event_loop(&mut self) -> io::Result<()> {
+   |        ^^^^^^^^^^
+...
+62 |     fn handle_key(&mut self, key: KeyEvent) -> io::Resul...
+   |        ^^^^^^^^^^
+...
+85 |     fn draw(&self) -> io::Result<()> {
+   |        ^^^^
+
+warning: function `rssi_to_strength` is never used
+   --> src\interactive_ui.rs:258:4
+    |
+258 | fn rssi_to_strength(rssi: i8) -> (&'static str, &'stati...
+    |    ^^^^^^^^^^^^^^^^
+
+warning: function `display_devices_simple` is never used
+   --> src\interactive_ui.rs:270:8
+    |
+270 | pub fn display_devices_simple(
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `check_bluetooth_permissions` is never used
+   --> src\interactive_ui.rs:384:8
+    |
+384 | pub fn check_bluetooth_permissions() -> bool {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `show_scan_mode_menu` is never used
+   --> src\interactive_ui.rs:417:8
+    |
+417 | pub fn show_scan_mode_menu() -> bool {
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `display_countdown` is never used
+   --> src\interactive_ui.rs:472:8
+    |
+472 | pub fn display_countdown(mut minutes: u64, mut seconds:...
+    |        ^^^^^^^^^^^^^^^^^
+
+warning: methods `is_dynamic` and `is_reserved` are never used
+  --> src\l2cap_analyzer.rs:51:12
+   |
+21 | impl L2CapPsm {
+   | ------------- methods in this implementation
+...
+51 |     pub fn is_dynamic(&self) -> bool {
+   |            ^^^^^^^^^^
+...
+56 |     pub fn is_reserved(&self) -> bool {
+   |            ^^^^^^^^^^^
+
+warning: associated items `new`, `add_channel`, `get_active_channels`, and `get_channel_summary` are never used
+   --> src\l2cap_analyzer.rs:139:12
+    |
+138 | impl L2CapDeviceProfile {
+    | ----------------------- associated items in this implementation
+139 |     pub fn new(mac_address: String) -> Self {
+    |            ^^^
+...
+153 |     pub fn add_channel(&mut self, channel: L2CapChannel) {
+    |            ^^^^^^^^^^^
+...
+160 |     pub fn get_active_channels(&self) -> Vec<&L2CapChan...
+    |            ^^^^^^^^^^^^^^^^^^^
+...
+167 |     pub fn get_channel_summary(&self) -> String {
+    |            ^^^^^^^^^^^^^^^^^^^
+
+warning: struct `L2CapAnalyzer` is never constructed
+   --> src\l2cap_analyzer.rs:182:12
+    |
+182 | pub struct L2CapAnalyzer {
+    |            ^^^^^^^^^^^^^
+
+warning: associated items `new`, `register_device`, `add_channel`, `get_device`, `get_all_devices`, and `print_summary` are never used
+   --> src\l2cap_analyzer.rs:187:12
+    |
+186 | impl L2CapAnalyzer {
+    | ------------------ associated items in this implementation
+187 |     pub fn new() -> Self {
+    |            ^^^
+...
+194 |     pub fn register_device(&mut self, mac_address: Stri...
+    |            ^^^^^^^^^^^^^^^
+...
+201 |     pub fn add_channel(&mut self, mac_address: &str, ch...
+    |            ^^^^^^^^^^^
+...
+211 |     pub fn get_device(&self, mac_address: &str) -> Opti...
+    |            ^^^^^^^^^^
+...
+216 |     pub fn get_all_devices(&self) -> Vec<&L2CapDevicePr...
+    |            ^^^^^^^^^^^^^^^
+...
+221 |     pub fn print_summary(&self) {
+    |            ^^^^^^^^^^^^^
+
+warning: function `extract_l2cap_channels` is never used
+   --> src\l2cap_analyzer.rs:272:18
+    |
+272 |     pub async fn extract_l2cap_channels(_mac_address: &...
+    |                  ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `SDP` is never used
+   --> src\l2cap_analyzer.rs:290:15
+    |
+290 |     pub const SDP: L2CapPsm = L2CapPsm(0x0001);
+    |               ^^^
+
+warning: constant `RFCOMM` is never used
+   --> src\l2cap_analyzer.rs:291:15
+    |
+291 |     pub const RFCOMM: L2CapPsm = L2CapPsm(0x0003);
+    |               ^^^^^^
+
+warning: constant `HID_CONTROL` is never used
+   --> src\l2cap_analyzer.rs:292:15
+    |
+292 |     pub const HID_CONTROL: L2CapPsm = L2CapPsm(0x0011);
+    |               ^^^^^^^^^^^
+
+warning: constant `HID_INTERRUPT` is never used
+   --> src\l2cap_analyzer.rs:293:15
+    |
+293 |     pub const HID_INTERRUPT: L2CapPsm = L2CapPsm(0x0013);
+    |               ^^^^^^^^^^^^^
+
+warning: constant `ATT` is never used
+   --> src\l2cap_analyzer.rs:294:15
+    |
+294 |     pub const ATT: L2CapPsm = L2CapPsm(0x001F);
+    |               ^^^
+
+warning: constant `EATT` is never used
+   --> src\l2cap_analyzer.rs:295:15
+    |
+295 |     pub const EATT: L2CapPsm = L2CapPsm(0x0021);
+    |               ^^^^
+
+warning: constant `SMP` is never used
+   --> src\l2cap_analyzer.rs:296:15
+    |
+296 |     pub const SMP: L2CapPsm = L2CapPsm(0x0023);
+    |               ^^^
+
+warning: constant `AVDTP` is never used
+   --> src\l2cap_analyzer.rs:297:15
+    |
+297 |     pub const AVDTP: L2CapPsm = L2CapPsm(0x0019);
+    |               ^^^^^
+
+warning: constant `AVCTP` is never used
+   --> src\l2cap_analyzer.rs:298:15
+    |
+298 |     pub const AVCTP: L2CapPsm = L2CapPsm(0x0019);
+    |               ^^^^^
+
+warning: struct `LinkLayerParameters` is never constructed
+ --> src\link_layer.rs:8:12
+  |
+8 | pub struct LinkLayerParameters {
+  |            ^^^^^^^^^^^^^^^^^^^
+
+warning: struct `ChannelMap` is never constructed
+  --> src\link_layer.rs:32:12
+   |
+32 | pub struct ChannelMap {
+   |            ^^^^^^^^^^
+
+warning: associated items `new`, `from_bytes`, `enabled_count`, and `is_healthy` are never used
+  --> src\link_layer.rs:40:12
+   |
+39 | impl ChannelMap {
+   | --------------- associated items in this implementation
+40 |     pub fn new() -> Self {
+   |            ^^^
+...
+49 |     pub fn from_bytes(data: &[u8]) -> Option<Self> {
+   |            ^^^^^^^^^^
+...
+70 |     pub fn enabled_count(&self) -> usize {
+   |            ^^^^^^^^^^^^^
+...
+85 |     pub fn is_healthy(&self) -> bool {
+   |            ^^^^^^^^^^
+
+warning: struct `PacketStatistics` is never constructed
+  --> src\link_layer.rs:95:12
+   |
+95 | pub struct PacketStatistics {
+   |            ^^^^^^^^^^^^^^^^
+
+warning: methods `add_packet`, `get_signal_quality`, `get_rssi_variance`, and `get_most_used_channel` are never used
+   --> src\link_layer.rs:126:12
+    |
+125 | impl PacketStatistics {
+    | --------------------- methods in this implementation
+126 |     pub fn add_packet(&mut self, rssi: i8, bytes: usize...
+    |            ^^^^^^^^^^
+...
+151 |     pub fn get_signal_quality(&self) -> SignalQuality {
+    |            ^^^^^^^^^^^^^^^^^^
+...
+165 |     pub fn get_rssi_variance(&self) -> f64 {
+    |            ^^^^^^^^^^^^^^^^^
+...
+184 |     pub fn get_most_used_channel(&self) -> Option<(u8, ...
+    |            ^^^^^^^^^^^^^^^^^^^^^
+
+warning: enum `SignalQuality` is never used
+   --> src\link_layer.rs:193:10
+    |
+193 | pub enum SignalQuality {
+    |          ^^^^^^^^^^^^^
+
+warning: struct `LinkLayerHealth` is never constructed
+   --> src\link_layer.rs:215:12
+    |
+215 | pub struct LinkLayerHealth {
+    |            ^^^^^^^^^^^^^^^
+
+warning: enum `ChannelHealth` is never used
+   --> src\link_layer.rs:224:10
+    |
+224 | pub enum ChannelHealth {
+    |          ^^^^^^^^^^^^^
+
+warning: enum `PacketQuality` is never used
+   --> src\link_layer.rs:232:10
+    |
+232 | pub enum PacketQuality {
+    |          ^^^^^^^^^^^^^
+
+warning: enum `ConnectionStability` is never used
+   --> src\link_layer.rs:240:10
+    |
+240 | pub enum ConnectionStability {
+    |          ^^^^^^^^^^^^^^^^^^^
+
+warning: enum `OverallHealth` is never used
+   --> src\link_layer.rs:247:10
+    |
+247 | pub enum OverallHealth {
+    |          ^^^^^^^^^^^^^
+
+warning: function `assess_link_health` is never used
+   --> src\link_layer.rs:254:8
+    |
+254 | pub fn assess_link_health(
+    |        ^^^^^^^^^^^^^^^^^^
+
+warning: function `calculate_connection_interval` is never used
+   --> src\link_layer.rs:318:8
+    |
+318 | pub fn calculate_connection_interval(interval_units: u1...
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `phy_to_string` is never used
+   --> src\link_layer.rs:323:8
+    |
+323 | pub fn phy_to_string(phy: u8) -> String {
+    |        ^^^^^^^^^^^^^
+
+warning: function `log_to_file` is never used
+  --> src\logger.rs:29:8
+   |
+29 | pub fn log_to_file(level: &str, message: &str) {
+   |        ^^^^^^^^^^^
+
+warning: function `log_error` is never used
+  --> src\logger.rs:40:8
+   |
+40 | pub fn log_error(message: &str) {
+   |        ^^^^^^^^^
+
+warning: function `log_warn` is never used
+  --> src\logger.rs:46:8
+   |
+46 | pub fn log_warn(message: &str) {
+   |        ^^^^^^^^
+
+warning: function `log_warn_with_context` is never used
+  --> src\logger.rs:52:8
+   |
+52 | pub fn log_warn_with_context(context: &str, message: &st...
+   |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `log_info` is never used
+  --> src\logger.rs:57:8
+   |
+57 | pub fn log_info(message: &str) {
+   |        ^^^^^^^^
+
+warning: function `log_debug` is never used
+  --> src\logger.rs:63:8
+   |
+63 | pub fn log_debug(message: &str) {
+   |        ^^^^^^^^^
+
+warning: function `log_panic` is never used
+  --> src\logger.rs:69:8
+   |
+69 | pub fn log_panic(message: &str) {
+   |        ^^^^^^^^^
+
+warning: function `log_with_context` is never used
+  --> src\logger.rs:75:8
+   |
+75 | pub fn log_with_context(context: &str, message: &str) {
+   |        ^^^^^^^^^^^^^^^^
+
+warning: function `log_error_with_context` is never used
+  --> src\logger.rs:80:8
+   |
+80 | pub fn log_error_with_context(context: &str, message: &s...
+   |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `log_result` is never used
+  --> src\logger.rs:85:8
+   |
+85 | pub fn log_result<T, E: std::fmt::Display>(
+   |        ^^^^^^^^^^
+
+warning: function `log_critical` is never used
+   --> src\logger.rs:105:8
+    |
+105 | pub fn log_critical(message: &str) {
+    |        ^^^^^^^^^^^^
+
+warning: function `log_success` is never used
+   --> src\logger.rs:111:8
+    |
+111 | pub fn log_success(message: &str) {
+    |        ^^^^^^^^^^^
+
+warning: function `log_operation_start` is never used
+   --> src\logger.rs:117:8
+    |
+117 | pub fn log_operation_start(operation: &str) {
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `log_operation_end` is never used
+   --> src\logger.rs:122:8
+    |
+122 | pub fn log_operation_end(operation: &str, success: bool) {
+    |        ^^^^^^^^^^^^^^^^^
+
+warning: function `log_database_operation` is never used
+   --> src\logger.rs:132:8
+    |
+132 | pub fn log_database_operation(operation: &str, table: &...
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `log_scan_metrics` is never used
+   --> src\logger.rs:148:8
+    |
+148 | pub fn log_scan_metrics(devices_found: usize, packets_c...
+    |        ^^^^^^^^^^^^^^^^
+
+warning: function `log_bluetooth_event` is never used
+   --> src\logger.rs:156:8
+    |
+156 | pub fn log_bluetooth_event(event_type: &str, device_mac...
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `log_system_resource` is never used
+   --> src\logger.rs:164:8
+    |
+164 | pub fn log_system_resource(resource_type: &str, usage: ...
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: associated items `from_bytes`, `manufacturer_id`, `device_id`, and `matches_pattern` are never used
+  --> src\mac_address_handler.rs:35:12
+   |
+12 | impl MacAddress {
+   | --------------- associated items in this implementation
+...
+35 |     pub fn from_bytes(bytes: &[u8; 6]) -> Self {
+   |            ^^^^^^^^^^
+...
+91 |     pub fn manufacturer_id(&self) -> [u8; 3] {
+   |            ^^^^^^^^^^^^^^^
+...
+95 |     pub fn device_id(&self) -> [u8; 3] {
+   |            ^^^^^^^^^
+...
+99 |     pub fn matches_pattern(&self, pattern: &str) -> bool {
+   |            ^^^^^^^^^^^^^^^
+
+warning: struct `MacAddressFilter` is never constructed
+   --> src\mac_address_handler.rs:130:12
+    |
+130 | pub struct MacAddressFilter {
+    |            ^^^^^^^^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> src\mac_address_handler.rs:153:12
+    |
+152 | impl MacAddressFilter {
+    | --------------------- associated items in this implementation
+153 |     pub fn new() -> Self {
+    |            ^^^
+...
+157 |     pub fn add_whitelist(&mut self, mac: &str) -> Resul...
+    |            ^^^^^^^^^^^^^
+...
+168 |     pub fn add_blacklist(&mut self, mac: &str) -> Resul...
+    |            ^^^^^^^^^^^^^
+...
+174 |     pub fn add_pattern(&mut self, pattern: &str) -> Res...
+    |            ^^^^^^^^^^^
+...
+183 |     pub fn matches(&self, mac: &MacAddress) -> bool {
+    |            ^^^^^^^
+...
+222 |     pub fn set_allow_rpa(&mut self, allow: bool) {
+    |            ^^^^^^^^^^^^^
+...
+226 |     pub fn set_allow_static_random(&mut self, allow: bo...
+    |            ^^^^^^^^^^^^^^^^^^^^^^^
+...
+230 |     pub fn set_allow_public(&mut self, allow: bool) {
+    |            ^^^^^^^^^^^^^^^^
+
+warning: struct `MacAddressStats` is never constructed
+   --> src\mac_address_handler.rs:236:12
+    |
+236 | pub struct MacAddressStats {
+    |            ^^^^^^^^^^^^^^^
+
+warning: struct `UnifiedDevice` is never constructed
+  --> src\multi_method_scanner.rs:28:12
+   |
+28 | pub struct UnifiedDevice {
+   |            ^^^^^^^^^^^^^
+
+warning: associated items `new`, `count_detection_methods`, `detection_confidence`, `detection_methods_str`, and `parse_advertising_data` are never used
+   --> src\multi_method_scanner.rs:83:12
+    |
+ 82 | impl UnifiedDevice {
+    | ------------------ associated items in this implementation
+ 83 |     pub fn new(mac: String) -> Self {
+    |            ^^^
+...
+124 |     fn count_detection_methods(&mut self) {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^
+...
+140 |     pub fn detection_confidence(&self) -> usize {
+    |            ^^^^^^^^^^^^^^^^^^^^
+...
+145 |     pub fn detection_methods_str(&self) -> String {
+    |            ^^^^^^^^^^^^^^^^^^^^^
+...
+173 |     pub fn parse_advertising_data(&mut self) {
+    |            ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `MultiMethodScanner` is never constructed
+   --> src\multi_method_scanner.rs:244:12
+    |
+244 | pub struct MultiMethodScanner {
+    |            ^^^^^^^^^^^^^^^^^^
+
+warning: multiple associated items are never used
+    --> src\multi_method_scanner.rs:250:12
+     |
+ 249 | impl MultiMethodScanner {
+     | ----------------------- associated items in this implementation
+ 250 |     pub fn new() -> Self {
+     |            ^^^
+...
+ 258 |     pub async fn start_comprehensive_scan(&mut self) -...
+     |                  ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 368 |     async fn scan_with_btleplug(
+     |              ^^^^^^^^^^^^^^^^^^
+...
+ 454 |     async fn scan_with_hci_raw(
+     |              ^^^^^^^^^^^^^^^^^
+...
+ 545 |     async fn scan_with_windows_api(
+     |              ^^^^^^^^^^^^^^^^^^^^^
+...
+ 619 |     async fn scan_with_hci_realtime(
+     |              ^^^^^^^^^^^^^^^^^^^^^^
+...
+ 712 |     async fn scan_with_vendor_protocols(
+     |              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 997 |     async fn scan_with_android_bridge(
+     |              ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1069 |     async fn scan_with_corebluetooth(
+     |              ^^^^^^^^^^^^^^^^^^^^^^^
+...
+1080 |     pub fn get_or_create_device(&self, mac: &str) -> A...
+     |            ^^^^^^^^^^^^^^^^^^^^
+...
+1090 |     pub fn get_devices_by_confidence(&self) -> Vec<Uni...
+     |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1102 |     pub fn get_devices_by_method(&self, method: &str) ...
+     |            ^^^^^^^^^^^^^^^^^^^^^
+...
+1121 |     pub fn get_unique_devices(&self) -> Vec<UnifiedDev...
+     |            ^^^^^^^^^^^^^^^^^^
+...
+1132 |     pub fn print_discovery_summary(&self) {
+     |            ^^^^^^^^^^^^^^^^^^^^^^^
+...
+1241 |     pub async fn stop_scan(&mut self) -> Result<(), Bo...
+     |                  ^^^^^^^^^
+
+warning: methods `get_packet_latency`, `get_all_latencies`, and `get_sequence` are never used
+   --> src\packet_tracker.rs:75:12
+    |
+ 25 | impl DevicePacketTracker {
+    | ------------------------ methods in this implementation
+...
+ 75 |     pub fn get_packet_latency(&self, packet_id: u64) ->...
+    |            ^^^^^^^^^^^^^^^^^^
+...
+ 80 |     pub fn get_all_latencies(&self) -> Vec<u64> {
+    |            ^^^^^^^^^^^^^^^^^
+...
+104 |     pub fn get_sequence(&self) -> &[u64] {
+    |            ^^^^^^^^^^^^
+
+warning: field `sequence_position` is never read
+   --> src\packet_tracker.rs:228:9
+    |
+225 |     Accepted {
+    |     -------- field in this variant
+...
+228 |         sequence_position: usize,
+    |         ^^^^^^^^^^^^^^^^^
+    |
+    = note: `PacketAddResult` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: associated function `new` is never used
+  --> src\pcap_exporter.rs:97:12
+   |
+96 | impl HciPcapPacket {
+   | ------------------ associated function in this implementation
+97 |     pub fn new(packet_type: u8, data: Vec<u8>) -> Self {
+   |            ^^^
+
+warning: methods `avg_packet_size` and `to_string` are never used
+   --> src\pcap_exporter.rs:222:12
+    |
+221 | impl PcapExportStats {
+    | -------------------- methods in this implementation
+222 |     pub fn avg_packet_size(&self) -> f64 {
+    |            ^^^^^^^^^^^^^^^
+...
+230 |     pub fn to_string(&self) -> String {
+    |            ^^^^^^^^^
+
+warning: struct `RawPacketIntegration` is never constructed
+  --> src\raw_packet_integration.rs:20:12
+   |
+20 | pub struct RawPacketIntegration {
+   |            ^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> src\raw_packet_integration.rs:28:12
+    |
+ 26 | impl RawPacketIntegration {
+    | ------------------------- associated items in this implementation
+ 27 |     /// Create new integration handler
+ 28 |     pub fn new() -> Self {
+    |            ^^^
+...
+ 37 |     pub fn load_from_file<P: AsRef<Path>>(
+    |            ^^^^^^^^^^^^^^
+...
+ 56 |     pub fn load_from_string(&mut self, text: &str) -> u...
+    |            ^^^^^^^^^^^^^^^^
+...
+ 71 |     pub fn add_packet_line(&mut self, line: &str) -> bo...
+    |            ^^^^^^^^^^^^^^^
+...
+ 83 |     pub fn process(&mut self) -> RawPacketStatistics {
+    |            ^^^^^^^
+...
+100 |     pub fn save_to_database(
+    |            ^^^^^^^^^^^^^^^^
+...
+129 |     pub fn get_deduplicated(&self) -> Vec<crate::data_m...
+    |            ^^^^^^^^^^^^^^^^
+...
+139 |     pub fn get_statistics(&self) -> RawPacketStatistics {
+    |            ^^^^^^^^^^^^^^
+...
+144 |     pub fn get_report(&self) -> String {
+    |            ^^^^^^^^^^
+...
+187 |     pub fn clear(&mut self) {
+    |            ^^^^^
+...
+194 |     pub fn get_raw_packets(&self) -> &[RawPacketData] {
+    |            ^^^^^^^^^^^^^^^
+...
+199 |     pub fn get_models(&self) -> &[crate::data_models::R...
+    |            ^^^^^^^^^^
+
+warning: function `process_raw_packets_from_file` is never used
+   --> src\raw_packet_integration.rs:211:14
+    |
+211 | pub async fn process_raw_packets_from_file<P: AsRef<Pat...
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `process_raw_packets_text` is never used
+   --> src\raw_packet_integration.rs:227:14
+    |
+227 | pub async fn process_raw_packets_text(
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: fields `mac_regex`, `rssi_regex`, `tx_regex`, `company_id_regex`, `manuf_data_regex`, and `company_name_regex` are never read
+  --> src\raw_packet_parser.rs:32:5
+   |
+31 | pub struct RawPacketParser {
+   |            --------------- fields in this struct
+32 |     mac_regex: Regex,
+   |     ^^^^^^^^^
+33 |     rssi_regex: Regex,
+   |     ^^^^^^^^^^
+34 |     tx_regex: Regex,
+   |     ^^^^^^^^
+35 |     company_id_regex: Regex,
+   |     ^^^^^^^^^^^^^^^^
+36 |     manuf_data_regex: Regex,
+   |     ^^^^^^^^^^^^^^^^
+37 |     company_name_regex: Regex,
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: methods `parse_packet` and `parse_packets` are never used
+   --> src\raw_packet_parser.rs:70:12
+    |
+ 46 | impl RawPacketParser {
+    | -------------------- methods in this implementation
+...
+ 70 |     pub fn parse_packet(&self, line: &str) -> Option<Ra...
+    |            ^^^^^^^^^^^^
+...
+164 |     pub fn parse_packets(&self, input: &str) -> Vec<Raw...
+    |            ^^^^^^^^^^^^^
+
+warning: multiple methods are never used
+   --> src\raw_packet_parser.rs:291:12
+    |
+281 | impl RawPacketBatchProcessor {
+    | ---------------------------- methods in this implementation
+...
+291 |     pub fn add_raw_text(&mut self, text: &str) {
+    |            ^^^^^^^^^^^^
+...
+297 |     pub fn add_packet(&mut self, packet: RawPacketData) {
+    |            ^^^^^^^^^^
+...
+314 |     pub fn deduplicate_by_mac(&self) -> Vec<RawPacketMo...
+    |            ^^^^^^^^^^^^^^^^^^
+...
+325 |     pub fn get_statistics(&self) -> RawPacketStatistics {
+    |            ^^^^^^^^^^^^^^
+...
+367 |     pub fn clear(&mut self) {
+    |            ^^^^^
+...
+373 |     pub fn packets(&self) -> &[RawPacketData] {
+    |            ^^^^^^^
+...
+378 |     pub fn packet_models(&self) -> &[RawPacketModel] {
+    |            ^^^^^^^^^^^^^
+
+warning: struct `AdStructure` is never constructed
+  --> src\raw_sniffer.rs:78:12
+   |
+78 | pub struct AdStructure {
+   |            ^^^^^^^^^^^
+
+warning: associated function `parse` is never used
+  --> src\raw_sniffer.rs:85:12
+   |
+84 | impl AdStructure {
+   | ---------------- associated function in this implementation
+85 |     pub fn parse(ad_type: u8, data: &[u8]) -> Self {
+   |            ^^^^^
+
+warning: function `parse_advertising_data` is never used
+   --> src\raw_sniffer.rs:138:8
+    |
+138 | pub fn parse_advertising_data(raw_data: &[u8]) -> Vec<A...
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `SniffStats` is never constructed
+   --> src\raw_sniffer.rs:160:12
+    |
+160 | pub struct SniffStats {
+    |            ^^^^^^^^^^
+
+warning: struct `RawPacketSniffer` is never constructed
+   --> src\raw_sniffer.rs:170:12
+    |
+170 | pub struct RawPacketSniffer {
+    |            ^^^^^^^^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> src\raw_sniffer.rs:177:12
+    |
+176 | impl RawPacketSniffer {
+    | --------------------- associated items in this implementation
+177 |     pub fn new(max_buffer_size: usize) -> Self {
+    |            ^^^
+...
+186 |     pub fn add_frame(&mut self, frame: BluetoothFrame) {
+    |            ^^^^^^^^^
+...
+208 |     pub fn get_device_frames(&self, mac_address: &str) ...
+    |            ^^^^^^^^^^^^^^^^^
+...
+216 |     pub fn get_unique_devices(&self) -> Vec<String> {
+    |            ^^^^^^^^^^^^^^^^^^
+...
+228 |     pub fn get_frames_in_range(
+    |            ^^^^^^^^^^^^^^^^^^^
+...
+240 |     pub fn get_frames_by_type(&self, frame_type: Advert...
+    |            ^^^^^^^^^^^^^^^^^^
+...
+248 |     pub fn get_stats(&self) -> &SniffStats {
+    |            ^^^^^^^^^
+...
+253 |     pub fn export_frames_json(&self) -> Result<String, ...
+    |            ^^^^^^^^^^^^^^^^^^
+...
+258 |     pub fn clear(&mut self) {
+    |            ^^^^^
+
+warning: function `start_winsock_sniffing` is never used
+   --> src\raw_sniffer.rs:336:18
+    |
+336 |     pub async fn start_winsock_sniffing() -> Result<(),...
+    |                  ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `get_device_sequence` and `export_device_telemetry` are never used
+   --> src\scanner_integration.rs:120:12
+    |
+ 17 | impl ScannerWithTracking {
+    | ------------------------ methods in this implementation
+...
+120 |     pub fn get_device_sequence(&self, mac: &str) -> Opt...
+    |            ^^^^^^^^^^^^^^^^^^^
+...
+160 |     pub fn export_device_telemetry(&self, mac: &str) ->...
+    |            ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `device_sequence_lengths` is never read
+   --> src\scanner_integration.rs:240:9
+    |
+233 | pub struct ScannerTrackingStats {
+    |            -------------------- field in this struct
+...
+240 |     pub device_sequence_lengths: std::collections::Hash...
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `ScannerTrackingStats` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: constant `PERIODIC_REPORT_INTERVAL_SECS` is never used
+ --> src\telegram_notifier.rs:6:7
+  |
+6 | const PERIODIC_REPORT_INTERVAL_SECS: u64 = 60;
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: fields `channel` and `frame_type` are never read
+   --> src\telegram_notifier.rs:302:9
+    |
+297 | pub struct RawPacketInfo {
+    |            ------------- fields in this struct
+...
+302 |     pub channel: i32,
+    |         ^^^^^^^
+303 |     pub frame_type: String,
+    |         ^^^^^^^^^^
+    |
+    = note: `RawPacketInfo` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: function `should_send_report` is never used
+   --> src\telegram_notifier.rs:459:4
+    |
+459 | fn should_send_report(conn: &rusqlite::Connection) -> R...
+    |    ^^^^^^^^^^^^^^^^^^
+
+warning: function `run_periodic_report_task` is never used
+   --> src\telegram_notifier.rs:626:14
+    |
+626 | pub async fn run_periodic_report_task() -> Result<(), S...
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `generate_raw_packets_html` is never used
+   --> src\telegram_notifier.rs:688:4
+    |
+688 | fn generate_raw_packets_html(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `format_rssi_trends_report` is never used
+    --> src\telegram_notifier.rs:1168:4
+     |
+1168 | fn format_rssi_trends_report() -> String {
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `print_rssi_trends_terminal` is never used
+    --> src\telegram_notifier.rs:1294:8
+     |
+1294 | pub fn print_rssi_trends_terminal() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `send_rssi_trends_report` is never used
+    --> src\telegram_notifier.rs:1344:14
+     |
+1344 | pub async fn send_rssi_trends_report() -> Result<(), S...
+     |              ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `periodic_rssi_trends_report` is never used
+    --> src\telegram_notifier.rs:1355:14
+     |
+1355 | pub async fn periodic_rssi_trends_report() -> Result<(...
+     |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `TelegramUpdate` is never constructed
+    --> src\telegram_notifier.rs:1373:8
+     |
+1373 | struct TelegramUpdate {
+     |        ^^^^^^^^^^^^^^
+
+warning: struct `TelegramMessage` is never constructed
+    --> src\telegram_notifier.rs:1379:8
+     |
+1379 | struct TelegramMessage {
+     |        ^^^^^^^^^^^^^^^
+
+warning: struct `TelegramUser` is never constructed
+    --> src\telegram_notifier.rs:1387:8
+     |
+1387 | struct TelegramUser {
+     |        ^^^^^^^^^^^^
+
+warning: struct `TelegramChat` is never constructed
+    --> src\telegram_notifier.rs:1396:8
+     |
+1396 | struct TelegramChat {
+     |        ^^^^^^^^^^^^
+
+warning: function `format_help_message` is never used
+    --> src\telegram_notifier.rs:1400:4
+     |
+1400 | fn format_help_message() -> String {
+     |    ^^^^^^^^^^^^^^^^^^^
+
+warning: function `format_stats_message` is never used
+    --> src\telegram_notifier.rs:1414:4
+     |
+1414 | fn format_stats_message() -> String {
+     |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_device_by_mac` is never used
+    --> src\telegram_notifier.rs:1445:4
+     |
+1445 | fn get_device_by_mac(mac: &str) -> String {
+     |    ^^^^^^^^^^^^^^^^^
+
+warning: function `generate_csv_export` is never used
+    --> src\telegram_notifier.rs:1478:4
+     |
+1478 | fn generate_csv_export() -> Result<String, String> {
+     |    ^^^^^^^^^^^^^^^^^^^
+
+warning: function `send_csv_file` is never used
+    --> src\telegram_notifier.rs:1526:10
+     |
+1526 | async fn send_csv_file(csv_content: &str, filename: &s...
+     |          ^^^^^^^^^^^^^
+
+warning: function `handle_command` is never used
+    --> src\telegram_notifier.rs:1566:10
+     |
+1566 | async fn handle_command(text: &str) -> Option<String> {
+     |          ^^^^^^^^^^^^^^
+
+warning: function `process_update` is never used
+    --> src\telegram_notifier.rs:1602:10
+     |
+1602 | async fn process_update(update: &TelegramUpdate) -> Op...
+     |          ^^^^^^^^^^^^^^
+
+warning: function `start_bot_polling` is never used
+    --> src\telegram_notifier.rs:1613:14
+     |
+1613 | pub async fn start_bot_polling() {
+     |              ^^^^^^^^^^^^^^^^^
+
+warning: struct `PacketSequenceTelemetry` is never constructed
+  --> src\telemetry.rs:92:12
+   |
+92 | pub struct PacketSequenceTelemetry {
+   |            ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `get_events`, `get_events_clone`, and `generate_device_telemetry` are never used
+   --> src\telemetry.rs:123:12
+    |
+118 | impl TelemetryCollector {
+    | ----------------------- methods in this implementation
+...
+123 |     pub fn get_events(&self) -> &[TimelineEvent] {
+    |            ^^^^^^^^^^
+...
+127 |     pub fn get_events_clone(&self) -> Vec<TimelineEvent> {
+    |            ^^^^^^^^^^^^^^^^
+...
+232 |     pub fn generate_device_telemetry(
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `device_telemetry_to_json` is never used
+   --> src\telemetry.rs:270:8
+    |
+270 | pub fn device_telemetry_to_json(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: fields `config` and `hci_scanner` are never read
+  --> src\unified_scan.rs:18:5
+   |
+17 | pub struct UnifiedScanEngine {
+   |            ----------------- fields in this struct
+18 |     config: ScanConfig,
+   |     ^^^^^^
+...
+23 |     hci_scanner: Option<crate::windows_hci::WindowsHciSc...
+   |     ^^^^^^^^^^^
+
+warning: methods `export_telemetry`, `export_device_telemetry`, `get_device_packet_sequence`, and `get_global_packet_order` are never used
+   --> src\unified_scan.rs:162:12
+    |
+ 26 | impl UnifiedScanEngine {
+    | ---------------------- methods in this implementation
+...
+162 |     pub fn export_telemetry(&self) -> String {
+    |            ^^^^^^^^^^^^^^^^
+...
+167 |     pub fn export_device_telemetry(&self, mac: &str) ->...
+    |            ^^^^^^^^^^^^^^^^^^^^^^^
+...
+172 |     pub fn get_device_packet_sequence(&self, mac: &str)...
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+177 |     pub fn get_global_packet_order(&self) -> Vec<(Strin...
+    |            ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `telemetry_json` is never read
+   --> src\unified_scan.rs:189:9
+    |
+184 | pub struct ScanEngineResults {
+    |            ----------------- field in this struct
+...
+189 |     pub telemetry_json: String,
+    |         ^^^^^^^^^^^^^^
+    |
+    = note: `ScanEngineResults` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: enum `BeaconType` is never used
+ --> src\vendor_protocols.rs:8:10
+  |
+8 | pub enum BeaconType {
+  |          ^^^^^^^^^^
+
+warning: struct `IBeaconData` is never constructed
+  --> src\vendor_protocols.rs:17:12
+   |
+17 | pub struct IBeaconData {
+   |            ^^^^^^^^^^^
+
+warning: enum `EddystoneData` is never used
+  --> src\vendor_protocols.rs:27:10
+   |
+27 | pub enum EddystoneData {
+   |          ^^^^^^^^^^^^^
+
+warning: struct `AltBeaconData` is never constructed
+  --> src\vendor_protocols.rs:52:12
+   |
+52 | pub struct AltBeaconData {
+   |            ^^^^^^^^^^^^^
+
+warning: enum `AppleContinuity` is never used
+  --> src\vendor_protocols.rs:64:10
+   |
+64 | pub enum AppleContinuity {
+   |          ^^^^^^^^^^^^^^^
+
+warning: struct `GoogleFastPair` is never constructed
+  --> src\vendor_protocols.rs:73:12
+   |
+73 | pub struct GoogleFastPair {
+   |            ^^^^^^^^^^^^^^
+
+warning: struct `MicrosoftSwiftPair` is never constructed
+  --> src\vendor_protocols.rs:82:12
+   |
+82 | pub struct MicrosoftSwiftPair {
+   |            ^^^^^^^^^^^^^^^^^^
+
+warning: function `parse_vendor_protocols` is never used
+  --> src\vendor_protocols.rs:88:8
+   |
+88 | pub fn parse_vendor_protocols(packet: &ParsedAdvertising...
+   |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: enum `VendorProtocol` is never used
+   --> src\vendor_protocols.rs:125:10
+    |
+125 | pub enum VendorProtocol {
+    |          ^^^^^^^^^^^^^^
+
+warning: function `detect_ibeacon` is never used
+   --> src\vendor_protocols.rs:135:4
+    |
+135 | fn detect_ibeacon(packet: &ParsedAdvertisingPacket) -> ...
+    |    ^^^^^^^^^^^^^^
+
+warning: function `detect_eddystone` is never used
+   --> src\vendor_protocols.rs:165:4
+    |
+165 | fn detect_eddystone(packet: &ParsedAdvertisingPacket) -...
+    |    ^^^^^^^^^^^^^^^^
+
+warning: function `detect_altbeacon` is never used
+   --> src\vendor_protocols.rs:248:4
+    |
+248 | fn detect_altbeacon(packet: &ParsedAdvertisingPacket) -...
+    |    ^^^^^^^^^^^^^^^^
+
+warning: function `detect_apple_continuity` is never used
+   --> src\vendor_protocols.rs:282:4
+    |
+282 | fn detect_apple_continuity(packet: &ParsedAdvertisingPa...
+    |    ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `detect_google_fast_pair` is never used
+   --> src\vendor_protocols.rs:333:4
+    |
+333 | fn detect_google_fast_pair(packet: &ParsedAdvertisingPa...
+    |    ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `detect_microsoft_swift_pair` is never used
+   --> src\vendor_protocols.rs:365:4
+    |
+365 | fn detect_microsoft_swift_pair(packet: &ParsedAdvertisi...
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `decode_eddystone_url` is never used
+   --> src\vendor_protocols.rs:399:4
+    |
+399 | fn decode_eddystone_url(scheme: u8, data: &[u8]) -> Str...
+    |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: field `devices` is never read
+  --> src\windows_bluetooth.rs:16:9
+   |
+15 |     pub struct WindowsBluetoothManager {
+   |                ----------------------- field in this struct
+16 |         devices: HashMap<String, BluetoothDevice>,
+   |         ^^^^^^^
+
+warning: multiple methods are never used
+   --> src\windows_bluetooth.rs:110:22
+    |
+ 19 |     impl WindowsBluetoothManager {
+    |     ---------------------------- methods in this implementation
+...
+110 |         pub async fn get_device_rssi(&self, mac_address...
+    |                      ^^^^^^^^^^^^^^^
+...
+116 |         pub async fn is_device_paired(&self, mac_addres...
+    |                      ^^^^^^^^^^^^^^^^
+...
+122 |         pub async fn get_device_services(
+    |                      ^^^^^^^^^^^^^^^^^^^
+...
+132 |         pub async fn connect_device(&self, mac_address:...
+    |                      ^^^^^^^^^^^^^^
+...
+138 |         pub async fn disconnect_device(&self, mac_addre...
+    |                      ^^^^^^^^^^^^^^^^^
+...
+147 |         pub async fn get_device_info(&self, mac_address...
+    |                      ^^^^^^^^^^^^^^^
+...
+153 |         pub async fn start_discovery(&self) -> Result<(...
+    |                      ^^^^^^^^^^^^^^^
+...
+159 |         pub async fn stop_discovery(&self) -> Result<()...
+    |                      ^^^^^^^^^^^^^^
+...
+165 |         pub async fn listen_device_events(
+    |                      ^^^^^^^^^^^^^^^^^^^^
+
+warning: enum `DeviceEvent` is never used
+   --> src\windows_bluetooth.rs:178:14
+    |
+178 |     pub enum DeviceEvent {
+    |              ^^^^^^^^^^^
+
+warning: field `device_rssi_cache` is never read
+  --> src\windows_hci.rs:17:9
+   |
+13 |     pub struct WindowsHciAdapter {
+   |                ----------------- field in this struct
+...
+17 |         device_rssi_cache: HashMap<String, i8>,
+   |         ^^^^^^^^^^^^^^^^^
+
+warning: struct `ManagedDevice` is never constructed
+  --> src\windows_unified_ble.rs:35:16
+   |
+35 |     pub struct ManagedDevice {
+   |                ^^^^^^^^^^^^^
+
+warning: associated items `new`, `set_manufacturer_id`, and `manufacturer_info` are never used
+  --> src\windows_unified_ble.rs:51:16
+   |
+50 |     impl ManagedDevice {
+   |     ------------------ associated items in this implementation
+51 |         pub fn new(mac_address: String) -> Self {
+   |                ^^^
+...
+69 |         pub fn set_manufacturer_id(&mut self, mfg_id: u1...
+   |                ^^^^^^^^^^^^^^^^^^^
+...
+75 |         pub fn manufacturer_info(&self) -> String {
+   |                ^^^^^^^^^^^^^^^^^
+
+warning: struct `WindowsUnifiedBleScanner` is never constructed
+  --> src\windows_unified_ble.rs:86:16
+   |
+86 |     pub struct WindowsUnifiedBleScanner {
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> src\windows_unified_ble.rs:96:16
+    |
+ 94 |     impl WindowsUnifiedBleScanner {
+    |     ----------------------------- associated items in this implementation
+ 95 |         /// Create new unified scanner
+ 96 |         pub fn new() -> Self {
+    |                ^^^
+...
+107 |         pub fn with_hci_support(mut self) -> Self {
+    |                ^^^^^^^^^^^^^^^^
+...
+113 |         pub async fn start_scan(&mut self) -> Result<()...
+    |                      ^^^^^^^^^^
+...
+131 |         pub async fn process_next_advertisement(
+    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+200 |         pub fn get_devices(&self) -> Vec<ManagedDevice> {
+    |                ^^^^^^^^^^^
+...
+205 |         pub fn get_device(&self, mac: &str) -> Option<M...
+    |                ^^^^^^^^^^
+...
+210 |         pub fn device_count(&self) -> usize {
+    |                ^^^^^^^^^^^^
+...
+215 |         pub fn packet_count(&self) -> u64 {
+    |                ^^^^^^^^^^^^
+...
+220 |         pub fn devices_by_manufacturer(&self) -> HashMa...
+    |                ^^^^^^^^^^^^^^^^^^^^^^^
+...
+235 |         pub fn manufacturer_stats(&self) -> Vec<(String...
+    |                ^^^^^^^^^^^^^^^^^^
+...
+251 |         pub fn find_devices_by_manufacturer(&self, patt...
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+260 |         pub fn find_devices_by_company_id(&self, compan...
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+268 |         pub fn print_summary(&self) {
+    |                ^^^^^^^^^^^^^
+...
+311 |         pub async fn stop_scan(&mut self) -> Result<(),...
+    |                      ^^^^^^^^^
+
+warning: field `is_minimized` is never read
+  --> src\tray_manager.rs:14:5
+   |
+13 | pub struct TrayManager {
+   |            ----------- field in this struct
+14 |     is_minimized: Arc<AtomicBool>,
+   |     ^^^^^^^^^^^^
+
+warning: methods `is_minimized`, `minimize_to_tray`, and `restore_from_tray` are never used
+  --> src\tray_manager.rs:26:12
+   |
+17 | impl TrayManager {
+   | ---------------- methods in this implementation
+...
+26 |     pub fn is_minimized(&self) -> bool {
+   |            ^^^^^^^^^^^^
+...
+31 |     pub fn minimize_to_tray(&self) {
+   |            ^^^^^^^^^^^^^^^^
+...
+49 |     pub fn restore_from_tray(&self) {
+   |            ^^^^^^^^^^^^^^^^^
+
+warning: function `prevent_console_close` is never used
+  --> src\tray_manager.rs:97:8
+   |
+97 | pub fn prevent_console_close() -> Result<(), Box<dyn std...
+   |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_app_icon` is never used
+   --> src\tray_manager.rs:116:8
+    |
+116 | pub fn get_app_icon() -> Vec<u8> {
+    |        ^^^^^^^^^^^^
+
+warning: function `get_terminal_height` is never used
+  --> src\ui_renderer.rs:83:8
+   |
+83 | pub fn get_terminal_height() -> u16 {
+   |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `max_device_rows_for_display` is never used
+  --> src\ui_renderer.rs:89:8
+   |
+89 | pub fn max_device_rows_for_display() -> usize {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `draw_device_table_header` is never used
+  --> src\ui_renderer.rs:97:8
+   |
+97 | pub fn draw_device_table_header() -> Result<(), Box<dyn ...
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `is_valid_mac` is never used
+  --> src\web_server.rs:59:8
+   |
+59 | pub fn is_valid_mac(mac: &str) -> bool {
+   |        ^^^^^^^^^^^^
+
+warning: struct `WebsocketMessage` is never constructed
+   --> src\web_server.rs:147:12
+    |
+147 | pub struct WebsocketMessage {
+    |            ^^^^^^^^^^^^^^^^
+
+warning: fields `devices` and `last_scan_time` are never read
+   --> src\web_server.rs:162:9
+    |
+161 | pub struct AppState {
+    |            -------- fields in this struct
+162 |     pub devices: Mutex<Vec<ApiDevice>>,
+    |         ^^^^^^^
+163 |     pub raw_packets: Mutex<VecDeque<RawPacket>>,
+164 |     pub last_scan_time: Mutex<Option<String>>,
+    |         ^^^^^^^^^^^^^^
+
+warning: function `broadcast_telemetry` is never used
+   --> src\web_server.rs:351:8
+    |
+351 | pub fn broadcast_telemetry(telemetry: &serde_json::Valu...
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `broadcast_latency` is never used
+   --> src\web_server.rs:355:8
+    |
+355 | pub fn broadcast_latency(mac: &str, latency_ms: u64, pa...
+    |        ^^^^^^^^^^^^^^^^^
+
+warning: function `update_devices` is never used
+   --> src\web_server.rs:479:8
+    |
+479 | pub fn update_devices(devices: Vec<ApiDevice>) {
+    |        ^^^^^^^^^^^^^^
+
+warning: function `add_raw_packet` is never used
+   --> src\web_server.rs:487:8
+    |
+487 | pub fn add_raw_packet(packet: RawPacket) {
+    |        ^^^^^^^^^^^^^^
+
+warning: function `update_last_scan` is never used
+   --> src\web_server.rs:498:8
+    |
+498 | pub fn update_last_scan(time: String) {
+    |        ^^^^^^^^^^^^^^^^
+
+warning: function `get_state` is never used
+   --> src\web_server.rs:506:4
+    |
+506 | fn get_state() -> Option<web::Data<AppState>> {
+    |    ^^^^^^^^^
+
+warning: unused `Result` that must be used
+   --> src\tray_manager.rs:108:9
+    |
+108 | ...   SetConsoleCtrlHandler(Some(console_handler), true);
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+    = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+    |
+108 |         let _ = SetConsoleCtrlHandler(Some(console_handler), true);
+    |         +++++++
+
+warning: `only-bt-scan` (lib) generated 302 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.33s

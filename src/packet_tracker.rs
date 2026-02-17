@@ -19,6 +19,7 @@ pub struct DevicePacketTracker {
     pub total_packets: u64,
     pub total_filtered: u64,
     pub total_duplicates: u64,
+    pub packet_latencies_ms: HashMap<u64, u64>, // packet_id -> latency from previous packet
 }
 
 impl DevicePacketTracker {
@@ -31,31 +32,53 @@ impl DevicePacketTracker {
             total_packets: 0,
             total_filtered: 0,
             total_duplicates: 0,
+            packet_latencies_ms: HashMap::new(),
         }
     }
 
     /// Add packet if it passes filters and deduplication
-    pub fn add_packet(&mut self, packet: &RawPacketModel) -> bool {
+    /// Returns (accepted, latency_ms) - latency is None for first packet
+    pub fn add_packet(&mut self, packet: &RawPacketModel) -> (bool, Option<u64>) {
         self.total_packets += 1;
+
+        // Calculate latency from previous packet before any filtering
+        let latency_ms = if self.last_packet_time_ms > 0 {
+            packet.timestamp_ms.checked_sub(self.last_packet_time_ms)
+        } else {
+            None
+        };
 
         // Filter 1: RSSI threshold
         if !should_accept_rssi(packet.rssi) {
             self.total_filtered += 1;
-            return false;
+            return (false, latency_ms);
         }
 
         // Filter 2: Deduplication
         if self.is_duplicate(&packet) {
             self.total_duplicates += 1;
-            return false; // Reject duplicate
+            return (false, latency_ms); // Reject duplicate
         }
 
         // Packet accepted
         self.packet_sequence.push(packet.packet_id);
         self.packet_rssi_map.insert(packet.packet_id, packet.rssi);
+        if let Some(latency) = latency_ms {
+            self.packet_latencies_ms.insert(packet.packet_id, latency);
+        }
         self.last_packet_time_ms = packet.timestamp_ms;
 
-        true
+        (true, latency_ms)
+    }
+
+    /// Get latency for a specific packet
+    pub fn get_packet_latency(&self, packet_id: u64) -> Option<u64> {
+        self.packet_latencies_ms.get(&packet_id).copied()
+    }
+
+    /// Get all latencies for this device
+    pub fn get_all_latencies(&self) -> Vec<u64> {
+        self.packet_latencies_ms.values().copied().collect()
     }
 
     /// Check if packet is a duplicate (same device, within dedup window, weaker signal)
@@ -116,7 +139,7 @@ impl GlobalPacketTracker {
     }
 
     /// Add packet globally
-    pub fn add_packet(&mut self, packet: RawPacketModel) -> PacketAddResult {
+    pub fn add_packet(&mut self, mut packet: RawPacketModel) -> PacketAddResult {
         let mac_address = packet.mac_address.clone();
         let packet_id = packet.packet_id;
         let timestamp_ms = packet.timestamp_ms;
@@ -127,8 +150,11 @@ impl GlobalPacketTracker {
             .entry(mac_address.clone())
             .or_insert_with(|| DevicePacketTracker::new(mac_address.clone()));
 
-        // Try to add packet
-        let accepted = tracker.add_packet(&packet);
+        // Try to add packet and get latency
+        let (accepted, latency_ms) = tracker.add_packet(&packet);
+
+        // Store latency in packet
+        packet.latency_from_previous_ms = latency_ms;
 
         if accepted {
             // Add to global sequence

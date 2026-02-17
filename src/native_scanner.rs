@@ -59,20 +59,37 @@ impl NativeBluetoothScanner {
 
     #[cfg(target_os = "windows")]
     async fn scan_windows(&mut self) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
-        info!("🪟 Starting Windows native Bluetooth scan");
+        info!("🪟 Starting Windows scan: paired + dynamic BLE");
 
-        // Try using winbluetooth API
-        let devices = self.windows_manager.enumerate_devices().await?;
+        let mut all_devices = std::collections::HashMap::new();
 
-        if devices.is_empty() {
-            info!("ℹ️ No devices found via Windows native API, falling back to btleplug");
-        } else {
-            info!("✅ Found {} devices via Windows native API", devices.len());
-            return Ok(devices);
+        // 1. Get paired devices via WMI/Registry
+        match self.windows_manager.enumerate_devices().await {
+            Ok(paired) => {
+                info!("✅ Found {} paired devices via Windows API", paired.len());
+                for d in paired {
+                    all_devices.insert(d.mac_address.clone(), d);
+                }
+            }
+            Err(e) => debug!("Windows API paired enumeration failed: {}", e),
         }
 
-        // Fallback to btleplug
-        self.scan_via_btleplug().await
+        // 2. Scan for BLE devices via btleplug
+        match self.scan_via_btleplug().await {
+            Ok(ble_devices) => {
+                info!("✅ Found {} BLE devices via btleplug", ble_devices.len());
+                for d in ble_devices {
+                    all_devices.insert(d.mac_address.clone(), d);
+                }
+            }
+            Err(e) => debug!("btleplug BLE scan failed: {}", e),
+        }
+
+        if all_devices.is_empty() {
+            info!("ℹ️ No devices found from any scan method on Windows");
+        }
+
+        Ok(all_devices.into_values().collect())
     }
 
     #[cfg(target_os = "linux")]
