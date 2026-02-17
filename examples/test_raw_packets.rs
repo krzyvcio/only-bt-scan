@@ -80,13 +80,14 @@ AA:BB:CC:DD:EE:FF "TestDevice" -75dB tx=5 Connectable Paired company-id=0x004C m
     let mut rssi_values = Vec::new();
 
     for line in &lines {
-        if let Some(mac_start) = line.find_map(|_| if line.contains(':') { Some(0) } else { None })
-        {
+        if line.contains(':') {
             // Extract MAC (first field before space)
-            if let Some(space_pos) = line.find(' ') {
-                let mac = &line[mac_start..space_pos];
-                mac_addresses.push(mac.to_string());
-            }
+            let mac = if let Some(space_pos) = line.find(' ') {
+                &line[..space_pos]
+            } else {
+                line
+            };
+            mac_addresses.push(mac.to_string());
 
             // Extract RSSI
             if let Some(rssi_pos) = line.find('-') {

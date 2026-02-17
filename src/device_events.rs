@@ -8,6 +8,10 @@
 /// - Connection/disconnection events
 /// - RSSI updates
 /// - Cross-platform event handling
+use log::{debug, info, warn};
+use tokio::sync::mpsc;
+use std::sync::Arc;
+
 pub struct DeviceEventListener {
     tx: mpsc::UnboundedSender<DeviceEventNotification>,
     rx: Option<mpsc::UnboundedReceiver<DeviceEventNotification>>,

@@ -3,6 +3,8 @@
 //! Main library for the BLE/Bluetooth scanner application.
 //! Supports BLE scanning, database storage, Web API, and Telegram notifications.
 
+#![allow(dead_code, unused_imports)]
+
 mod adapter_info;
 mod advertising_parser;
 mod android_ble_bridge;
@@ -20,11 +22,11 @@ mod config_params;
 mod core_bluetooth_integration;
 mod data_flow_estimator;
 mod data_models;
-mod db;
+pub mod db;
 mod db_frames;
 mod db_pool;
 mod device_events;
-mod device_tracker;
+pub mod device_tracker;
 mod env_config;
 mod event_analyzer;
 mod gatt_client;

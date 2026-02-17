@@ -375,7 +375,7 @@ mod tests {
         let mut tracker = DevicePacketTracker::new("AA:BB:CC:DD:EE:FF".to_string());
         let packet = create_test_packet("AA:BB:CC:DD:EE:FF", 1, -60, 1000);
 
-        assert!(tracker.add_packet(&packet));
+        assert!(tracker.add_packet(&packet).0);
         assert_eq!(tracker.total_packets, 1);
         assert_eq!(tracker.packet_sequence.len(), 1);
     }
@@ -385,7 +385,7 @@ mod tests {
         let mut tracker = DevicePacketTracker::new("AA:BB:CC:DD:EE:FF".to_string());
         let packet = create_test_packet("AA:BB:CC:DD:EE:FF", 1, -85, 1000); // Below threshold
 
-        assert!(!tracker.add_packet(&packet));
+        assert!(!tracker.add_packet(&packet).0);
         assert_eq!(tracker.total_filtered, 1);
     }
 

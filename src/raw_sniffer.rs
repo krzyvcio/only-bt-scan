@@ -3,6 +3,7 @@
 /// Supports: Linux (HCI raw sockets), Windows (WinAPI), macOS (limited)
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use log::debug;
 
 /// Complete Bluetooth frame with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]

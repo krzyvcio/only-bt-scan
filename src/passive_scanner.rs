@@ -106,6 +106,7 @@ impl PassivePacket {
             packet_type: self.packet_type.clone(),
             is_scan_response: self.packet_type == "SCAN_RSP",
             is_extended: self.is_extended,
+            address_type: Some("Public".to_string()),
             advertising_data: self.advertising_data.clone(),
             advertising_data_hex: self.advertising_data_hex.clone(),
             ad_structures: Vec::new(),

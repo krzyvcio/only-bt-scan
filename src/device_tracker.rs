@@ -627,7 +627,13 @@ impl DeviceTrackerManager {
     /// Arc<Mutex<DeviceTracker>> for the device
     /// Note: Caller should hold the lock briefly
     pub fn get_or_create(&self, mac: &str) -> Arc<Mutex<DeviceTracker>> {
-        let mut devices = self.devices.lock().unwrap();
+        let mut devices = match self.devices.lock() {
+            Ok(g) => g,
+            Err(poisoned) => {
+                log::warn!("devices mutex poisoned, recovering in get_or_create");
+                poisoned.into_inner()
+            }
+        };
 
         // Evict oldest device if at capacity
         if devices.len() >= self.max_devices && !devices.contains_key(mac) {
@@ -638,11 +644,11 @@ impl DeviceTrackerManager {
             }
         }
 
-        devices
+        let entry = devices
             .entry(mac.to_string())
             .or_insert_with(|| DeviceTracker::new(mac.to_string()));
 
-        Arc::new(Mutex::new(devices.get(mac).unwrap().clone()))
+        Arc::new(Mutex::new(entry.clone()))
     }
 
     /// Record detection on device - holds lock for entire operation to prevent race
@@ -669,7 +675,13 @@ impl DeviceTrackerManager {
     ) -> String {
         // Get tracker and hold lock for entire operation
         let tracker = self.get_or_create(mac);
-        let mut t = tracker.lock().unwrap();
+        let mut t = match tracker.lock() {
+            Ok(g) => g,
+            Err(poisoned) => {
+                log::warn!("device tracker mutex poisoned, recovering in record_detection");
+                poisoned.into_inner()
+            }
+        };
 
         // Record detection
         t.record_detection(rssi, method, device_name, manufacturer_id);
@@ -714,7 +726,13 @@ impl DeviceTrackerManager {
     /// # Returns
     /// Vector of DeviceTracker for all tracked devices
     pub fn get_all_devices(&self) -> Vec<DeviceTracker> {
-        let devices = self.devices.lock().unwrap();
+        let devices = match self.devices.lock() {
+            Ok(g) => g,
+            Err(poisoned) => {
+                log::warn!("devices mutex poisoned, recovering in get_all_devices");
+                poisoned.into_inner()
+            }
+        };
         let mut all: Vec<_> = devices.values().cloned().collect();
         all.sort_by(|a, b| b.detection_count.cmp(&a.detection_count));
         all
@@ -728,7 +746,13 @@ impl DeviceTrackerManager {
     /// # Returns
     /// Some(DeviceTracker) if found, None otherwise
     pub fn get_device(&self, mac: &str) -> Option<DeviceTracker> {
-        let devices = self.devices.lock().unwrap();
+        let devices = match self.devices.lock() {
+            Ok(g) => g,
+            Err(poisoned) => {
+                log::warn!("devices mutex poisoned, recovering in get_device");
+                poisoned.into_inner()
+            }
+        };
         devices.get(mac).cloned()
     }
 

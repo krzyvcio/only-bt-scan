@@ -389,15 +389,15 @@ mod tests {
         };
 
         // Best capabilities should select adapter2
-        let selected = list.select(&AdapterSelection::BestCapabilities).unwrap();
+        let selected = list.select(&AdapterSelection::BestCapabilities).expect("expected adapter with best capabilities");
         assert_eq!(selected.id, "adapter2");
 
         // First available should select adapter1
-        let selected = list.select(&AdapterSelection::FirstAvailable).unwrap();
+        let selected = list.select(&AdapterSelection::FirstAvailable).expect("expected first available adapter");
         assert_eq!(selected.id, "adapter1");
 
         // By ID
-        let selected = list.select(&AdapterSelection::ById("adapter1".to_string())).unwrap();
+        let selected = list.select(&AdapterSelection::ById("adapter1".to_string())).expect("expected adapter by id");
         assert_eq!(selected.id, "adapter1");
     }
 }

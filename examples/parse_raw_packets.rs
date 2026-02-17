@@ -26,7 +26,7 @@ fn main() {
     // EXAMPLE 1: Parse Single Packet
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    println!("\n{'═':.^80}", "");
+    println!("\n{:═^80}", "");
     println!("EXAMPLE 1: Parsing Single Packet");
     println!("{:═^80}", "");
 
@@ -56,7 +56,7 @@ fn main() {
     // EXAMPLE 2: Batch Processing Multiple Packets
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    println!("\n{'═':.^80}", "");
+    println!("\n{:═^80}", "");
     println!("EXAMPLE 2: Batch Processing Multiple Packets");
     println!("{:═^80}", "");
 
@@ -100,7 +100,7 @@ AA:BB:CC:DD:EE:FF "TestDevice" -75dB tx=5 Connectable Paired company-id=0x004C m
     // EXAMPLE 3: Company Data Distribution
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    println!("\n{'═':.^80}", "");
+    println!("\n{:═^80}", "");
     println!("EXAMPLE 3: Company Data Distribution");
     println!("{:═^80}", "");
 
@@ -119,7 +119,7 @@ AA:BB:CC:DD:EE:FF "TestDevice" -75dB tx=5 Connectable Paired company-id=0x004C m
     // EXAMPLE 4: Signal Strength Analysis
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    println!("\n{'═':.^80}", "");
+    println!("\n{:═^80}", "");
     println!("EXAMPLE 4: Signal Strength Analysis");
     println!("{:═^80}", "");
 
@@ -144,7 +144,7 @@ AA:BB:CC:DD:EE:FF "TestDevice" -75dB tx=5 Connectable Paired company-id=0x004C m
     // EXAMPLE 5: Device Characteristics
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    println!("\n{'═':.^80}", "");
+    println!("\n{:═^80}", "");
     println!("EXAMPLE 5: Device Characteristics");
     println!("{:═^80}", "");
 
@@ -174,7 +174,7 @@ AA:BB:CC:DD:EE:FF "TestDevice" -75dB tx=5 Connectable Paired company-id=0x004C m
     // EXAMPLE 6: Data Storage Simulation
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    println!("\n{'═':.^80}", "");
+    println!("\n{:═^80}", "");
     println!("EXAMPLE 6: Database Storage");
     println!("{:═^80}", "");
 
@@ -194,7 +194,7 @@ AA:BB:CC:DD:EE:FF "TestDevice" -75dB tx=5 Connectable Paired company-id=0x004C m
     // EXAMPLE 7: Deduplication
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    println!("\n{'═':.^80}", "");
+    println!("\n{:═^80}", "");
     println!("EXAMPLE 7: Deduplication");
     println!("{:═^80}", "");
 
@@ -210,7 +210,7 @@ AA:BB:CC:DD:EE:FF "TestDevice" -75dB tx=5 Connectable Paired company-id=0x004C m
     // EXAMPLE 8: API Endpoint Simulation
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    println!("\n{'═':.^80}", "");
+    println!("\n{:═^80}", "");
     println!("EXAMPLE 8: Web API Integration");
     println!("{:═^80}", "");
 
@@ -231,7 +231,7 @@ AA:BB:CC:DD:EE:FF "TestDevice" -75dB tx=5 Connectable Paired company-id=0x004C m
     // SUMMARY
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    println!("\n{'═':.^80}", "");
+    println!("\n{:═^80}", "");
     println!("SUMMARY");
     println!("{:═^80}", "");
 
@@ -254,6 +254,6 @@ AA:BB:CC:DD:EE:FF "TestDevice" -75dB tx=5 Connectable Paired company-id=0x004C m
     println!("   5. Query via Web API endpoints");
     println!("   6. Generate reports and visualizations");
 
-    println!("\n{'═':.^80}\n", "");
+    println!("\n{:═^80}\n", "");
     log::info!("✅ Example completed successfully");
 }

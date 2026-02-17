@@ -105,7 +105,7 @@ pub fn prevent_console_close() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Set the control handler
-        SetConsoleCtrlHandler(Some(console_handler), true);
+        let _ = SetConsoleCtrlHandler(Some(console_handler), true);
         info!("Console close handler registered");
     }
 

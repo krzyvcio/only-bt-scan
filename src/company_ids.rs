@@ -133,8 +133,8 @@ mod tests {
 
     #[test]
     fn test_get_company_name() {
-        assert_eq!(get_company_name(0x004C), Some("Apple, Inc.".to_string()));
-        assert_eq!(get_company_name(0xFFFF), None);
+        assert_eq!(get_company_name(0x004C), "Apple, Inc.".to_string());
+        assert_eq!(get_company_name(0xFFFF), format!("Unknown (0x{:04X})", 0xFFFF));
     }
 
     #[test]

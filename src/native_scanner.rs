@@ -6,6 +6,11 @@
 /// - Linux: BlueZ + hci
 /// - macOS: CoreBluetooth (via btleplug)
 
+use crate::bluetooth_scanner::{BluetoothDevice, BluetoothScanner, ScanConfig};
+#[cfg(target_os = "windows")]
+use crate::windows_bluetooth::windows_bt::{WindowsBluetoothManager, WindowsBluetoothCapabilities};
+use log::{debug, info};
+
 /// Multi-platform Bluetooth scanner with native API support.
 ///
 /// Provides platform-specific scanning capabilities while maintaining

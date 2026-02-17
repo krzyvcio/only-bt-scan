@@ -7,7 +7,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting Windows Raw HCI Scan Example");
 
     let mut scanner = WindowsHciScanner::new("HCI0".to_string());
-    scanner.start_scan().await?;
+    scanner.start_scan(true).await?;
 
     info!("Scanning for advertisements...");
 

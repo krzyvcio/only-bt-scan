@@ -419,7 +419,13 @@ impl AsyncScanner {
     /// # Returns
     /// Current ScannerMetrics
     pub fn get_metrics(&self) -> ScannerMetrics {
-        let mut m = self.metrics.lock().unwrap();
+        let mut m = match self.metrics.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                log::warn!("metrics mutex poisoned, recovering");
+                poisoned.into_inner()
+            }
+        };
         m.packets_per_second = m.packets_per_second();
         m.clone()
     }
@@ -429,7 +435,13 @@ impl AsyncScanner {
     /// # Returns
     /// Current ScannerState (Idle, Scanning, Paused, Stopped, or Error)
     pub fn get_state(&self) -> ScannerState {
-        *self.state.lock().unwrap()
+        match self.state.lock() {
+            Ok(g) => *g,
+            Err(poisoned) => {
+                log::warn!("state mutex poisoned, recovering in get_state");
+                *poisoned.into_inner()
+            }
+        }
     }
 
     /// Checks if the scanner is currently running.
@@ -457,13 +469,25 @@ impl AsyncScanner {
 
         // Initialize metrics
         {
-            let mut m = self.metrics.lock().unwrap();
+            let mut m = match self.metrics.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    log::warn!("metrics mutex poisoned during start, recovering");
+                    poisoned.into_inner()
+                }
+            };
             m.start_time = Some(Utc::now());
         }
 
         {
-            let mut state = self.state.lock().unwrap();
-            *state = ScannerState::Scanning;
+            let mut state_guard = match self.state.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    log::warn!("state mutex poisoned during start, recovering");
+                    poisoned.into_inner()
+                }
+            };
+            *state_guard = ScannerState::Scanning;
         }
 
         info!("Scanner started with config: channel_capacity={}, batch_size={}", 
@@ -527,13 +551,25 @@ impl AsyncScanner {
             match tx.try_send(packet) {
                 Ok(()) => {
                     // Update metrics
-                    let mut m = self.metrics.lock().unwrap();
+                                let mut m = match self.metrics.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            log::warn!("metrics mutex poisoned while updating packets_received, recovering");
+                            poisoned.into_inner()
+                        }
+                    };
                     m.packets_received += 1;
                     Ok(())
                 }
                 Err(mpsc::error::TrySendError::Full(_)) => {
                     // Channel full - apply backpressure
-                    let mut m = self.metrics.lock().unwrap();
+                    let mut m = match self.metrics.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            log::warn!("metrics mutex poisoned while updating packets_dropped, recovering");
+                            poisoned.into_inner()
+                        }
+                    };
                     m.packets_dropped += 1;
                     m.channel_full_count += 1;
                     warn!("Packet dropped - channel full");
@@ -612,11 +648,11 @@ mod tests {
     async fn test_scanner_start_stop() {
         let scanner = AsyncScanner::new(ScannerConfig::default());
         
-        scanner.start().unwrap();
+        assert!(scanner.start().is_ok());
         assert!(scanner.is_running());
         assert_eq!(scanner.get_state(), ScannerState::Scanning);
         
-        scanner.stop().unwrap();
+        assert!(scanner.stop().is_ok());
         assert!(!scanner.is_running());
         assert_eq!(scanner.get_state(), ScannerState::Stopped);
     }
@@ -629,7 +665,7 @@ mod tests {
         };
         let scanner = AsyncScanner::new(config);
         
-        scanner.start().unwrap();
+        assert!(scanner.start().is_ok());
         
         let packet = Packet {
             id: 0,
@@ -653,6 +689,6 @@ mod tests {
         let metrics = scanner.get_metrics();
         assert_eq!(metrics.packets_received, 1);
         
-        scanner.stop().unwrap();
+        assert!(scanner.stop().is_ok());
     }
 }

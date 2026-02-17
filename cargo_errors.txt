@@ -1,0 +1,233 @@
+    Blocking waiting for file lock on build directory
+    Checking only-bt-scan v0.1.0 (C:\projekty\only-bt-scan)
+error[E0425]: cannot find type `Arc` in this scope
+   --> src\device_events.rs:181:22
+    |
+181 |     _event_listener: Arc<DeviceEventListener>,
+    |                      ^^^ not found in this scope
+    |
+help: consider importing one of these structs
+    |
+  1 + use crate::Arc;
+    |
+  1 + use std::sync::Arc;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `BluetoothScanner`
+   --> src\native_scanner.rs:152:23
+    |
+152 |         let scanner = BluetoothScanner::new(self.config.clone());
+    |                       ^^^^^^^^^^^^^^^^ use of undeclared type `BluetoothScanner`
+    |
+help: consider importing this struct through its public re-export
+    |
+  1 + use crate::BluetoothScanner;
+    |
+
+error[E0425]: cannot find type `GlobalPacketTracker` in this scope
+  --> src\scanner_integration.rs:15:25
+   |
+15 |     pub packet_tracker: GlobalPacketTracker,
+   |                         ^^^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+help: consider importing this struct
+   |
+ 1 + use crate::packet_tracker::GlobalPacketTracker;
+   |
+
+error[E0425]: cannot find type `TelemetryCollector` in this scope
+  --> src\scanner_integration.rs:16:30
+   |
+16 |     pub telemetry_collector: TelemetryCollector,
+   |                              ^^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+help: consider importing this struct
+   |
+ 1 + use crate::telemetry::TelemetryCollector;
+   |
+
+error[E0425]: cannot find type `RawPacketModel` in this scope
+  --> src\scanner_integration.rs:17:32
+   |
+17 |     pub last_scan_packets: Vec<RawPacketModel>,
+   |                                ^^^^^^^^^^^^^^ not found in this scope
+   |
+help: consider importing this struct
+   |
+ 1 + use crate::data_models::RawPacketModel;
+   |
+
+error[E0433]: failed to resolve: use of undeclared type `GlobalPacketTracker`
+  --> src\scanner_integration.rs:27:29
+   |
+27 |             packet_tracker: GlobalPacketTracker::new(),
+   |                             ^^^^^^^^^^^^^^^^^^^ use of undeclared type `GlobalPacketTracker`
+   |
+help: consider importing this struct
+   |
+ 1 + use crate::packet_tracker::GlobalPacketTracker;
+   |
+
+error[E0433]: failed to resolve: use of undeclared type `TelemetryCollector`
+  --> src\scanner_integration.rs:28:34
+   |
+28 |             telemetry_collector: TelemetryCollector::new(),
+   |                                  ^^^^^^^^^^^^^^^^^^ use of undeclared type `TelemetryCollector`
+   |
+help: consider importing this struct
+   |
+ 1 + use crate::telemetry::TelemetryCollector;
+   |
+
+error[E0425]: cannot find type `BluetoothDevice` in this scope
+  --> src\scanner_integration.rs:41:57
+   |
+41 |     pub fn process_scan_results(&mut self, devices: Vec<BluetoothDevice>) {
+   |                                                         ^^^^^^^^^^^^^^^ not found in this scope
+   |
+help: consider importing this struct
+   |
+ 1 + use crate::bluetooth_scanner::BluetoothDevice;
+   |
+
+error[E0433]: failed to resolve: use of undeclared type `PacketAddResult`
+  --> src\scanner_integration.rs:69:20
+   |
+69 |             if let PacketAddResult::Accepted {
+   |                    ^^^^^^^^^^^^^^^ use of undeclared type `PacketAddResult`
+   |
+help: consider importing this enum
+   |
+ 1 + use crate::packet_tracker::PacketAddResult;
+   |
+
+error[E0433]: failed to resolve: use of undeclared type `PacketAddResult`
+  --> src\scanner_integration.rs:87:20
+   |
+87 |             if let PacketAddResult::Accepted { .. } = &result {
+   |                    ^^^^^^^^^^^^^^^ use of undeclared type `PacketAddResult`
+   |
+help: consider importing this enum
+   |
+ 1 + use crate::packet_tracker::PacketAddResult;
+   |
+
+error[E0433]: failed to resolve: use of undeclared type `PacketAddResult`
+  --> src\scanner_integration.rs:97:20
+   |
+97 |             if let PacketAddResult::Accepted { .. } = &result {
+   |                    ^^^^^^^^^^^^^^^ use of undeclared type `PacketAddResult`
+   |
+help: consider importing this enum
+   |
+ 1 + use crate::packet_tracker::PacketAddResult;
+   |
+
+error[E0433]: failed to resolve: use of undeclared type `PacketAddResult`
+   --> src\scanner_integration.rs:104:17
+    |
+104 |                 PacketAddResult::Accepted { packet_id, .. } => {
+    |                 ^^^^^^^^^^^^^^^ use of undeclared type `PacketAddResult`
+    |
+help: consider importing this enum
+    |
+  1 + use crate::packet_tracker::PacketAddResult;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `PacketAddResult`
+   --> src\scanner_integration.rs:111:17
+    |
+111 |                 PacketAddResult::Rejected { reason, .. } => {
+    |                 ^^^^^^^^^^^^^^^ use of undeclared type `PacketAddResult`
+    |
+help: consider importing this enum
+    |
+  1 + use crate::packet_tracker::PacketAddResult;
+    |
+
+error[E0425]: cannot find type `RawPacketModel` in this scope
+   --> src\scanner_integration.rs:127:46
+    |
+127 |     pub fn get_last_scan_packets(&self) -> &[RawPacketModel] {
+    |                                              ^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+  1 + use crate::data_models::RawPacketModel;
+    |
+
+error[E0425]: cannot find type `BluetoothDevice` in this scope
+   --> src\scanner_integration.rs:224:43
+    |
+224 | fn create_raw_packet_from_device(device: &BluetoothDevice, packet_id: u64) -> RawPacketModel {
+    |                                           ^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+  1 + use crate::bluetooth_scanner::BluetoothDevice;
+    |
+
+error[E0425]: cannot find type `RawPacketModel` in this scope
+   --> src\scanner_integration.rs:224:79
+    |
+224 | fn create_raw_packet_from_device(device: &BluetoothDevice, packet_id: u64) -> RawPacketModel {
+    |                                                                               ^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+  1 + use crate::data_models::RawPacketModel;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Utc`
+   --> src\scanner_integration.rs:226:21
+    |
+226 |     let timestamp = Utc::now();
+    |                     ^^^ use of undeclared type `Utc`
+    |
+    = note: struct `crate::raw_sniffer::windows_sniffer::Utc` exists but is inaccessible
+help: consider importing this struct
+    |
+  1 + use chrono::Utc;
+    |
+
+error[E0422]: cannot find struct, variant or union type `RawPacketModel` in this scope
+   --> src\scanner_integration.rs:243:18
+    |
+243 |     let packet = RawPacketModel {
+    |                  ^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+  1 + use crate::data_models::RawPacketModel;
+    |
+
+warning: unused import: `HciPcapPacket`
+ --> src\web_server.rs:4:28
+  |
+4 | use crate::pcap_exporter::{HciPcapPacket, PcapExporter};
+  |                            ^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0063]: missing field `address_type` in initializer of `RawPacketModel`
+  --> src\passive_scanner.rs:97:9
+   |
+97 |         RawPacketModel {
+   |         ^^^^^^^^^^^^^^ missing `address_type`
+
+error[E0282]: type annotations needed
+   --> src\scanner_integration.rs:159:37
+    |
+159 |             device_sequences.insert(mac.clone(), tracker.packet_sequence.len());
+    |                                     ^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> src\scanner_integration.rs:231:40
+    |
+231 |         let total_len: usize = 1 + 2 + data.len();
+    |                                        ^^^^ cannot infer type
+
+Some errors have detailed explanations: E0063, E0282, E0422, E0425, E0433.
+For more information about an error, try `rustc --explain E0063`.
+warning: `only-bt-scan` (lib) generated 1 warning
+error: could not compile `only-bt-scan` (lib) due to 21 previous errors; 1 warning emitted
