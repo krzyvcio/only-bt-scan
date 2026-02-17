@@ -13,6 +13,7 @@ function initApp() {
     setupEventListeners();
     setupModals();
     loadData();
+    initWebSocket();
     startPolling();
     showToast('info', 'Połączono z panelem skanera');
 }

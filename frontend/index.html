@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pl">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,16 +10,19 @@
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
 </head>
+
 <body>
     <div class="app-container">
         <header class="header">
             <div class="header-content">
                 <div class="logo">
                     <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M5 12h14M12 5l7 7-7 7"/>
-                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M5 12h14M12 5l7 7-7 7" />
+                        <circle cx="12" cy="12" r="3" />
                     </svg>
                     <h1>BLE Scanner</h1>
                 </div>
@@ -43,8 +47,8 @@
                 <div class="header-actions">
                     <button class="btn btn-refresh" id="refresh-btn">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M23 4v6h-6M1 20v-6h6"/>
-                            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                            <path d="M23 4v6h-6M1 20v-6h6" />
+                            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
                         </svg>
                         Refresh
                     </button>
@@ -67,15 +71,15 @@
                 <div class="section-header">
                     <h2>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
-                            <path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/>
+                            <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                            <path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16" />
                         </svg>
                         Zeskanowane Urządzenia
                     </h2>
                     <div class="search-box">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="11" cy="11" r="8"/>
-                            <path d="M21 21l-4.35-4.35"/>
+                            <circle cx="11" cy="11" r="8" />
+                            <path d="M21 21l-4.35-4.35" />
                         </svg>
                         <input type="text" id="search-input" placeholder="Szukaj urządzenia...">
                     </div>
@@ -93,7 +97,9 @@
                         <select id="filter-mac-type" class="filter-select">
                             <option value="">Typ MAC (wszystkie)</option>
                             <option value="Public">Public</option>
-                            <option value="Random">Random</option>
+                            <option value="Random (Static)">Random (Static)</option>
+                            <option value="RPA">RPA (Resolvable)</option>
+                            <option value="Random (Non-Resolvable)">Random (Non-Resolvable)</option>
                         </select>
                     </div>
                 </div>
@@ -126,9 +132,11 @@
                     </table>
                 </div>
                 <div class="pagination">
-                    <button class="pagination-btn" id="devices-prev-btn" onclick="goToDevicesPage(devicesPage - 1)">← Poprzednia</button>
+                    <button class="pagination-btn" id="devices-prev-btn" onclick="goToDevicesPage(devicesPage - 1)">←
+                        Poprzednia</button>
                     <span class="pagination-info" id="devices-page-info">Strona 1 z 1</span>
-                    <button class="pagination-btn" id="devices-next-btn" onclick="goToDevicesPage(devicesPage + 1)">Następna →</button>
+                    <button class="pagination-btn" id="devices-next-btn"
+                        onclick="goToDevicesPage(devicesPage + 1)">Następna →</button>
                 </div>
             </section>
 
@@ -136,7 +144,7 @@
                 <div class="section-header">
                     <h2>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
                         </svg>
                         Surowe Pakiety (Na Żywo)
                     </h2>
@@ -158,16 +166,18 @@
                     <div class="packets-list" id="packets-list">
                         <div class="empty-packets">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
                             </svg>
                             <span>Oczekiwanie na pakiety...</span>
                         </div>
                     </div>
                 </div>
                 <div class="pagination">
-                    <button class="pagination-btn" id="packets-prev-btn" onclick="goToPacketsPage(packetsPage - 1)">← Poprzednia</button>
+                    <button class="pagination-btn" id="packets-prev-btn" onclick="goToPacketsPage(packetsPage - 1)">←
+                        Poprzednia</button>
                     <span class="pagination-info" id="packets-page-info">Strona 1 z 1</span>
-                    <button class="pagination-btn" id="packets-next-btn" onclick="goToPacketsPage(packetsPage + 1)">Następna →</button>
+                    <button class="pagination-btn" id="packets-next-btn"
+                        onclick="goToPacketsPage(packetsPage + 1)">Następna →</button>
                 </div>
             </section>
 
@@ -175,12 +185,12 @@
                 <div class="section-header">
                     <h2>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                            <path d="M9 9h6v6H9z"/>
-                            <line x1="9" y1="3" x2="9" y2="21"/>
-                            <line x1="15" y1="3" x2="15" y2="21"/>
-                            <line x1="3" y1="9" x2="21" y2="9"/>
-                            <line x1="3" y1="15" x2="21" y2="15"/>
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                            <path d="M9 9h6v6H9z" />
+                            <line x1="9" y1="3" x2="9" y2="21" />
+                            <line x1="15" y1="3" x2="15" y2="21" />
+                            <line x1="3" y1="9" x2="21" y2="9" />
+                            <line x1="3" y1="15" x2="21" y2="15" />
                         </svg>
                         📊 Telemetry
                     </h2>
@@ -275,17 +285,20 @@
             <div class="modal-tabs">
                 <button class="modal-tab-btn active" onclick="switchTab('info-tab')">📋 Info</button>
                 <button class="modal-tab-btn" onclick="switchTab('rssi-tab')">📈 RSSI Trend</button>
+                <button class="modal-tab-btn btn-export" id="btn-pcap-export" onclick="downloadPcap()"
+                    title="Pobierz pakiety tego urządzenia w formacie PCAP (Wireshark)">📥 Pobierz PCAP</button>
             </div>
             <div class="modal-body">
                 <!-- Info Tab -->
                 <div id="info-tab" class="modal-tab-content active">
                     <div id="modal-body">Loading...</div>
                 </div>
-                
+
                 <!-- RSSI Trend Tab -->
                 <div id="rssi-tab" class="modal-tab-content">
                     <div class="rssi-container">
-                        <div id="rssi-chart" style="width: 100%; height: 400px; background: #0a0e27 url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><defs><pattern id=%22grid%22 width=%22100%22 height=%22100%22 patternUnits=%22userSpaceOnUse%22><path d=%22M 100 0 L 0 0 0 100%22 fill=%22none%22 stroke=%22%231a2332%22 stroke-width=%220.5%22/></pattern></defs><rect width=%22100%22 height=%22100%22 fill=%22%230a0e27%22/><rect width=%22100%22 height=%22100%22 fill=%22url(%23grid)%22/></svg>'); border-radius: 8px; position: relative; margin-bottom: 20px;">
+                        <div id="rssi-chart"
+                            style="width: 100%; height: 400px; background: #0a0e27 url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><defs><pattern id=%22grid%22 width=%22100%22 height=%22100%22 patternUnits=%22userSpaceOnUse%22><path d=%22M 100 0 L 0 0 0 100%22 fill=%22none%22 stroke=%22%231a2332%22 stroke-width=%220.5%22/></pattern></defs><rect width=%22100%22 height=%22100%22 fill=%22%230a0e27%22/><rect width=%22100%22 height=%22100%22 fill=%22url(%23grid)%22/></svg>'); border-radius: 8px; position: relative; margin-bottom: 20px;">
                             <div class="loading-spinner">
                                 <div class="spinner"></div>
                                 <span>Loading RSSI trend data...</span>
@@ -336,13 +349,17 @@
     <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
     <!-- Moment.js with Polish locale -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment-with-locales.min.js"></script>
-    
+
     <!-- App Modules -->
-    <script src="/api.js"></script>
-    <script src="/devices.js"></script>
-    <script src="/packets.js"></script>
-    <script src="/rssi.js"></script>
-    <script src="/modals.js"></script>
-    <script src="/app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/locale/pl.min.js"></script>
+    <script src="api.js"></script>
+    <script src="websocket.js"></script>
+    <script src="devices.js"></script>
+    <script src="packets.js"></script>
+    <script src="rssi.js"></script>
+    <script src="modals.js"></script>
+    <script src="app.js"></script>
 </body>
+
 </html>

@@ -11,6 +11,7 @@ use crate::data_models::RawPacketModel;
 use crate::device_events::{BluetoothDeviceEvent, DeviceEventListener};
 use crate::native_scanner::NativeBluetoothScanner;
 use crate::scanner_integration::ScannerWithTracking;
+use crate::mac_address_handler::{MacAddress, MacAddressFilter};
 use log::{debug, info};
 use std::sync::Arc;
 /// Main scanning engine combining all subsystems
@@ -21,6 +22,7 @@ pub struct UnifiedScanEngine {
     event_listener: Arc<DeviceEventListener>,
     #[cfg(target_os = "windows")]
     hci_scanner: Option<crate::windows_hci::WindowsHciScanner>,
+    mac_filter: MacAddressFilter,
 }
 
 impl UnifiedScanEngine {
@@ -40,6 +42,11 @@ impl UnifiedScanEngine {
             info!("🪟 Windows platform detected - enabling HCI support");
         }
 
+        // Initialize MAC filter from environment
+        let whitelist = std::env::var("MAC_WHITELIST").ok();
+        let blacklist = std::env::var("MAC_BLACKLIST").ok();
+        let mac_filter = MacAddressFilter::from_config(whitelist.as_deref(), blacklist.as_deref());
+
         Self {
             config,
             native_scanner,
@@ -47,6 +54,7 @@ impl UnifiedScanEngine {
             event_listener,
             #[cfg(target_os = "windows")]
             hci_scanner: None,
+            mac_filter,
         }
     }
 
@@ -58,9 +66,19 @@ impl UnifiedScanEngine {
 
         // Phase 1: Run native platform scanner
         info!("📡 Phase 1: Native platform scanning");
-        let native_devices = self.native_scanner.run_native_scan().await?;
+        let mut native_devices = self.native_scanner.run_native_scan().await?;
+        
+        // Filter devices
+        native_devices.retain(|d| {
+            if let Ok(mac) = MacAddress::from_string(&d.mac_address) {
+                self.mac_filter.matches(&mac)
+            } else {
+                false
+            }
+        });
+
         info!(
-            "✅ Phase 1 complete: {} devices found",
+            "✅ Phase 1 complete: {} devices found (after filtering)",
             native_devices.len()
         );
 
@@ -123,10 +141,10 @@ impl UnifiedScanEngine {
     ) -> Result<Vec<BluetoothDevice>, Box<dyn std::error::Error>> {
         use crate::windows_hci::WindowsHciScanner;
 
-        info!("🪟 Initializing Windows HCI scanner");
+        info!("🪟 Initializing Windows HCI scanner (Passive: {})", self.config.passive);
 
         let mut hci_scanner = WindowsHciScanner::new("BT0".to_string());
-        hci_scanner.start_scan().await?;
+        hci_scanner.start_scan(self.config.passive).await?;
 
         let devices = Vec::new();
 

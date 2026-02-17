@@ -68,7 +68,21 @@ function renderDevices(deviceList) {
         const lastSeen = device.last_seen ? formatTimestamp(device.last_seen) : '-';
         const manufacturer = device.manufacturer_name || '-';
         const securityLevel = device.security_level || '-';
-        const isRpa = device.is_rpa ? '<span class="rpa-badge">RPA</span>' : '';
+
+        // Prepare MAC type display
+        let macTypeCode = device.mac_type || '-';
+        let macTypeClass = '';
+
+        if (macTypeCode.includes('Public')) {
+            macTypeClass = 'mac-type-public';
+        } else if (macTypeCode.includes('Static')) {
+            macTypeClass = 'mac-type-static';
+        } else if (macTypeCode.includes('RPA') || device.is_rpa) {
+            macTypeClass = 'mac-type-rpa';
+            if (macTypeCode === '-') macTypeCode = 'RPA (Resolvable)';
+        } else if (macTypeCode.includes('Non-Resolvable')) {
+            macTypeClass = 'mac-type-nrpa';
+        }
 
         return `
             <tr data-mac="${device.mac_address}">
@@ -83,7 +97,11 @@ function renderDevices(deviceList) {
                 </td>
                 <td><span class="mac-address">${device.mac_address}</span></td>
                 <td><span class="manufacturer" title="${manufacturer}">${manufacturer}</span></td>
-                <td><span class="mac-type">${device.mac_type || '-'} ${isRpa}</span></td>
+                <td>
+                    <span class="mac-type-badge ${macTypeClass} mac-type">
+                        ${macTypeCode}
+                    </span>
+                </td>
                 <td>
                     <span class="security-badge ${device.security_level === 'Secure Connections' ? 'secure' : ''}">${securityLevel}</span>
                 </td>

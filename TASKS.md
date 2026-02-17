@@ -5,8 +5,8 @@
 
 ### Priorytet wysoki
 
-- [ ] Zaimplementować passive scanning z RSSI i raw packets
-- [ ] Dodać eksport do PCAP/Wireshark
+- [x] Zaimplementować passive scanning z RSSI i raw packets
+- [x] Dodać eksport do PCAP/Wireshark
 
 ### Priorytet średni
 
@@ -34,7 +34,7 @@
 ### Skany i protokoly
 - [ ] Wykrywanie typu adresu (public/random, resolvable/static) + prezentacja w UI
 - [ ] Tryb "burst" skanowania (krotkie serie co X sekund)
-- [ ] Auto-pause skanu przy braku reklam przez N minut
+- [x] Auto-pause skanu przy braku reklam przez N minut
 - [ ] Whitelist/blacklist prefiksow MAC w configu
 
 ### Parsowanie reklam (AD) i GATT

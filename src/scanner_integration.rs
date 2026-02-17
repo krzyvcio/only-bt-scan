@@ -208,6 +208,7 @@ fn create_raw_packet_from_device(device: &BluetoothDevice, packet_id: u64) -> Ra
         },
         is_scan_response: false,
         is_extended: false,
+        address_type: None,
         advertising_data,
         advertising_data_hex,
         ad_structures: Vec::new(),

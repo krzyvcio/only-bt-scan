@@ -109,6 +109,7 @@ pub struct RawPacketModel {
     pub packet_type: String, // "ADV_IND", "SCAN_RSP", "ADV_NONCONN_IND"
     pub is_scan_response: bool,
     pub is_extended: bool, // BT 5.0+ extended advertising
+    pub address_type: Option<String>, // "Public", "Random", "RPA", etc.
 
     // === Raw Advertising Data ===
     pub advertising_data: Vec<u8>,    // Complete raw bytes
@@ -241,6 +242,7 @@ pub struct PacketRow {
     pub channel: i32,
     pub frame_type: String,
     pub timestamp: String,
+    pub address_type: Option<String>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -322,6 +324,7 @@ impl RawPacketModel {
             packet_type: "ADV_IND".to_string(),
             is_scan_response: false,
             is_extended: false,
+            address_type: None,
             advertising_data,
             advertising_data_hex,
             ad_structures: Vec::new(),

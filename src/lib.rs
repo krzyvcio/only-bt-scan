@@ -206,6 +206,10 @@ pub async fn run() -> Result<(), anyhow::Error> {
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(5);
+    let passive_scan = env::var("PASSIVE_SCAN")
+        .ok()
+        .map(|v| v.to_lowercase() == "true")
+        .unwrap_or(false);
 
     // Setup Windows features
     #[cfg(target_os = "windows")]
@@ -258,6 +262,9 @@ pub async fn run() -> Result<(), anyhow::Error> {
         MoveTo(0, ui_renderer::get_device_list_start_line() - 8)
     )?; // Temporary Y coordinate
     writeln!(stdout(), "✓ Database initialized")?;
+    
+    // Run database maintenance (TTL cleanup)
+    let _ = db::run_maintenance();
 
     // Initialize raw frame storage tables
     let conn = rusqlite::Connection::open("./bluetooth_scan.db")
@@ -621,6 +628,7 @@ pub async fn run() -> Result<(), anyhow::Error> {
         num_cycles: scan_cycles,
         use_ble: true,
         use_bredr: cfg!(target_os = "linux"),
+        passive: passive_scan,
     };
     let mut unified_engine = UnifiedScanEngine::new(config.clone());
 
@@ -723,6 +731,8 @@ pub async fn run() -> Result<(), anyhow::Error> {
     let start_line = ui_renderer::get_device_list_start_line();
     let mut scan_count = 0;
     let app_start_time = std::time::Instant::now();
+    let mut last_activity_time = std::time::Instant::now();
+    let mut is_auto_paused = false;
 
     while !shutdown_in_progress.load(std::sync::atomic::Ordering::Relaxed) {
         // Increment global scan counter in DB
@@ -741,10 +751,11 @@ pub async fn run() -> Result<(), anyhow::Error> {
             stdout(),
             "{}",
             format!(
-                "🔄 Scan #{:03} | {} | Uptime: {}",
+                "🔄 Scan #{:03} | {} | Uptime: {}{}",
                 scan_count,
                 chrono::Local::now().format("%H:%M:%S"),
-                format_duration(app_start_time.elapsed())
+                format_duration(app_start_time.elapsed()),
+                if is_auto_paused { " | 💤 AUTO-PAUSE" } else { "" }
             )
             .bold()
         )?;
@@ -987,6 +998,31 @@ pub async fn run() -> Result<(), anyhow::Error> {
                 }
 
                 writeln!(stdout(), "{}", "└─────┴──────────────────┴──────────────┴───────────┴──────────────┴──────────────┴───────┘".blue())?;
+
+                if raw_packets.len() > 0 {
+                    last_activity_time = std::time::Instant::now();
+                    if is_auto_paused {
+                        log::info!("🚀 Activity detected! Resuming normal scanning.");
+                        is_auto_paused = false;
+                    }
+                } else {
+                    let inactivity_duration = last_activity_time.elapsed();
+                    if !is_auto_paused && inactivity_duration > Duration::from_secs(300) { // 5 minutes
+                        log::info!("💤 No activity for 5 minutes. Entering auto-pause mode.");
+                        is_auto_paused = true;
+                    }
+                }
+
+                // If auto-paused, sleep between scans to save power/CPU
+                if is_auto_paused {
+                    writeln!(stdout(), "{}", "💤 Tryb oszczędzania energii: brak urządzeń przez > 5 min.".yellow())?;
+                    writeln!(stdout(), "{}", "⏳ Następny skan kontrolny za 30 s...".cyan())?;
+                    interactive_ui::display_countdown_interruptible(
+                        0,
+                        30,
+                        shutdown_in_progress.clone(),
+                    );
+                }
 
                 if devices.len() > 15 {
                     writeln!(

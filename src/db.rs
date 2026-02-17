@@ -1734,3 +1734,35 @@ pub fn get_gatt_characteristics(
 
     records.collect()
 }
+
+/// Perform periodic database maintenance and TTL cleanup
+pub fn run_maintenance() -> SqliteResult<()> {
+    let conn = Connection::open(DB_PATH)?;
+    
+    // 1. Retention for raw advertisement packets (e.g. 7 days)
+    let frames_deleted = conn.execute(
+        "DELETE FROM ble_advertisement_frames WHERE timestamp < datetime('now', '-7 days')",
+        [],
+    )?;
+    
+    // 2. Retention for scan history (e.g. 30 days)
+    let history_deleted = conn.execute(
+        "DELETE FROM scan_history WHERE scan_timestamp < datetime('now', '-30 days')",
+        [],
+    )?;
+    
+    // 3. Keep devices for 90 days of inactivity
+    let devices_deleted = conn.execute(
+        "DELETE FROM devices WHERE last_seen < datetime('now', '-90 days')",
+        [],
+    )?;
+    
+    if frames_deleted > 0 || history_deleted > 0 || devices_deleted > 0 {
+        log::info!(
+            "🧹 Database Maintenance: Removed {} frames, {} history records, {} inactive devices",
+            frames_deleted, history_deleted, devices_deleted
+        );
+    }
+    
+    Ok(())
+}

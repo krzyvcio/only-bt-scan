@@ -1,6 +1,6 @@
 use crate::hci_scanner::HciScanner;
 use crate::mac_address_handler::MacAddress;
-use crate::pcap_exporter::{HciPcapPacket, PcapExporter};
+use crate::pcap_exporter::PcapExporter;
 use crate::class_of_device;
 use actix::prelude::*;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
@@ -117,6 +117,7 @@ pub struct RawPacket {
     pub frame_type: String,
     pub timestamp: String,
     pub scan_number: Option<i32>,
+    pub address_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,9 +205,13 @@ struct WsBroadcastMessage<T: Serialize> {
     timestamp: String,
 }
 
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct WsMessage(pub String);
+
 /// Globalny broadcaster WebSocket
 pub struct WebSocketBroadcaster {
-    sessions: Arc<Mutex<HashMap<usize, Vec<WsChannel>>>>,
+    sessions: Arc<Mutex<HashMap<usize, (Addr<WsSession>, Vec<WsChannel>)>>>,
 }
 
 impl WebSocketBroadcaster {
@@ -216,19 +221,21 @@ impl WebSocketBroadcaster {
         }
     }
 
-    fn register_session(&self, id: usize) {
-        self.sessions.lock().unwrap().insert(id, Vec::new());
+    fn register_session(&self, id: usize, addr: Addr<WsSession>) {
+        self.sessions.lock().unwrap().insert(id, (addr, Vec::new()));
         log::info!("WebSocket session {} registered", id);
     }
 
     fn unregister_session(&self, id: usize) {
-        self.sessions.lock().unwrap().remove(&id);
+        if let Ok(mut sessions) = self.sessions.lock() {
+            sessions.remove(&id);
+        }
         log::info!("WebSocket session {} unregistered", id);
     }
 
     fn subscribe(&self, id: usize, channel: WsChannel) {
         if let Ok(mut sessions) = self.sessions.lock() {
-            if let Some(channels) = sessions.get_mut(&id) {
+            if let Some((_, channels)) = sessions.get_mut(&id) {
                 if !channels.contains(&channel) {
                     channels.push(channel);
                     log::debug!("Session {} subscribed to {:?}", id, channel);
@@ -239,7 +246,7 @@ impl WebSocketBroadcaster {
 
     fn unsubscribe(&self, id: usize, channel: WsChannel) {
         if let Ok(mut sessions) = self.sessions.lock() {
-            if let Some(channels) = sessions.get_mut(&id) {
+            if let Some((_, channels)) = sessions.get_mut(&id) {
                 channels.retain(|&c| c != channel);
                 log::debug!("Session {} unsubscribed from {:?}", id, channel);
             }
@@ -259,18 +266,11 @@ impl WebSocketBroadcaster {
             timestamp: chrono::Utc::now().to_rfc3339(),
         };
 
-        if let Ok(_json) = serde_json::to_string(&message) {
-            let subscriber_count = sessions
-                .values()
-                .filter(|channels| channels.contains(&channel))
-                .count();
-
-            if subscriber_count > 0 {
-                log::debug!(
-                    "Broadcasting to {:?} channel: {} subscribers",
-                    channel,
-                    subscriber_count
-                );
+        if let Ok(json) = serde_json::to_string(&message) {
+            for (addr, channels) in sessions.values() {
+                if channels.contains(&channel) {
+                    addr.do_send(WsMessage(json.clone()));
+                }
             }
         }
     }
@@ -345,6 +345,7 @@ pub fn convert_to_raw_packet(packet: &crate::data_models::RawPacketModel) -> Raw
         frame_type: packet.packet_type.clone(),
         timestamp: packet.timestamp.to_rfc3339(),
         scan_number: None,
+        address_type: packet.address_type.clone(),
     }
 }
 
@@ -368,7 +369,6 @@ pub struct WsSession {
 
 impl WsSession {
     fn new(id: usize) -> Self {
-        WS_BROADCASTER.register_session(id);
         Self {
             id,
             subscribed_channels: Vec::new(),
@@ -439,13 +439,22 @@ impl WsSession {
 impl Actor for WsSession {
     type Context = ws::WebsocketContext<Self>;
 
-    fn started(&mut self, _ctx: &mut Self::Context) {
+    fn started(&mut self, ctx: &mut Self::Context) {
         log::info!("WebSocket client {} connected", self.id);
+        WS_BROADCASTER.register_session(self.id, ctx.address());
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
         log::info!("WebSocket client {} disconnected", self.id);
         WS_BROADCASTER.unregister_session(self.id);
+    }
+}
+
+impl Handler<WsMessage> for WsSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: WsMessage, ctx: &mut Self::Context) {
+        ctx.text(msg.0);
     }
 }
 
@@ -907,7 +916,7 @@ pub async fn get_raw_packets(web::Query(params): web::Query<PaginationParams>) -
         .unwrap_or(0);
 
     let mut stmt = match conn.prepare(
-        "SELECT id, mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp
+        "SELECT id, mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp, address_type
          FROM ble_advertisement_frames
          ORDER BY timestamp DESC
          LIMIT ? OFFSET ?",
@@ -932,6 +941,7 @@ pub async fn get_raw_packets(web::Query(params): web::Query<PaginationParams>) -
                 frame_type: row.get(6)?,
                 timestamp: row.get(7)?,
                 scan_number: None,
+                address_type: row.get(8).ok(),
             })
         })
         .map_err(|e| e.to_string())
@@ -1055,7 +1065,7 @@ pub async fn get_all_raw_packets(
         .unwrap_or(0);
 
     let mut stmt = match conn.prepare(
-        "SELECT id, mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp
+        "SELECT id, mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp, address_type
          FROM ble_advertisement_frames
          ORDER BY timestamp DESC
          LIMIT ? OFFSET ?",
@@ -1080,6 +1090,7 @@ pub async fn get_all_raw_packets(
                 frame_type: row.get(6)?,
                 timestamp: row.get(7)?,
                 scan_number: None,
+                address_type: row.get(8).ok(),
             })
         })
         .map_err(|e| e.to_string())
@@ -1310,6 +1321,7 @@ pub async fn get_device_history(path: web::Path<String>) -> impl Responder {
                                 frame_type: row.get(6)?,
                                 timestamp: row.get(7)?,
                                 scan_number: None,
+                                address_type: row.get(8).ok(),
                             })
                         })
                         .ok()
@@ -1403,37 +1415,60 @@ pub async fn export_pcap() -> impl Responder {
                 }));
             }
 
-            // Simulate adding some HCI events to PCAP
-            let event1 = HciPcapPacket::event(0x05, &[0x00, 0x01, 0x02, 0x13]);
-            let event2 = HciPcapPacket::event(0x3E, &[0x02, 0x01, 0x7F, 0x01, 0x01]);
-            let acl1 = HciPcapPacket::acl_in(0x0001, &[0x01, 0x02, 0x03, 0x04]);
-
-            let packets = vec![event1, event2, acl1];
-            for packet in packets {
-                if let Err(e) = exporter.write_packet(&packet) {
-                    return HttpResponse::InternalServerError().json(serde_json::json!({
-                        "error": format!("Failed to write packet: {}", e)
-                    }));
-                }
-            }
-
-            if let Err(e) = exporter.flush() {
-                return HttpResponse::InternalServerError().json(serde_json::json!({
-                    "error": format!("Failed to flush file: {}", e)
-                }));
-            }
-
+            // Standard capture logic could go here
+            // For now, this just creates an empty PCAP with a header if no packets provided
             let stats = exporter.get_stats();
             HttpResponse::Ok().json(serde_json::json!({
                 "status": "success",
                 "file": stats.file_path,
                 "packets": stats.packet_count,
                 "bytes": stats.total_bytes,
-                "message": "PCAP file created successfully - open with Wireshark"
+                "message": "PCAP file initialized successfully"
             }))
         }
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Failed to create PCAP file: {}", e)
+            "error": format!("Failed to create PCAP: {}", e)
+        })),
+    }
+}
+
+pub async fn export_device_pcap(path: web::Path<String>) -> impl Responder {
+    let mac = path.into_inner();
+    let conn = match rusqlite::Connection::open("bluetooth_scan.db") {
+        Ok(c) => c,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Database error: {}", e)
+            }))
+        }
+    };
+
+    let frames = match crate::db_frames::get_frames_by_mac(&conn, &mac, Some(1000)) {
+        Ok(f) => f,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to fetch frames: {}", e)
+            }))
+        }
+    };
+
+    if frames.is_empty() {
+        return HttpResponse::NotFound().json(serde_json::json!({
+            "error": "No packets found for this device"
+        }));
+    }
+
+    // Use the helper from pcap_exporter to create the buffer
+    match crate::pcap_exporter::export_frames_to_buffer(&frames) {
+        Ok(data) => HttpResponse::Ok()
+            .insert_header(("Content-Type", "application/vnd.tcpdump.pcap"))
+            .insert_header((
+                "Content-Disposition",
+                format!("attachment; filename=\"device_{}.pcap\"", mac.replace(":", "")),
+            ))
+            .body(data),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": e.to_string()
         })),
     }
 }
@@ -1532,6 +1567,13 @@ pub async fn static_rssi_js() -> impl Responder {
 
 pub async fn static_modals_js() -> impl Responder {
     let js = include_str!("../frontend/modals.js");
+    HttpResponse::Ok()
+        .content_type("application/javascript; charset=utf-8")
+        .body(js)
+}
+
+pub async fn static_websocket_js() -> impl Responder {
+    let js = include_str!("../frontend/websocket.js");
     HttpResponse::Ok()
         .content_type("application/javascript; charset=utf-8")
         .body(js)
@@ -2255,6 +2297,7 @@ pub fn configure_services(cfg: &mut web::ServiceConfig) {
             .route("/mac/{mac}", web::get().to(get_mac_info))
             .route("/hci-scan", web::get().to(get_hci_scan))
             .route("/export-pcap", web::get().to(export_pcap))
+            .route("/devices/{mac}/pcap", web::get().to(export_device_pcap))
             .route("/raw-packets", web::get().to(get_raw_packets))
             .route("/raw-packets/latest", web::get().to(get_latest_raw_packets))
             .route("/raw-packets/all", web::get().to(get_all_raw_packets))
@@ -2288,6 +2331,7 @@ pub fn configure_services(cfg: &mut web::ServiceConfig) {
     .route("/packets.js", web::get().to(static_packets_js))
     .route("/rssi.js", web::get().to(static_rssi_js))
     .route("/modals.js", web::get().to(static_modals_js))
+    .route("/websocket.js", web::get().to(static_websocket_js))
     .route("/ws", web::get().to(ws_endpoint));
 }
 

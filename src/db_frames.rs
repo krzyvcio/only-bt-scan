@@ -21,6 +21,7 @@ pub fn init_frame_storage(conn: &Connection) -> SqliteResult<()> {
             phy TEXT NOT NULL,
             channel INTEGER NOT NULL,
             frame_type TEXT NOT NULL,
+            address_type TEXT,
             timestamp DATETIME NOT NULL,
             timestamp_ms INTEGER,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -31,6 +32,12 @@ pub fn init_frame_storage(conn: &Connection) -> SqliteResult<()> {
 
     conn.execute(
         "ALTER TABLE ble_advertisement_frames ADD COLUMN timestamp_ms INTEGER",
+        [],
+    )
+    .ok();
+
+    conn.execute(
+        "ALTER TABLE ble_advertisement_frames ADD COLUMN address_type TEXT",
         [],
     )
     .ok();
@@ -93,8 +100,8 @@ pub fn insert_frame(conn: &Connection, device_id: i64, frame: &BluetoothFrame) -
 
     conn.execute(
         "INSERT INTO ble_advertisement_frames
-         (device_id, mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp, timestamp_ms)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         (device_id, mac_address, rssi, advertising_data, phy, channel, frame_type, address_type, timestamp, timestamp_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params![
             device_id,
             &frame.mac_address,
@@ -103,6 +110,7 @@ pub fn insert_frame(conn: &Connection, device_id: i64, frame: &BluetoothFrame) -
             phy_str,
             frame.channel,
             frame_type_str,
+            format!("{}", frame.address_type),
             frame.timestamp,
             timestamp_ms,
         ],
@@ -119,8 +127,8 @@ pub fn insert_frames_batch(
 ) -> SqliteResult<()> {
     let mut stmt = conn.prepare(
         "INSERT INTO ble_advertisement_frames
-         (device_id, mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp, timestamp_ms)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+         (device_id, mac_address, rssi, advertising_data, phy, channel, frame_type, address_type, timestamp, timestamp_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )?;
 
     for frame in frames {
@@ -137,6 +145,7 @@ pub fn insert_frames_batch(
             phy_str,
             frame.channel,
             frame_type_str,
+            format!("{}", frame.address_type),
             frame.timestamp,
             timestamp_ms,
         ])?;
@@ -154,13 +163,13 @@ pub fn get_frames_by_mac(
     let query = if let Some(l) = limit {
         format!(
             "SELECT mac_address, rssi, advertising_data, phy, channel, \
-             frame_type, timestamp FROM ble_advertisement_frames \
+             frame_type, address_type, timestamp FROM ble_advertisement_frames \
              WHERE mac_address = ?1 ORDER BY timestamp DESC LIMIT {}",
             l
         )
     } else {
         "SELECT mac_address, rssi, advertising_data, phy, channel, \
-         frame_type, timestamp FROM ble_advertisement_frames \
+         frame_type, address_type, timestamp FROM ble_advertisement_frames \
          WHERE mac_address = ? ORDER BY timestamp DESC"
             .to_string()
     };
@@ -175,7 +184,8 @@ pub fn get_frames_by_mac(
                 phy: parse_phy(&row.get::<_, String>(3)?),
                 channel: row.get(4)?,
                 frame_type: parse_frame_type(&row.get::<_, String>(5)?),
-                timestamp: row.get(6)?,
+                address_type: parse_address_type(&row.get::<_, String>(6).unwrap_or_else(|_| "Unknown".to_string())),
+                timestamp: row.get(7)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -190,7 +200,7 @@ pub fn get_frames_by_time_range(
     end: DateTime<Utc>,
 ) -> SqliteResult<Vec<BluetoothFrame>> {
     let mut stmt = conn.prepare(
-        "SELECT mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp
+        "SELECT mac_address, rssi, advertising_data, phy, channel, frame_type, address_type, timestamp
          FROM ble_advertisement_frames
          WHERE timestamp >= ? AND timestamp <= ?
          ORDER BY timestamp DESC",
@@ -205,7 +215,8 @@ pub fn get_frames_by_time_range(
                 phy: parse_phy(&row.get::<_, String>(3)?),
                 channel: row.get(4)?,
                 frame_type: parse_frame_type(&row.get::<_, String>(5)?),
-                timestamp: row.get(6)?,
+                address_type: parse_address_type(&row.get::<_, String>(6).unwrap_or_else(|_| "Unknown".to_string())),
+                timestamp: row.get(7)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -220,7 +231,7 @@ pub fn get_frames_by_type(
 ) -> SqliteResult<Vec<BluetoothFrame>> {
     let frame_type_str = format!("{}", frame_type);
     let mut stmt = conn.prepare(
-        "SELECT mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp
+        "SELECT mac_address, rssi, advertising_data, phy, channel, frame_type, address_type, timestamp
          FROM ble_advertisement_frames
          WHERE frame_type = ?
          ORDER BY timestamp DESC LIMIT 1000",
@@ -235,7 +246,8 @@ pub fn get_frames_by_type(
                 phy: parse_phy(&row.get::<_, String>(3)?),
                 channel: row.get(4)?,
                 frame_type: parse_frame_type(&row.get::<_, String>(5)?),
-                timestamp: row.get(6)?,
+                address_type: parse_address_type(&row.get::<_, String>(6).unwrap_or_else(|_| "Unknown".to_string())),
+                timestamp: row.get(7)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -276,8 +288,8 @@ pub fn insert_raw_packets_from_scan(
     let mut lookup_stmt = conn.prepare("SELECT id FROM devices WHERE mac_address = ?1")?;
     let mut insert_stmt = conn.prepare(
         "INSERT INTO ble_advertisement_frames
-         (device_id, mac_address, rssi, advertising_data, phy, channel, frame_type, timestamp)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+         (device_id, mac_address, rssi, advertising_data, phy, channel, frame_type, address_type, timestamp)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )?;
     let mut missing_device_count = 0;
     let mut inserted_count = 0;
@@ -311,6 +323,7 @@ pub fn insert_raw_packets_from_scan(
             &packet.phy,
             packet.channel as i32,
             &packet.packet_type,
+            &packet.address_type,
             packet.timestamp,
         ])?;
         inserted_count += 1;
@@ -516,6 +529,19 @@ fn parse_frame_type(frame_type_str: &str) -> AdvertisingType {
         "SCAN_RSP" => AdvertisingType::Scan_Rsp,
         "EXT_ADV_IND" => AdvertisingType::Ext_Adv_Ind,
         _ => AdvertisingType::Unknown,
+    }
+}
+
+/// Helper: Parse Address type from string
+fn parse_address_type(addr_type_str: &str) -> crate::raw_sniffer::AddressType {
+    use crate::raw_sniffer::AddressType;
+    match addr_type_str {
+        "Public" => AddressType::Public,
+        "Random" => AddressType::Random,
+        "Public Identity" => AddressType::PublicId,
+        "Random Identity" => AddressType::RandomId,
+        "Anonymous" => AddressType::Anonymous,
+        _ => AddressType::Unknown,
     }
 }
 

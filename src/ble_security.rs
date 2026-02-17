@@ -62,14 +62,30 @@ pub fn detect_mac_type(mac: &str) -> MacAddressType {
 
     let first_byte = u8::from_str_radix(&mac_clean[0..2], 16).unwrap_or(0);
 
-    let bit0 = first_byte & 0x01 != 0;
-    let bit1 = first_byte & 0x02 != 0;
+    // W BLE typ adresu losowego (Random) jest określony przez dwa najbardziej znaczące bity pierwszego bajtu:
+    // 11 - Static Random Address
+    // 01 - Resolvable Private Address (RPA)
+    // 00 - Non-Resolvable Private Address (NRPA)
+    // Uwaga: Publiczne adresy nie mają tych bitów ustawionych w ten specyficzny sposób (zwykle).
+    // Jednak formalnie typ Public vs Random jest przesyłany w nagłówku pakietu.
+    // Tutaj stosujemy heurystykę opartą na samej zawartości adresu.
 
-    match (bit0, bit1) {
-        (false, false) => MacAddressType::Public,
-        (false, true) => MacAddressType::RandomStatic,
-        (true, false) => MacAddressType::RandomResolvable,
-        (true, true) => MacAddressType::RandomNonResolvable,
+    let top_bits = first_byte & 0xC0;
+
+    match top_bits {
+        0xC0 => MacAddressType::RandomStatic,
+        0x40 => MacAddressType::RandomResolvable,
+        0x00 => {
+            // Jeśli bity są 00, może to być Public (OUI) lub Non-Resolvable Private.
+            // Zazwyczaj przyjmujemy że jeśli nie jest to Random, to jest Public.
+            // Heurystyka: jeśli top bits są 00, sprawdzamy czy to adres lokalnie administrowany.
+            if (first_byte & 0x02) != 0 {
+                MacAddressType::RandomNonResolvable
+            } else {
+                MacAddressType::Public
+            }
+        }
+        _ => MacAddressType::Unknown,
     }
 }
 

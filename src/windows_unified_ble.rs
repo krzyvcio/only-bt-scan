@@ -110,12 +110,12 @@ pub mod unified {
         }
 
         /// Start unified scanning (HCI + device enumeration)
-        pub async fn start_scan(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-            info!("🚀 Starting Windows Unified BLE Scanner");
+        pub async fn start_scan(&mut self, passive: bool) -> Result<(), Box<dyn std::error::Error>> {
+            info!("🚀 Starting Windows Unified BLE Scanner (Passive: {})", passive);
 
             // Start HCI scanning if available
             if let Some(hci) = &mut self.hci_scanner {
-                hci.start_scan().await?;
+                hci.start_scan(passive).await?;
                 info!("✅ HCI scanner started");
             } else {
                 warn!("⚠️ HCI scanner not available, using device manager only");

@@ -165,6 +165,15 @@ impl PcapExporter {
         })
     }
 
+    pub fn new_to_memory() -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(PcapExporter {
+            file_path: ":memory:".to_string(),
+            file: None,
+            packet_count: 0,
+            total_bytes: 0,
+        })
+    }
+
     pub fn write_header(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(ref mut file) = self.file {
             let header = PcapGlobalHeader::new();
@@ -209,6 +218,86 @@ impl PcapExporter {
             total_bytes: self.total_bytes,
         }
     }
+}
+
+/// Helper function to export a list of Bluetooth frames to a PCAP buffer
+pub fn export_frames_to_buffer(
+    frames: &[crate::raw_sniffer::BluetoothFrame],
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut buffer = Vec::new();
+
+    // 1. Write Global Header
+    let global_header = PcapGlobalHeader::new();
+    buffer.extend_from_slice(&global_header.to_bytes());
+
+    for (_idx, frame) in frames.iter().enumerate() {
+        // 2. Create LE Advertising Report HCI Event
+        // Structure:
+        // [0] Subevent: 0x02 (LE Advertising Report)
+        // [1] Num Reports: 0x01
+        // [2] Event Type: 0x00 (ADV_IND) mapping
+        // [3] Addr Type: 0x00 (Public)
+        // [4..9] Addr: 6 bytes (Little Endian)
+        // [10] Length: N
+        // [11..N+11] Data
+        // [N+11] RSSI
+
+        let mut hci_params = Vec::new();
+        hci_params.push(0x02); // Subevent: LE Advertising Report
+        hci_params.push(0x01); // Num Reports: 1
+
+        let event_type = match format!("{}", frame.frame_type).as_str() {
+            "ADV_IND" => 0x00,
+            "ADV_DIRECT_IND" => 0x01,
+            "ADV_SCAN_IND" => 0x02,
+            "ADV_NONCONN_IND" => 0x03,
+            "SCAN_RSP" => 0x04,
+            _ => 0x00,
+        };
+        hci_params.push(event_type);
+        hci_params.push(0x00); // Addr Type: Public (default)
+
+        // Parse MAC bytes (reverse order for HCI)
+        let mac_clean = frame.mac_address.replace(":", "");
+        if let Ok(mac_bytes) = hex::decode(&mac_clean) {
+            let mut mac_reversed = mac_bytes.clone();
+            mac_reversed.reverse();
+            hci_params.extend_from_slice(&mac_reversed);
+        } else {
+            hci_params.extend_from_slice(&[0, 0, 0, 0, 0, 0]);
+        }
+
+        hci_params.push(frame.advertising_data.len() as u8);
+        hci_params.extend_from_slice(&frame.advertising_data);
+        hci_params.push(frame.rssi as u8);
+
+        // LE Meta Event (0x3E)
+        let mut event_data = vec![0x3E, hci_params.len() as u8];
+        event_data.extend_from_slice(&hci_params);
+
+        // HCI Packet Header (Packet Type = Event 0x04)
+        let mut final_pkt_data = vec![0x04];
+        final_pkt_data.extend_from_slice(&event_data);
+
+        // 3. Write PCAP Packet Record
+        let pkt_len = final_pkt_data.len() as u32;
+        let pkt_header = PcapPacketHeader::new(pkt_len);
+
+        // Set custom timestamp from frame
+        let mut custom_header = pkt_header.clone();
+        custom_header.ts_sec = frame.timestamp.timestamp() as u32;
+        custom_header.ts_usec = frame.timestamp.timestamp_subsec_micros();
+
+        buffer.extend_from_slice(&custom_header.to_bytes());
+        buffer.extend_from_slice(&final_pkt_data);
+    }
+
+    info!(
+        "Exported {} frames to PCAP buffer ({:.1} KB)",
+        frames.len(),
+        buffer.len() as f64 / 1024.0
+    );
+    Ok(buffer)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

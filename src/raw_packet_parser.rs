@@ -250,6 +250,7 @@ impl RawPacketParser {
             packet_type,
             is_scan_response: false,
             is_extended: false,
+            address_type: None,
             advertising_data: packet.manufacturer_data.clone(),
             advertising_data_hex: packet.manufacturer_data_hex.clone(),
             ad_structures,

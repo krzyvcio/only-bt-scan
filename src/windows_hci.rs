@@ -126,18 +126,20 @@ mod adapter {
             Ok(event_packet)
         }
 
-        pub fn enable_le_advertising_scan(&mut self) -> Result<(), String> {
-            info!("🔍 Enabling LE advertising data scan");
+        pub fn enable_le_advertising_scan(&mut self, passive: bool) -> Result<(), String> {
+            let mode_str = if passive { "PASSIVE" } else { "ACTIVE" };
+            info!("🔍 Enabling LE advertising data scan (Mode: {})", mode_str);
 
-            let scan_type = 0x01;
-            let address_type = 0x01;
+            let scan_type = if passive { 0x00 } else { 0x01 };
+            let address_type = 0x01; // Random
             let filter_duplicates = 0x01;
 
             let mut params = vec![scan_type, address_type];
+            // Scan interval and window (units of 0.625ms, so 100 = 62.5ms)
             params.extend_from_slice(&100u16.to_le_bytes());
             params.extend_from_slice(&100u16.to_le_bytes());
-            params.push(0x00);
-            params.push(0x00);
+            params.push(0x00); // Own address type
+            params.push(0x00); // Scanning filter policy
 
             self.send_hci_command(0x200B, &params)?;
 
@@ -159,10 +161,11 @@ mod adapter {
             }
         }
 
-        pub async fn start_scan(&mut self) -> Result<(), String> {
+        pub async fn start_scan(&mut self, passive: bool) -> Result<(), String> {
             self.adapter.open()?;
-            self.adapter.enable_le_advertising_scan()?;
-            info!("✅ Windows HCI scanning started");
+            self.adapter.enable_le_advertising_scan(passive)?;
+            let mode_str = if passive { "PASSIVE" } else { "ACTIVE" };
+            info!("✅ Windows HCI scanning started in {} mode", mode_str);
 
             Ok(())
         }
@@ -281,6 +284,14 @@ mod models {
                 0x04 => "SCAN_RSP".to_string(),
                 _ => "UNKNOWN".to_string(),
             };
+
+            packet.address_type = Some(match self.address_type {
+                0x00 => "Public".to_string(),
+                0x01 => "Random".to_string(),
+                0x02 => "Public Identity".to_string(),
+                0x03 => "Random Identity".to_string(),
+                _ => "Unknown".to_string(),
+            });
 
             packet
         }

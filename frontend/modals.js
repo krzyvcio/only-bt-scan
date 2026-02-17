@@ -2,6 +2,9 @@
 // MODALS - Obsługa okien modalowych
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Global state for current open modal
+let currentModalMac = null;
+
 // PACKET DETAILS MODAL
 function showPacketDetails(index) {
     if (!packets || !packets[index]) return;
@@ -94,6 +97,7 @@ function showPacketDetails(index) {
 
 // DEVICE HISTORY MODAL
 async function showDeviceHistory(mac) {
+    currentModalMac = mac;
     const modal = document.getElementById('device-history-modal');
     const modalBody = document.getElementById('modal-body'); // Matching index.html
     const deviceNameHeader = document.getElementById('modal-device-name');
@@ -167,6 +171,22 @@ function trackRssi(mac) {
     // Switch to RSSI tab and initialize tracking
     showDeviceHistory(mac);
     setTimeout(() => switchTab('rssi-tab'), 100);
+}
+
+function downloadPcap() {
+    if (!currentModalMac) return;
+
+    const url = `/api/devices/${encodeURIComponent(currentModalMac)}/pcap`;
+
+    // Create temporary link to trigger download
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `device_${currentModalMac.replace(/:/g, '')}.pcap`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showToast(`Rozpoczęto pobieranie PCAP dla ${currentModalMac}`, 'info');
 }
 
 function closeModal(modalId) {

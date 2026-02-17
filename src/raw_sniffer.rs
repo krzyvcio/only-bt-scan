@@ -22,6 +22,31 @@ pub struct BluetoothFrame {
     pub channel: u8,
     /// Type of advertising PDU
     pub frame_type: AdvertisingType,
+    /// Type of device address (Public, Random, etc.)
+    pub address_type: AddressType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AddressType {
+    Public,
+    Random,
+    PublicId,
+    RandomId,
+    Anonymous,
+    Unknown,
+}
+
+impl std::fmt::Display for AddressType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            AddressType::Public => write!(f, "Public"),
+            AddressType::Random => write!(f, "Random"),
+            AddressType::PublicId => write!(f, "Public Identity"),
+            AddressType::RandomId => write!(f, "Random Identity"),
+            AddressType::Anonymous => write!(f, "Anonymous"),
+            AddressType::Unknown => write!(f, "Unknown"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -323,6 +348,14 @@ pub mod linux_sniffer {
             phy: BluetoothPhy::Le1M,
             channel: 37, // Default channel, would need to parse from data
             frame_type,
+            address_type: match address_type {
+                0x00 => AddressType::Public,
+                0x01 => AddressType::Random,
+                0x02 => AddressType::PublicId,
+                0x03 => AddressType::RandomId,
+                0xFF => AddressType::Anonymous,
+                _ => AddressType::Unknown,
+            },
         })
     }
 }
@@ -368,6 +401,7 @@ mod tests {
             phy: BluetoothPhy::Le1M,
             channel: 37,
             frame_type: AdvertisingType::Adv_Ind,
+            address_type: AddressType::Public,
         };
 
         sniffer.add_frame(frame);

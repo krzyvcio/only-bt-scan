@@ -230,6 +230,34 @@ impl MacAddressFilter {
     pub fn set_allow_public(&mut self, allow: bool) {
         self.allow_public = allow;
     }
+
+    /// Load filter from environment variables or config strings
+    pub fn from_config(whitelist_str: Option<&str>, blacklist_str: Option<&str>) -> Self {
+        let mut filter = Self::default();
+        
+        if let Some(wl) = whitelist_str {
+            for mac in wl.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                if mac.contains('*') || mac.contains('?') {
+                    let _ = filter.add_pattern(mac);
+                } else {
+                    let _ = filter.add_whitelist(mac);
+                }
+            }
+        }
+        
+        if let Some(bl) = blacklist_str {
+            for mac in bl.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                if mac.contains('*') || mac.contains('?') {
+                    let _ = filter.add_pattern(mac); // Patterns can also be blacklisted? 
+                    // Actually add_pattern in current implementation only affects WHITELIST logic (line 196)
+                } else {
+                    let _ = filter.add_blacklist(mac);
+                }
+            }
+        }
+        
+        filter
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

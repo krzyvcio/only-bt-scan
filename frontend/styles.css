@@ -29,7 +29,9 @@
     --transition-normal: 0.25s ease;
 }
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
@@ -51,7 +53,7 @@ body::before {
     left: 0;
     right: 0;
     bottom: 0;
-    background: 
+    background:
         radial-gradient(ellipse 80% 50% at 50% -20%, rgba(88, 166, 255, 0.08), transparent),
         radial-gradient(ellipse 60% 40% at 100% 0%, rgba(163, 113, 247, 0.06), transparent),
         linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
@@ -220,8 +222,17 @@ body::before {
 }
 
 @keyframes pulse {
-    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.4); }
-    50% { opacity: 0.8; box-shadow: 0 0 0 6px rgba(63, 185, 80, 0); }
+
+    0%,
+    100% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.4);
+    }
+
+    50% {
+        opacity: 0.8;
+        box-shadow: 0 0 0 6px rgba(63, 185, 80, 0);
+    }
 }
 
 .status-text {
@@ -248,7 +259,8 @@ body::before {
 }
 
 /* Sections */
-.devices-section, .packets-section {
+.devices-section,
+.packets-section {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
@@ -409,10 +421,21 @@ body::before {
     transition: background var(--transition-fast);
 }
 
-.signal-bar.active.excellent { background: var(--signal-excellent); }
-.signal-bar.active.good { background: var(--signal-good); }
-.signal-bar.active.fair { background: var(--signal-fair); }
-.signal-bar.active.weak { background: var(--signal-weak); }
+.signal-bar.active.excellent {
+    background: var(--signal-excellent);
+}
+
+.signal-bar.active.good {
+    background: var(--signal-good);
+}
+
+.signal-bar.active.fair {
+    background: var(--signal-fair);
+}
+
+.signal-bar.active.weak {
+    background: var(--signal-weak);
+}
 
 .rssi-value {
     font-family: var(--font-mono);
@@ -421,10 +444,21 @@ body::before {
     margin-left: 8px;
 }
 
-.rssi-excellent { color: var(--signal-excellent); }
-.rssi-good { color: var(--signal-good); }
-.rssi-fair { color: var(--signal-fair); }
-.rssi-weak { color: var(--signal-weak); }
+.rssi-excellent {
+    color: var(--signal-excellent);
+}
+
+.rssi-good {
+    color: var(--signal-good);
+}
+
+.rssi-fair {
+    color: var(--signal-fair);
+}
+
+.rssi-weak {
+    color: var(--signal-weak);
+}
 
 /* Device Info */
 .device-name {
@@ -509,7 +543,9 @@ body::before {
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* Empty State */
@@ -606,18 +642,42 @@ body::before {
 }
 
 @keyframes highlight {
-    from { background: rgba(88, 166, 255, 0.2); }
-    to { background: transparent; }
+    from {
+        background: rgba(88, 166, 255, 0.2);
+    }
+
+    to {
+        background: transparent;
+    }
 }
 
-.packet-time { color: var(--text-muted); }
-.packet-mac { color: var(--text-secondary); }
-.packet-rssi { color: var(--accent-cyan); font-weight: 600; }
-.packet-phy { color: var(--accent-purple); }
-.packet-channel { color: var(--text-muted); }
-.packet-type { color: var(--accent-orange); }
-.packet-data { 
-    color: var(--text-secondary); 
+.packet-time {
+    color: var(--text-muted);
+}
+
+.packet-mac {
+    color: var(--text-secondary);
+}
+
+.packet-rssi {
+    color: var(--accent-cyan);
+    font-weight: 600;
+}
+
+.packet-phy {
+    color: var(--accent-purple);
+}
+
+.packet-channel {
+    color: var(--text-muted);
+}
+
+.packet-type {
+    color: var(--accent-orange);
+}
+
+.packet-data {
+    color: var(--text-secondary);
     word-break: break-all;
     font-size: 0.7rem;
 }
@@ -689,15 +749,24 @@ body::before {
         transform: translateX(100%);
         opacity: 0;
     }
+
     to {
         transform: translateX(0);
         opacity: 1;
     }
 }
 
-.toast-success { border-color: rgba(63, 185, 80, 0.4); }
-.toast-error { border-color: rgba(248, 81, 73, 0.4); }
-.toast-info { border-color: rgba(88, 166, 255, 0.4); }
+.toast-success {
+    border-color: rgba(63, 185, 80, 0.4);
+}
+
+.toast-error {
+    border-color: rgba(248, 81, 73, 0.4);
+}
+
+.toast-info {
+    border-color: rgba(88, 166, 255, 0.4);
+}
 
 .toast-icon {
     width: 20px;
@@ -705,9 +774,17 @@ body::before {
     flex-shrink: 0;
 }
 
-.toast-success .toast-icon { color: var(--accent-green); }
-.toast-error .toast-icon { color: var(--accent-red); }
-.toast-info .toast-icon { color: var(--accent-cyan); }
+.toast-success .toast-icon {
+    color: var(--accent-green);
+}
+
+.toast-error .toast-icon {
+    color: var(--accent-red);
+}
+
+.toast-info .toast-icon {
+    color: var(--accent-cyan);
+}
 
 .toast-message {
     font-size: 0.875rem;
@@ -720,29 +797,29 @@ body::before {
         flex-direction: column;
         align-items: stretch;
     }
-    
+
     .header-stats {
         justify-content: center;
     }
-    
+
     .search-box {
         min-width: 100%;
     }
-    
+
     .devices-table th:nth-child(5),
     .devices-table td:nth-child(5),
     .devices-table th:nth-child(7),
     .devices-table td:nth-child(7) {
         display: none;
     }
-    
+
     .packets-header,
     .packet-row {
         grid-template-columns: 1fr 60px 40px;
     }
-    
+
     .packets-header span:nth-child(n+4),
-    .packet-row > span:nth-child(n+4) {
+    .packet-row>span:nth-child(n+4) {
         display: none;
     }
 }
@@ -1067,6 +1144,44 @@ body::before {
     font-size: 0.8rem;
 }
 
+/* MAC Address Type Badges */
+.mac-type-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.mac-type-public {
+    background: rgba(88, 166, 255, 0.1);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 166, 255, 0.3);
+}
+
+.mac-type-static {
+    background: rgba(63, 185, 80, 0.1);
+    color: var(--accent-green);
+    border-color: rgba(63, 185, 80, 0.3);
+}
+
+.mac-type-rpa {
+    background: rgba(163, 113, 247, 0.15);
+    color: #c084fc;
+    border-color: rgba(163, 113, 247, 0.3);
+}
+
+.mac-type-nrpa {
+    background: rgba(210, 153, 34, 0.1);
+    color: var(--accent-orange);
+    border-color: rgba(210, 153, 34, 0.3);
+}
+
 /* Security badges */
 .mac-type {
     font-size: 0.7rem;
@@ -1076,12 +1191,16 @@ body::before {
 .rpa-badge {
     display: inline-block;
     padding: 2px 6px;
-    background: rgba(210, 153, 34, 0.15);
-    color: var(--accent-orange);
-    border-radius: var(--radius-sm);
+    background: rgba(163, 113, 247, 0.2);
+    color: #c084fc;
+    border: 1px solid rgba(163, 113, 247, 0.3);
+    border-radius: 4px;
     font-size: 0.65rem;
-    font-weight: 600;
-    margin-left: 4px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-left: 6px;
+    vertical-align: middle;
 }
 
 .security-badge {
@@ -1368,6 +1487,31 @@ body::before {
     border-radius: var(--radius-md);
 }
 
+.btn-export {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    white-space: nowrap;
+}
+
+.btn-export:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+    box-shadow: 0 0 15px rgba(0, 243, 255, 0.15);
+}
+
+/* Removed redundant rpa-badge definition - merged above */
+
 .parsed-label {
     font-size: 0.8rem;
     color: var(--text-muted);
@@ -1525,11 +1669,25 @@ body::before {
     filter: brightness(1.2);
 }
 
-.quality-bar.excellent { background: var(--signal-excellent); }
-.quality-bar.good { background: var(--signal-good); }
-.quality-bar.fair { background: var(--signal-fair); }
-.quality-bar.poor { background: var(--signal-weak); }
-.quality-bar.very-poor { background: #d62828; }
+.quality-bar.excellent {
+    background: var(--signal-excellent);
+}
+
+.quality-bar.good {
+    background: var(--signal-good);
+}
+
+.quality-bar.fair {
+    background: var(--signal-fair);
+}
+
+.quality-bar.poor {
+    background: var(--signal-weak);
+}
+
+.quality-bar.very-poor {
+    background: #d62828;
+}
 
 .rssi-telemetry-container {
     margin-top: 30px;

@@ -98,6 +98,7 @@ pub struct ScanConfig {
     pub num_cycles: usize,
     pub use_ble: bool,
     pub use_bredr: bool, // Działa tylko na Linux
+    pub passive: bool,   // Czy skanowanie ma być pasywne (bez SCAN_REQ)
 }
 
 impl Default for ScanConfig {
@@ -107,6 +108,7 @@ impl Default for ScanConfig {
             num_cycles: 3,
             use_ble: true,
             use_bredr: cfg!(target_os = "linux"),
+            passive: false,
         }
     }
 }

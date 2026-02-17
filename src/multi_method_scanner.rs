@@ -244,13 +244,15 @@ impl UnifiedDevice {
 pub struct MultiMethodScanner {
     devices: Arc<Mutex<HashMap<String, UnifiedDevice>>>,
     is_scanning: bool,
+    config: crate::bluetooth_scanner::ScanConfig,
 }
 
 impl MultiMethodScanner {
-    pub fn new() -> Self {
+    pub fn new(config: crate::bluetooth_scanner::ScanConfig) -> Self {
         Self {
             devices: Arc::new(Mutex::new(HashMap::new())),
             is_scanning: false,
+            config,
         }
     }
 
@@ -267,9 +269,10 @@ impl MultiMethodScanner {
 
         // Method 1: btleplug standard scanning
         let devices_1 = devices.clone();
+        let config_1 = self.config.clone();
         tasks.spawn(async move {
             info!("  ▶ Method 1/7: btleplug standard scanner");
-            if let Err(e) = Self::scan_with_btleplug(devices_1).await {
+            if let Err(e) = Self::scan_with_btleplug(devices_1, config_1).await {
                 warn!("⚠️  btleplug scan failed: {}", e);
             }
         });
@@ -278,9 +281,10 @@ impl MultiMethodScanner {
         #[cfg(target_os = "windows")]
         {
             let devices_2 = devices.clone();
+            let config_2 = self.config.clone();
             tasks.spawn(async move {
                 info!("  ▶ Method 2/7: Windows HCI raw packets");
-                if let Err(e) = Self::scan_with_hci_raw(devices_2).await {
+                if let Err(e) = Self::scan_with_hci_raw(devices_2, config_2).await {
                     warn!("⚠️  HCI raw scan failed: {}", e);
                 }
             });
@@ -367,6 +371,7 @@ impl MultiMethodScanner {
     /// Method 1: btleplug (standard cross-platform)
     async fn scan_with_btleplug(
         devices: Arc<Mutex<HashMap<String, UnifiedDevice>>>,
+        _config: crate::bluetooth_scanner::ScanConfig,
     ) -> Result<(), String> {
         debug!("btleplug scan: Using standard BLE scanning");
 
@@ -453,6 +458,7 @@ impl MultiMethodScanner {
     #[cfg(target_os = "windows")]
     async fn scan_with_hci_raw(
         devices: Arc<Mutex<HashMap<String, UnifiedDevice>>>,
+        config: crate::bluetooth_scanner::ScanConfig,
     ) -> Result<(), String> {
         use crate::windows_hci::WindowsHciScanner;
 
@@ -462,7 +468,7 @@ impl MultiMethodScanner {
         let mut scanner = WindowsHciScanner::new("primary".to_string());
 
         // Open connection and start scanning
-        match scanner.start_scan().await {
+        match scanner.start_scan(config.passive).await {
             Ok(_) => {
                 info!("  ▶ HCI raw scanner started");
             }
@@ -536,6 +542,7 @@ impl MultiMethodScanner {
     #[cfg(not(target_os = "windows"))]
     async fn scan_with_hci_raw(
         _devices: Arc<Mutex<HashMap<String, UnifiedDevice>>>,
+        _config: crate::bluetooth_scanner::ScanConfig,
     ) -> Result<(), String> {
         Ok(())
     }
@@ -1263,7 +1270,7 @@ mod tests {
 
     #[test]
     fn test_scanner_creation() {
-        let scanner = MultiMethodScanner::new();
+        let scanner = MultiMethodScanner::new(crate::bluetooth_scanner::ScanConfig::default());
         assert_eq!(scanner.get_devices_by_confidence().len(), 0);
     }
 }
