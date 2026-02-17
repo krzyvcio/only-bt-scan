@@ -130,10 +130,13 @@ pub async fn send_initial_device_report() -> Result<(), String> {
     let devices = get_all_current_devices(&conn).map_err(|e| e.to_string())?;
 
     if devices.is_empty() {
-        let msg = "<i>Brak wykrytych urzadzen</i>";
-        send_telegram_message(&config.bot_token, &config.chat_id, msg).await
+        let msg = format!(
+            "<i>Brak wykrytych urzadzen z ostatnich {} minut</i>",
+            DEVICES_HISTORY_WINDOW_SECS / 60
+        );
+        send_telegram_message(&config.bot_token, &config.chat_id, &msg).await
     } else {
-        let message = format_initial_devices_message(&devices);
+        let message = format_initial_devices_message(&devices, DEVICES_HISTORY_WINDOW_SECS / 60);
         send_telegram_message(&config.bot_token, &config.chat_id, &message).await
     }
 }
@@ -141,7 +144,7 @@ pub async fn send_initial_device_report() -> Result<(), String> {
 fn get_all_current_devices(
     conn: &rusqlite::Connection,
 ) -> Result<Vec<DeviceReport>, Box<dyn std::error::Error>> {
-    let time_filter = "-10 minutes";
+    let time_filter = format!("-{} minutes", DEVICES_HISTORY_WINDOW_SECS / 60);
 
     let mut stmt = conn.prepare(
         "SELECT 
@@ -197,10 +200,14 @@ fn get_all_current_devices(
     Ok(devices)
 }
 
-fn format_initial_devices_message(devices: &[DeviceReport]) -> String {
+fn format_initial_devices_message(devices: &[DeviceReport], duration_minutes: i64) -> String {
     let mut message = String::new();
 
-    message.push_str("<b>📱 WYRYTE URZADZENIA</b>\n\n");
+    message.push_str("<b>📱 WYRYTE URZADZENIA</b>\n");
+    message.push_str(&format!(
+        "Urzadzenia z ostatnich {} minut\n\n",
+        duration_minutes
+    ));
     message.push_str(&format!(
         "Znaleziono <b>{}</b> urzadzen(i)\n\n",
         devices.len()
@@ -322,8 +329,12 @@ pub struct DeviceReport {
 
 fn format_devices_report(devices: &[DeviceReport], duration_minutes: i64) -> String {
     let mut message = String::new();
+    let hostname = get_hostname();
 
-    message.push_str(&format!("<b>RAPORT URZADZEN BLE</b>\n"));
+    message.push_str(&format!(
+        "<b>raport urzadzenia BLE ({})</b>\n",
+        hostname
+    ));
     message.push_str(&format!(
         "Urzadzenia z ostatnich {} minut\n\n",
         duration_minutes
@@ -665,17 +676,39 @@ pub async fn send_periodic_report() -> Result<(), String> {
         "[Telegram] Sending device report for {} devices...",
         devices.len()
     );
-    send_devices_report(&devices).await?;
+    let hostname = get_hostname();
+    
+    // If no devices found, send text message instead of HTML
+    if devices.is_empty() {
+        log::info!("[Telegram] No devices found - sending text message only");
+        let config = get_config();
+        if config.enabled {
+            let no_devices_msg = format!(
+                "<b>raport urzadzenia BLE ({})</b>\n\n\
+                 Okres: ostatnie {} minut\n\n\
+                 <b>❌ Nie wykryto żadnych urządzeń BLE</b>\n\n\
+                 Raport: {}",
+                hostname,
+                DEVICES_HISTORY_WINDOW_SECS / 60,
+                chrono::Local::now().format("%H:%M:%S")
+            );
+            send_telegram_message(&config.bot_token, &config.chat_id, &no_devices_msg).await?;
+        }
+    } else {
+        // Send text report
+        send_devices_report(&devices).await?;
 
-    // Generate HTML report with retry
-    let html_content = with_db_retry(|| {
-        let conn = open_db_with_wal().map_err(|e| e.to_string())?;
-        generate_enhanced_html_report(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
-            .map_err(|e| e.to_string())
-    }, 3).await?;
+        // Generate and send HTML report ONLY if devices exist
+        let html_content = with_db_retry(|| {
+            let conn = open_db_with_wal().map_err(|e| e.to_string())?;
+            generate_enhanced_html_report(&conn, DEVICES_HISTORY_WINDOW_SECS / 60)
+                .map_err(|e| e.to_string())
+        }, 3).await?;
 
-    log::info!("[Telegram] Sending enhanced HTML attachment...");
-    send_html_file(&html_content, "ble_scan_report.html").await?;
+        let report_filename = format!("ble_scan_report{}.html", hostname);
+        log::info!("[Telegram] Sending enhanced HTML attachment...");
+        send_html_file(&html_content, &report_filename).await?;
+    }
 
     // Update timestamp with retry
     with_db_retry(|| {
@@ -1142,9 +1175,16 @@ async fn send_html_file(html_content: &str, filename: &str) -> Result<(), String
         .mime_str("text/html")
         .map_err(|e| e.to_string())?;
 
+    let hostname = get_hostname();
+    let caption = format!(
+        "<b>raport urzadzenia BLE ({})</b>\nOstatnie {} minut",
+        hostname,
+        DEVICES_HISTORY_WINDOW_SECS / 60
+    );
+
     let form = reqwest::multipart::Form::new()
         .text("chat_id", config.chat_id.clone())
-        .text("caption", "<b>📡 Logi pakietow BLE</b>")
+        .text("caption", caption)
         .part("document", part);
 
     let response = client

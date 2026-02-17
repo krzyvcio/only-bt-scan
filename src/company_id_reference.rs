@@ -8,8 +8,7 @@ use lazy_static::lazy_static;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
-const COMPANY_IDS_YAML: &str =
-    include_str!("data/assigned_numbers/company_identifiers/company_identifiers.yaml");
+const COMPANY_IDS_YAML: &str = "";
 
 #[derive(Debug, Deserialize)]
 struct CompanyIdentifiers {

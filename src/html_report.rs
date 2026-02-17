@@ -1,9 +1,59 @@
 use crate::db;
 use chrono::Local;
+use rusqlite::params;
 /// HTML Report Generator for Bluetooth Scanner
 /// Creates comprehensive HTML reports with all detected devices and RAW packets
 use std::fs::{read_to_string, File};
 use std::io::Write;
+
+const REPORT_WINDOW_MINUTES: u32 = 15;
+
+fn load_recent_raw_packets_text(report_window_minutes: u32) -> Option<String> {
+    let pool = crate::db_pool::get_pool()?;
+    let time_filter = format!("-{} minutes", report_window_minutes);
+
+    let rows = pool
+        .execute(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT timestamp, mac_address, rssi, advertising_data, phy, channel, frame_type\
+                 FROM ble_advertisement_frames\
+                 WHERE timestamp > datetime('now', ?1)\
+                 ORDER BY timestamp DESC\
+                 LIMIT 500",
+            )?;
+
+            let rows = stmt
+                .query_map(params![time_filter], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i8>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, i32>(5)?,
+                        row.get::<_, String>(6)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+
+            Ok(rows)
+        })
+        .ok()?;
+
+    if rows.is_empty() {
+        return Some(String::new());
+    }
+
+    let mut text = String::new();
+    for (timestamp, mac, rssi, ad_data, phy, channel, frame_type) in rows {
+        text.push_str(&format!(
+            "{} | {} | {} dBm | {} | ch {} | {} | {}\n",
+            timestamp, mac, rssi, phy, channel, frame_type, ad_data
+        ));
+    }
+
+    Some(text)
+}
 
 /// Format milliseconds to HH:MM:SS format
 fn format_duration_human(ms: u64) -> String {
@@ -32,13 +82,16 @@ pub fn generate_html_report(
 
     println!("📊 Generating HTML report: {}", report_filename);
 
-    // Load all devices from database
-    let devices = db::get_all_devices()?;
+    // Load devices from the last N minutes
+    let devices = db::get_recent_devices_pooled(REPORT_WINDOW_MINUTES)?;
     let device_count = devices.len();
 
-    // Load RAW packet logs
-    let raw_packets_content = read_to_string(raw_packet_filename)
-        .unwrap_or_else(|_| String::from("No RAW packet data available"));
+    // Load RAW packet logs from DB (last N minutes), fallback to file
+    let raw_packets_content = match load_recent_raw_packets_text(REPORT_WINDOW_MINUTES) {
+        Some(text) if !text.trim().is_empty() => text,
+        _ => read_to_string(raw_packet_filename)
+            .unwrap_or_else(|_| String::from("No RAW packet data available")),
+    };
 
     // Generate HTML
     let html = generate_html_content(
@@ -46,6 +99,7 @@ pub fn generate_html_report(
         &raw_packets_content,
         device_count,
         scan_duration_ms,
+        REPORT_WINDOW_MINUTES,
     );
 
     // Write to file
@@ -65,6 +119,7 @@ fn generate_html_content(
     raw_packets: &str,
     total_devices: usize,
     scan_duration_ms: u64,
+    report_window_minutes: u32,
 ) -> String {
     let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
     let scan_time_formatted = format_duration_human(scan_duration_ms);
@@ -385,6 +440,10 @@ fn generate_html_content(
                 <span class="stat-label">Scan Duration</span>
             </div>
             <div class="stat-card">
+                <span class="stat-number">{} min</span>
+                <span class="stat-label">Report Window</span>
+            </div>
+            <div class="stat-card">
                 <span class="stat-number">✅</span>
                 <span class="stat-label">Scan Complete</span>
             </div>
@@ -417,6 +476,7 @@ fn generate_html_content(
         timestamp,
         total_devices,
         scan_time_formatted,
+        report_window_minutes,
         device_cards,
         raw_packets_escaped,
         timestamp

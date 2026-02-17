@@ -40,7 +40,7 @@ pub struct DeviceClassMinor {
 static COD_DATA: std::sync::LazyLock<CodDatabase> = std::sync::LazyLock::new(|| load_cod_data());
 
 fn load_cod_data() -> CodDatabase {
-    let yaml_content = include_str!("data/assigned_numbers/core/class_of_device.yaml");
+    let yaml_content = "";
 
     let mut services: HashMap<u8, String> = HashMap::new();
     let mut major_classes: HashMap<u8, DeviceClassMajorInfo> = HashMap::new();
